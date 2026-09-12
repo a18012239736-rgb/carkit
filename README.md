@@ -2,6 +2,14 @@
 
 CARKIT 是面向汽车产品和竞品分析工作的 Windows 工具，覆盖两条流程：从汽车之家读取车型配置并整理成配置阶梯，以及导入本品配置后与历史竞品逐项比较并计算配置优势。
 
+## 下载 Windows 程序
+
+同事无需安装 Python 或了解代码，直接点击下面的链接下载并运行：
+
+**[下载 CARKIT Windows 程序](https://github.com/a18012239736-rgb/carkit/raw/refs/heads/master/release/carkit.exe)**
+
+如果直接点击没有开始下载，也可以打开 [`release`](https://github.com/a18012239736-rgb/carkit/tree/master/release) 文件夹，点击 `carkit.exe` 后选择下载。下载后双击 `carkit.exe` 即可启动。
+
 ## Windows 使用
 
 直接运行打包后的 `carkit.exe`。程序会在桌面创建 `Codex` 文件夹保存数据和结果。抓取时需要 Edge 或 Chrome；遇到汽车之家验证，在浏览器完成验证后回到程序点击“验证后继续读取”。
