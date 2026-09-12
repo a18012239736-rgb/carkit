@@ -1,0 +1,31 @@
+[project]
+name = "carkit"
+version = "0.1.0"
+description = "车型配置对比工具：5C 抓取 + 41项赋值对比，独立 Windows exe + GUI"
+requires-python = ">=3.10"
+dependencies = [
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+gui = ["pywebview>=5.0"]
+scrape = ["playwright>=1.44", "lxml>=5.0", "beautifulsoup4>=4.12"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+carkit = "cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["cli", "app"]
+packages = ["engine", "api"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+engine = ["rules/*", "*.js"]

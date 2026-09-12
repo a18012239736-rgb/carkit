@@ -1,0 +1,242 @@
+"""Local editable-PPTX ladder import; all inferred data is a review draft."""
+from __future__ import annotations
+import copy
+import datetime
+import posixpath
+import re
+from pathlib import Path
+from zipfile import ZipFile
+from xml.etree import ElementTree as ET
+from .models import Snapshot
+from .rules import Rules
+
+NS = {'p': 'http://schemas.openxmlformats.org/presentationml/2006/main',
+      'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+      'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
+UNKNOWN = '[待定]PPT未说明'
+
+def _root(z, name):
+    entry = z.getinfo(name)
+    if entry.file_size > 20_000_000:
+        raise ValueError('PPT页面内容过大，请拆分后导入')
+    data = z.read(name)
+    if b'<!DOCTYPE' in data or b'<!ENTITY' in data:
+        raise ValueError('不支持带外部实体的PPT')
+    return ET.fromstring(data)
+
+def _slides(z):
+    rels = {n.attrib['Id']: n.attrib['Target'] for n in _root(z, 'ppt/_rels/presentation.xml.rels')
+            if n.attrib.get('TargetMode') != 'External'}
+    return [posixpath.normpath('ppt/'+rels[n.attrib['{'+NS['r']+'}id']])
+            for n in _root(z, 'ppt/presentation.xml').findall('p:sldIdLst/p:sldId', NS)]
+
+def _paragraphs(node):
+    result = []
+    for paragraph in node.findall('.//a:p', NS):
+        # Runs are formatting fragments, not line boundaries.
+        text = ''.join(c.text or '' if c.tag == '{'+NS['a']+'}t' else '\n'
+                       for c in paragraph.iter() if c.tag in {'{'+NS['a']+'}t', '{'+NS['a']+'}br'})
+        result.extend(line.strip() for line in text.splitlines() if line.strip())
+    return result
+
+def _blocks(root):
+    result=[]
+    def walk(parent, ox=0, oy=0, sx=1, sy=1):
+        for node in parent:
+            kind=node.tag.split('}')[-1]
+            if kind=='grpSp':
+                x=node.find('p:grpSpPr/a:xfrm',NS)
+                if x is None: continue
+                def pt(tag, a, default):
+                    q=x.find('a:'+tag,NS)
+                    return float(q.get(a,default)) if q is not None else default
+                scale_x=pt('ext','cx',1)/max(pt('chExt','cx',1),1)
+                scale_y=pt('ext','cy',1)/max(pt('chExt','cy',1),1)
+                walk(node,ox+sx*(pt('off','x',0)-scale_x*pt('chOff','x',0)),
+                     oy+sy*(pt('off','y',0)-scale_y*pt('chOff','y',0)),sx*scale_x,sy*scale_y)
+            elif kind in {'sp','graphicFrame'}:
+                x=node.find('p:spPr/a:xfrm',NS) if kind=='sp' else node.find('p:xfrm',NS)
+                if x is None:continue
+                off=x.find('a:off',NS); ext=x.find('a:ext',NS)
+                if off is None:continue
+                px=ox+sx*float(off.get('x',0)); py=oy+sy*float(off.get('y',0))
+                w=sx*float(ext.get('cx',0)) if ext is not None else 0
+                h=sy*float(ext.get('cy',0)) if ext is not None else 0
+                table=node.find('.//a:tbl',NS)
+                if table is not None:
+                    widths=[float(c.get('w',0))*sx for c in table.findall('a:tblGrid/a:gridCol',NS)]
+                    yy=py
+                    for row in table.findall('a:tr',NS):
+                        xx=px; rh=float(row.get('h',0))*sy
+                        for i,cell in enumerate(row.findall('a:tc',NS)):
+                            lines=_paragraphs(cell)
+                            cw=widths[i] if i<len(widths) else 0
+                            if lines:result.append({'x':xx,'y':yy,'w':cw,'h':rh,'lines':lines})
+                            xx+=cw
+                        yy+=rh
+                else:
+                    lines=_paragraphs(node)
+                    if lines:result.append({'x':px,'y':py,'w':w,'h':h,'lines':lines})
+    tree=root.find('p:cSld/p:spTree',NS)
+    if tree is not None:walk(tree)
+    return sorted(result,key=lambda b:(b['y'],b['x']))
+
+def list_pages(path):
+    with ZipFile(path) as z:
+        return [{'page':i+1,'title':' / '.join(b['lines'][0] for b in _blocks(_root(z,s))[:2])[:100] or '无可编辑文本'}
+                for i,s in enumerate(_slides(z))]
+
+def parse_page(path,page):
+    with ZipFile(path) as z:
+        slides=_slides(z)
+        if type(page) is not int or not 1<=page<=len(slides):raise ValueError('页码超出范围')
+        blocks=_blocks(_root(z,slides[page-1]))
+    # Explicit ladder marker is required. Do not silently interpret a chart as a ladder.
+    bodies=[b for b in blocks if re.match(r'^(?:基础配置\s*[:：]|.+?\s*[+＋]\s*[:：])',b['lines'][0])]
+    if not bodies:
+        raise ValueError('这一页未识别到“基础配置：”或“基础型+：”等阶梯文本。请选择配置阶梯页；图片式页面暂不支持自动识别。')
+    bodies.sort(key=lambda b:b['x'])
+    columns=[]; used=set()
+    for body in bodies:
+        center=body['x']+body['w']/2
+        candidates=[b for b in blocks if b['y']<body['y'] and len(b['lines'])==1
+                    and re.search(r'(型|版)$',b['lines'][0]) and '+' not in b['lines'][0]
+                    and abs(b['x']+b['w']/2-center)<max(body['w']*.65,300000)]
+        if len(candidates)!=1:raise ValueError('版型列头无法唯一对应，请使用每列上方一个版型名称的配置阶梯页')
+        header=candidates[0]; name=header['lines'][0]
+        if name in used:raise ValueError('版型名称重复，请先在PPT中区分')
+        used.add(name)
+        prices=[b for b in blocks if header['y']<b['y']<body['y'] and len(b['lines'])==1
+                and re.fullmatch(r'\d+(?:\.\d+)?(?:万元|万)?',b['lines'][0])
+                and abs(b['x']+b['w']/2-center)<max(body['w']*.65,300000)]
+        price=float(re.sub(r'万元|万','',prices[0]['lines'][0])) if len(prices)==1 else None
+        marker=body['lines'][0]
+        base=None if marker.startswith('基础配置') else re.split(r'[+＋]',marker)[0].strip()
+        columns.append({'name':name,'base':base,'price':price,'text':'\n'.join(body['lines'][1:])})
+    texts='\n'.join('\n'.join(b['lines']) for b in blocks)
+    model_candidates=[b['lines'][0] for b in blocks if len(b['lines'])==1 and re.fullmatch(r'[A-Za-z]+[\w -]*\d[\w -]*',b['lines'][0])]
+    price_kind='TP价格' if re.search(r'TP\s*价格',texts,re.I) else ('指导价' if '指导价' in texts else '未确定')
+    return {'model':model_candidates[0] if len(model_candidates)==1 else Path(path).stem.split('产品')[0],
+            'page':page,'source':Path(path).name,'price_kind':price_kind,'columns':columns,
+            'source_text':texts,'warnings':['请确认版型与继承关系；未写配置保留待定，不按无配置处理。',
+            '仅当明确选择指导价时，价格才用于指导价比较。']}
+
+def _apply(text, values, evidence, leftovers):
+    def put(no,value,line):
+        values[no]=value;evidence.setdefault(no,[]).append(line)
+    for line in text.splitlines():
+        line=line.strip()
+        if not line:continue
+        # Keep the full sentence for compound scope (mirrors/seats).
+        t=line.replace('吋','寸').replace('英寸','寸').replace('（','(').replace('）',')')
+        matched=False
+        def setv(no,value):
+            nonlocal matched
+            matched=True;put(no,value,line)
+        if re.search(r'选装|待定|暂定|取消|删除|减配|不配|不含|不支持|^无',t):
+            # Never let a removal/uncertain upgrade silently retain its inherited value.
+            stripped=re.sub(r'选装|待定|暂定|取消|删除|减配|不配|不含|不支持|^无','',t)
+            trial=copy.deepcopy(values); touched={}; ignored=[]
+            _apply(stripped,trial,touched,ignored)
+            for no in touched:
+                put(no,'[待定]'+line+'（请确认状态）',line)
+            leftovers.append(line+'（需人工确认配置状态）');continue
+        m=re.search(r'(\d+)\s*km',t,re.I)
+        if m:setv(1,m[1]+'km')
+        m=re.search(r'(\d+)\s*V(?:架构|平台|高压)',t,re.I)
+        if m:setv(3,m[1]+'V')
+        if '热泵' in t:setv(40,'●')
+        m=re.search(r'(?:R)?(\d+)寸?(钢|铝(?:合金)?)轮毂',t)
+        if m:setv(4,'R'+m[1]+('钢' if m[2]=='钢' else '铝')+'轮毂')
+        m=re.search(r'(\d+)气囊',t)
+        if m:setv(5,m[1]+'气囊')
+        if '侧气帘' in t:setv(5,'[待定]'+str(values.get(5,UNKNOWN))+'+侧气帘（数量需确认）')
+        if '540' in t and ('影像' in t or '全景' in t):setv(7,'540影像')
+        elif '360' in t and '影像' in t:setv(7,'360影像')
+        for value in ['城市NOA','高速NOA','基础L2']:
+            if value in t:setv(9,value);break
+        if '激光雷达' in t:
+            m=re.search(r'(\d+)[颗个]激光雷达',t)
+            setv(8,m[1]+'颗激光雷达' if m else '[待定]有激光雷达，数量未写')
+        if 'LED' in t and '灯' in t:setv(17,'LED大灯')
+        if '后雨刮' in t or '后雨刷' in t:setv(19,'●')
+        if '外后视镜' in t:setv(20,'●'+t.split('外后视镜',1)[1])
+        m=re.search(r'(\d+(?:\.\d+)?)寸中控',t)
+        if m:setv(21,m[1]+'寸中控')
+        m=re.search(r'(\d+(?:\.\d+)?)寸[^+]*?仪表',t)
+        if m:setv(29,m[1]+'寸仪表')
+        m=re.search(r'[45]G',t)
+        if m:setv(23,m[0])
+        if '皮质方向盘' in t:setv(25,'仿皮')
+        if '方向盘加热' in t:setv(27,'●')
+        if 'HUD' in t:setv(30,'AR-HUD' if 'AR-HUD' in t else 'HUD')
+        if '无线充电' in t:setv(33,'●'+t)
+        if '仿皮座椅' in t:setv(34,'仿皮')
+        elif '真皮座椅' in t:setv(34,'真皮')
+        elif '织物座椅' in t:setv(34,'织物')
+        if '座椅电调' in t or re.search(r'[主副]驾\d+向',t):
+            # A known power adjustment without a direction count is still unresolved for valuation.
+            setv(35,'[待定]'+t+'（请确认主副驾方向数）')
+        subs=copy.deepcopy(values.get(36,{}))
+        if not isinstance(subs,dict):subs={}
+        if '前排座椅' in t and '通风' in t and '加热' in t:subs['前加热通风']='●';setv(36,subs)
+        if '前排座椅' in t and '按摩' in t:subs['前按摩']='●';setv(36,subs)
+        if '头枕音响' in t:subs['头枕音响']='●';setv(36,subs)
+        m=re.search(r'(\d+)扬(?:声器|伯牙之音)',t)
+        if m:setv(37,m[1]+'扬声器')
+        if '车外扬声器' in t:setv(38,'[待定]有车外扬声器，数量未写')
+        m=re.search(r'(\d+)色氛围灯',t)
+        if m:setv(39,m[1]+'色氛围灯')
+        if '后排出风口' in t:setv(41,'●')
+        if '电动后备箱' in t or '电动后备厢' in t:setv(13,'●')
+        for no, aliases in {6:['悬架软硬','可变阻尼','FSD','悬架高低'],11:['电吸门','电动吸合门'],12:['电动前备箱','电动前备厢'],14:['车顶行李架'],15:['主动进气格栅','主动闭合式进气格栅'],16:['对外放电'],18:['全景天窗','全景天幕','电动天窗'],22:['副驾娱乐屏','副驾屏'],24:['KTV'],26:['方向盘调节','方向盘手动'],28:['方向盘记忆'],31:['内后视镜'],32:['USB','Type-C']}.items():
+            if any(a.lower() in t.lower() for a in aliases):setv(no,t)
+        # Always preserve mixed phrases; unhandled non-checklist details stay visible for review.
+        if not matched or re.search(r'APA|芯片|钥匙|怀挡|Carmind|自动空调',t):leftovers.append(line)
+
+def make_snapshot(draft):
+    columns=draft.get('columns',[])
+    if not columns:raise ValueError('至少需要一个版型')
+    names=[str(c['name']).strip() for c in columns]
+    if any(not n for n in names) or len(set(names))!=len(names):raise ValueError('版型名称不能为空或重复')
+    model=str(draft.get('model','')).strip()
+    if not model:raise ValueError('请填写本品车型名称')
+    lookup=dict(zip(names,columns)); expanded={}; traces={}; remaining={}
+    def expand(name,stack):
+        if name in expanded:return
+        if name in stack:raise ValueError('继承关系存在循环')
+        col=lookup[name];base=col.get('base')
+        if base and base not in lookup:raise ValueError('比较基准不存在：'+base)
+        if base:
+            expand(base,stack+[name]); vals=copy.deepcopy(expanded[base]); ev=copy.deepcopy(traces[base])
+        else:
+            vals={it['no']:'✕' for it in Rules().items if not it.get('merged_into')}
+            vals[36]={s:'✕' for s in ['前加热通风','前按摩','头枕音响','二排']};ev={}
+        rest=[];_apply(str(col.get('text','')),vals,ev,rest)
+        expanded[name]=vals;traces[name]=ev;remaining[name]=rest
+    for name in names:expand(name,[])
+    trims=[]
+    for name in names:
+        col=lookup[name];price=col.get('price')
+        if price not in (None,''):
+            price=float(price)
+            if not 0<price<10000:raise ValueError('价格应为正数，单位万元')
+        else:price=None
+        trims.append({'name':name,'price_guide':price if draft.get('price_kind')=='指导价' else None,
+                      'price_source':draft.get('price_kind','未确定'),'price_reference':price,'base':col.get('base'),
+                      'range':expanded[name][1] if not str(expanded[name][1]).startswith('[待定]') else ''})
+    cells=[]
+    for it in Rules().items:
+        no=it['no']
+        if it.get('merged_into'):continue
+        ev=[]
+        for name in names:
+            if no in traces[name]:ev.append(name+'：'+'；'.join(dict.fromkeys(traces[name][no])))
+        cells.append({'no':no,'values':{name:expanded[name][no] for name in names},
+                      'basis':f"{draft.get('source','PPT')} P{draft.get('page','')} / "+(' | '.join(ev) or '本页未说明')})
+    snap=Snapshot(model=model,version='ppt-import-v2',date=datetime.date.today().isoformat(),status='待确认',
+        trims=trims,cells=cells,
+        pending=[],
+        rulings=[{'type':'ppt_import','source':draft.get('source'),'page':draft.get('page'),
+                  'draft':copy.deepcopy(draft),'remaining':remaining}])
+    return snap

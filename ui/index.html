@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>carkit — 车型配置对比工具</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="layout">
+  <nav id="sidebar">
+    <div class="logo">CARKIT <small>车型工作台</small></div>
+    <div class="nav-caption">工作流程</div>
+    <button class="nav-item active" data-page="scrape">01　配置阶梯</button>
+    <button class="nav-item" data-page="diff">02　竞争力对比</button>
+    <button class="nav-item" data-page="settings">设置与帮助</button>
+    <div class="sidebar-foot"><span id="rules-version"></span><br><span id="workdir-label" class="dim"></span></div>
+  </nav>
+
+  <main id="main">
+    <!-- ① 抓取 -->
+    <section id="page-scrape" class="page active">
+      <h1>配置阶梯</h1><p class="intro">输入车型，确认版型与比较关系，生成你的配置阶梯文档。</p><div class="steps">01 获取车型　→　02 检查配置　→　03 指定基准并导出</div>
+      <div class="card">
+        <div class="row">
+          <label>车型名称或汽车之家配置页网址</label>
+          <input id="scrape-series" type="text" placeholder="如 比亚迪元UP、启源Q05 或配置页网址" style="flex:1">
+          <label>年款</label><input id="scrape-year" type="text" placeholder="留空自动选最新" style="width:120px">
+          <button id="btn-scrape-open" class="primary">搜索并抓取</button>
+          <button id="btn-scrape-capture">验证后继续读取</button>
+        </div>
+        <p class="dim">程序只读取汽车之家主站完整配置表，自动取消“隐藏相同参数/隐藏暂无内容”，并检查版型列数和指导价；遇到网站验证时在浏览器完成验证后点“继续读取”。</p>
+        <div id="scrape-status" class="status"></div>
+      </div>
+      <div class="card" id="stage-candidates" hidden><h2>请选择车型</h2><div id="stage-candidate-list"></div></div>
+      <div class="card" id="stage-trims" hidden><h2>选择输出版型与比较基准</h2><p class="dim">第一行作为基本配置；后续版型可选择之前已输出的版型作为比较基准。程序只写相对基准的变化，继承项不重复。</p><button id="inspect-raw">查看完整配置</button><div id="raw-inspector" class="table-wrap" hidden></div><div id="stage-trim-editor"></div><button id="btn-stage-export" class="primary">导出配置阶梯 Markdown</button><div id="stage-export-status" class="status"></div><details id="md-preview" hidden><summary>查看导出文档</summary><pre id="md-preview-text"></pre></details></div>
+      <div class="card">
+        <h2>导入本地配置数据</h2>
+        <div class="row">
+          <button id="btn-import-raw">导入已保存的 HTML / raw JSON…</button>
+          <span class="dim">反爬拦截或页面改版时：在浏览器 Ctrl+S 保存配置页，或导入既有 raw JSON</span>
+        </div>
+        <div id="import-status" class="status"></div>
+      </div>
+      <div class="card">
+        <h2>历史车型</h2>
+        <ul id="raw-list" class="file-list"></ul>
+      </div>
+    </section>
+
+    <!-- ② 竞品阶梯 -->
+    <section id="page-ladder" class="page">
+      <h1>检查竞品配置</h1><p class="intro">配置已自动准备。只需核查或修正，再保存返回比较。</p><button id="back-to-diff">保存并返回比较</button>
+      <div class="card">
+        <div class="row">
+          <select id="ladder-raw-select" style="flex:1"></select>
+          <input id="ladder-model" type="text" placeholder="车型名（可空）" style="width:160px">
+          <button id="btn-build-ladder" class="primary">生成阶梯</button>
+          <button id="btn-load-ladder">载入已有阶梯…</button>
+        </div>
+        <div id="diff-competitor-editor" class="card" hidden>
+          <h3>竞品配置校对（仅用于本次对比）</h3>
+          <p class="dim">可直接点击单元格修改。修改保存到竞品阶梯副本，不覆盖原始抓取数据；填 X 表示无配置，填 [待定] 表示暂不计入。</p>
+          <div class="table-wrap" id="diff-ladder-table-wrap"></div>
+          <button id="diff-save-competitor">保存本次竞品修正</button>
+        </div>
+        <div class="row">
+          <button id="btn-save-ladder">保存修改</button>
+          <button id="btn-export-ladder-md">导出 md</button>
+          <span id="ladder-info" class="dim"></span>
+        </div>
+      </div>
+      <div class="card table-wrap" id="ladder-table-wrap">
+        <p class="dim">尚无数据。「无该行 = ✕」自动应用；映射不中的项会标 <span class="tag warn">待映射</span>，请点击单元格人工修正——程序不脑补。</p>
+      </div>
+    </section>
+
+    <!-- ③ 快照 -->
+    <section id="page-snapshot" class="page">
+      <h1>本品配置</h1>
+      <div class="card">
+        <div class="row">
+          <button id="btn-import-ppt" class="primary">导入本品PPT…</button><button id="btn-new-snapshot">新建快照</button>
+          <button id="btn-load-snapshot">载入快照 JSON…</button>
+          <button id="btn-save-snapshot" class="primary">保存</button>
+          <span id="snapshot-info" class="dim"></span>
+        </div>
+        <p class="dim">支持PPTX配置阶梯页导入、逐项填写或载入JSON。PPT导入后先核对继承关系，再确认完整配置。</p><div id="snapshot-trims" class="trims-editor"></div>
+      </div>
+      <div class="card" id="ppt-import-panel" hidden>
+        <h2>1. 选择配置阶梯页</h2>
+        <p id="ppt-file-label" class="dim"></p>
+        <div class="row"><select id="ppt-page"></select><button id="ppt-parse" class="primary">解析这一页</button></div>
+        <p class="dim">支持可编辑文本框及表格中的列式阶梯，形如“基础配置：”“基础型+：”。图片式页面暂不支持。</p>
+        <div id="ppt-draft-panel" hidden>
+          <h2>2. 核对版型、价格与继承关系</h2>
+          <div class="row"><label>本品车型</label><input id="ppt-model"><label>页面价格口径</label><select id="ppt-price-kind"><option>未确定</option><option>TP价格</option><option>指导价</option></select></div>
+          <p class="notice">TP价格仅作参考，不自动填入指导价。按完整清单比较，未提及的配置按无处理；继承以你确认的比较基准为准。明确待定的配置保留待定。</p>
+          <div id="ppt-columns"></div>
+          <button id="ppt-expand" class="primary">展开为完整配置，进入核对</button>
+        </div>
+        <div id="ppt-review" hidden>
+          <h2>3. 核对下方完整配置表</h2>
+          <p>可直接修改表格。待定项不计入多/少；座椅子项有待定时，当前按整项暂不比较。</p>
+          <details><summary>原文及未自动归入清单的内容</summary><pre id="ppt-evidence"></pre></details>
+          <label><input type="checkbox" id="ppt-confirm">我已核对版型、价格口径、继承关系及配置；未提及项按无配置处理</label>
+          <button id="ppt-save" class="primary">确认并保存本品配置</button>
+        </div>
+        <div id="ppt-status" class="status"></div>
+      </div>
+      <div class="card table-wrap" id="snapshot-table-wrap">
+        <p class="dim">单元格填法：<code>●值</code>（有，带具体值）/ <code>✕</code>（无）/ <code>[待定]</code>（设计未定，不计入多/少）。#36 座椅功能按子项分行填写。</p>
+      </div>
+    </section>
+
+    <!-- ④ 赋值表 -->
+    <section id="page-valuation" class="page">
+      <h1>赋值规则</h1>
+      <div class="card">
+        <div class="row">
+          <button id="btn-make-template">生成 xlsx 模板（发给自己填）</button>
+          <button id="btn-load-valuation">载入赋值表 xlsx / JSON…</button>
+          <button id="btn-save-valuation" class="primary">保存 JSON</button>
+          <span id="valuation-info" class="dim"></span>
+        </div>
+        <p class="dim">程序已内置《竞争力对比配置清单参考(1).xlsx》及已确认补充规则；生成模板可查看或覆盖规则。留空 = <span class="tag warn">待赋值</span>。</p>
+      </div>
+      <div class="card table-wrap" id="valuation-table-wrap"></div>
+    </section>
+
+    <!-- ⑤ 对比 -->
+    <section id="page-diff" class="page">
+      <h1>竞争力对比</h1><p class="intro">选择本品与历史竞品，指定版型配对，检查差配并导出结果。</p><div class="steps">01 准备本品与规则　→　02 选择竞品与配对　→　03 检查并导出</div><p class="notice">当前可检查配置差异；金额规则仍需按你的业务口径完成校准。</p>
+      <div class="card">
+        <div class="row">
+          <label>本品配置</label><select id="diff-snapshot" style="flex:1"></select><button id="delete-self-file">删除本品文件</button>
+          <label>历史竞品</label><select id="diff-vehicle" style="flex:1"></select><select id="diff-ladder" hidden></select><button id="review-competitor">检查竞品配置</button>
+          <label>赋值表(可选)</label><select id="diff-valuation" style="flex:1"></select>
+        </div>
+        <div class="row"><button data-goto="snapshot">导入本品PPT / 新建本品</button><button id="diff-edit-self">修改当前本品配置</button><button data-goto="valuation">设置赋值规则</button></div>
+        <div id="diff-self-editor" hidden><h3>修改本品配置</h3><p>逐项修改后保存，再运行对比。未提及填 ✕，明确未定填 [待定]。</p><div id="diff-self-table" class="table-wrap"></div><button id="diff-save-self">保存本品修正</button></div>
+        <div id="pairs-editor" class="pairs-editor">
+          <div class="row"><strong>版型配对（必须人工指定，程序绝不自动配对）</strong>
+            <button id="btn-add-pair">+ 添加配对组</button></div>
+        </div>
+        <div class="row">
+          <button id="btn-run-diff" class="primary big">运行对比</button>
+          <button id="btn-export-result">导出结果 md</button>
+        </div>
+        <div id="diff-status" class="status"></div>
+      </div>
+      <div id="diff-result" class="card" hidden>
+        <h2>竞争力对比表</h2>
+        <div class="table-wrap" id="backup-table"></div>
+        <h2>41 项判定明细</h2>
+        <div class="table-wrap" id="detail-table"></div>
+      </div>
+    </section>
+
+    <!-- ⑥ 设置 -->
+    <section id="page-settings" class="page">
+      <h1>设置</h1>
+      <div class="card">
+        <table class="kv">
+          <tr><td>工作目录</td><td id="set-workdir"></td></tr>
+          <tr><td>规则版本</td><td id="set-rules"></td></tr>
+          <tr><td>浏览器</td><td id="set-browser"></td></tr>
+        </table>
+        <div class="row"><button id="btn-check-browser">检测浏览器可用性</button></div>
+      </div>
+      <div class="card">
+        <h2>铁律</h2>
+        <ol class="dim">
+          <li>版型配对必须人工指定，绝不按价格自动配对</li>
+          <li>映射不中标 [待映射]、缺赋值标 [待赋值]，交人裁决，程序不脑补</li>
+          <li>汽车之家无该配置行 = 该车没有</li>
+          <li>选装 ○ 不计为「有」；[待定] 不计入多/少</li>
+          <li>无赋值表只出纯差配清单</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

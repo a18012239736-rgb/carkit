@@ -1,0 +1,54 @@
+{
+  "version": "v1",
+  "source": "2026-09-11 pjy 裁决（对比配置清单-v1.md「赋值豁免与判定规则」6条）",
+  "rules": [
+    {
+      "id": "headrest_speaker",
+      "item_no": 36,
+      "scope": "sub_item",
+      "sub": "头枕音响",
+      "judgment": "豁免",
+      "action": "不进多/少清单、不进赋值计算；阶梯/明细中照常记录",
+      "display_suffix": "头枕豁免"
+    },
+    {
+      "id": "ktv",
+      "item_no": 24,
+      "scope": "item",
+      "judgment": "豁免",
+      "action": "不进赋值计算；明细照常记录",
+      "display": "豁免 {self}({comp})"
+    },
+    {
+      "id": "range_micro",
+      "item_no": 1,
+      "scope": "item",
+      "judgment": "豁免",
+      "action": "续航微小差距不进入计算，只有跨档差距才计",
+      "micro_rule": "band",
+      "bands_km": [[0, 450], [451, 550], [551, 650], [651, 9999]],
+      "calibration": "pjy 实例：500vs506=微差不计；500vs405、600vs506=跨档计。band 边界待 pjy 最终确认，可在此文件调整",
+      "display": "豁免(微差{self_km}/{comp_km})"
+    },
+    {
+      "id": "rearview_manual",
+      "item_no": 31,
+      "scope": "item",
+      "judgment": "同",
+      "action": "手动防眩目默认双方●（行业事实标配），只有流媒体才参与比较；自产品快照不因此判✕",
+      "compare_values": ["流媒体"]
+    },
+    {
+      "id": "optional_not_have",
+      "scope": "global",
+      "judgment": "不计",
+      "action": "选装(○)不计为对方「有」（沿用5C规则）；对方仅○时按无处理，明细中括号内可注明○选装"
+    },
+    {
+      "id": "pending",
+      "scope": "global",
+      "judgment": "不计",
+      "action": "[待定]项不计入多/少；display 写 不计(待定...)；[暂定]项按值对比但注明暂定"
+    }
+  ]
+}

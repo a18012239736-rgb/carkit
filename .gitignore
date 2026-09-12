@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# 构建产物
+dist/
+build/carkit/
+build_output/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 运行时数据（使用者本地工作数据不入库）
+workdir/
+*.local.json
