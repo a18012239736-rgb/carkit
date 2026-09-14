@@ -167,3 +167,22 @@ summary { cursor:pointer; padding:14px 0; }
 .backup-table tbody td { white-space: pre-wrap; line-height: 1.7; }
 .backup-table .v-more { background: #eef8f0; color: #175d34; }
 .backup-table .v-less { background: #fff1ef; color: #8a2f27; }
+
+#ladder-visual { margin-top: 24px; padding: 28px; background: #f3f7f8; border: 1px solid #dce7e9; border-radius: 18px; }
+.ladder-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.ladder-scroll { overflow-x: auto; padding: 12px 2px 20px; scrollbar-color: #9bbabd #edf3f4; }
+.ladder-sheet { width: max-content; min-width: 100%; }
+.ladder-model { margin: 0 0 18px; color: #678087; font-size: 13px; font-weight: 500; }
+.ladder-columns { display: flex; gap: 16px; align-items: stretch; }
+.ladder-column { width: 280px; padding: 24px; background: white; border: 1px solid #dce7e9; border-radius: 14px; box-shadow: 0 4px 14px #173f4808; box-sizing: border-box; }
+.ladder-column.is-base { border-top: 4px solid #247d80; padding-top: 21px; }
+.ladder-badge { display: inline-block; background: #edf4f5; color: #52737b; font-size: 11px; padding: 4px 9px; border-radius: 5px; margin-bottom: 14px; }
+.is-base .ladder-badge { background: #dff2ec; color: #21685c; }
+.ladder-column h4 { margin: 0; font-size: 20px; color: #193e46; }
+.ladder-price { font-size: 36px; font-weight: 700; letter-spacing: -1px; color: #173f48; margin: 12px 0 24px; padding-bottom: 20px; border-bottom: 1px solid #e9eff0; }
+.ladder-price small { font-size: 12px; font-weight: 400; letter-spacing: 0; color: #72868b; margin-left: 8px; }
+.ladder-column > strong { display: block; color: #487078; font-size: 12px; background: #f5f8f9; padding: 9px 10px; border-radius: 6px; }
+.ladder-column ul { list-style: none; padding: 0; margin: 12px 0 20px; line-height: 1.65; font-size: 13px; color: #354d54; }
+.ladder-column li { overflow-wrap: anywhere; padding: 7px 0; border-bottom: 1px solid #f0f4f5; }
+.ladder-column details { border-top: 1px dashed #ccdadd; padding-top: 14px; font-size: 12px; color: #658087; }
+#btn-stage-preview { margin-right: 10px; }

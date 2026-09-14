@@ -184,6 +184,7 @@ function handleStageResult(res) {
 }
 
 function renderStageTrimEditor() {
+  document.querySelector('#ladder-visual')?.remove();
   $("#stage-trims").hidden = false;
   const trims = ST.stage.trims;
   $("#stage-trim-editor").innerHTML = trims.map((t,i) => `<div class="stage-trim-row"><label><input type="checkbox" class="stage-use" data-i="${i}" checked> ${esc(t.name)}（${t.price_guide ?? '待核'}万）</label><select class="stage-base" data-i="${i}" ${i===0?'disabled':''}><option value="">基本配置</option></select></div>`).join("");
@@ -198,9 +199,46 @@ function updateStageBases() {
   $$(".stage-base").forEach(sel => { const i=+sel.dataset.i; const old=sel.value; sel.innerHTML='<option value="">基本配置</option>'+[...selected].filter(j=>j<i).map(j=>`<option value="${j}">${esc(ST.stage.trims[j].name)}</option>`).join(''); if([...sel.options].some(o=>o.value===old)) sel.value=old; });
 }
 
-$("#btn-stage-export").addEventListener("click", async () => {
+function stagePlan() {
   const plan=[]; const selected=new Set($$(".stage-use:checked").map(x=>+x.dataset.i));
   $$(".stage-use").forEach(cb=>{const i=+cb.dataset.i;if(selected.has(i)){const sel=document.querySelector(`.stage-base[data-i="${i}"]`);plan.push({target:i,base:sel&&sel.value!==''?+sel.value:null});}});
+  return plan;
+}
+
+const previewButton = document.createElement('button');
+previewButton.textContent = '查看配置阶梯图';
+previewButton.id = 'btn-stage-preview';
+$('#btn-stage-export').before(previewButton);
+previewButton.onclick = async () => {
+  const res = await api('stage_preview', stagePlan());
+  if (!res.ok) return toast(res.error, 'err');
+  document.querySelector('#ladder-visual')?.remove();
+  const panel = document.createElement('section');
+  panel.id = 'ladder-visual';
+  panel.innerHTML = `<div class="ladder-heading"><h2>配置阶梯</h2><button class="close-ladder">收起</button></div><p class="dim">指导价单位：万元 · 按上方所选比较基准显示；选装单列</p><div class="ladder-scroll"><div class="ladder-sheet"><h3 class="ladder-model">${esc(res.model)}</h3><div class="ladder-columns">${res.columns.map(c => `<article class="ladder-column"><h4>${esc(c.name)}</h4><div class="ladder-price">${c.price == null ? '待核' : Number(c.price).toFixed(2)}</div><strong>${c.base == null ? '基础配置：' : '相对 '+esc(c.base)+'：'}</strong><ul>${(c.items.length ? c.items : ['配置相同，仅价格/续航差异。']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>${c.options.length ? `<details><summary>选装配置</summary><ul>${c.options.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</article>`).join('')}</div></div></div>`;
+  panel.querySelector('.ladder-heading h2').textContent = res.model + ' · 配置阶梯';
+  panel.querySelector('.ladder-model').textContent = `${res.columns.length} 个版型 · 指导价与配置一览`;
+  panel.querySelectorAll('.ladder-column').forEach((card, i) => {
+    const c = res.columns[i];
+    card.classList.toggle('is-base', c.base == null);
+    const badge = document.createElement('span');
+    badge.className = 'ladder-badge';
+    badge.textContent = c.base == null ? '基础版型' : '差异配置';
+    card.prepend(badge);
+    const price = card.querySelector('.ladder-price');
+    const unit = document.createElement('small');
+    unit.textContent = c.price == null ? '指导价待核' : '万元';
+    price.append(unit);
+  });
+  $('#stage-trims').append(panel);
+  panel.querySelector('.close-ladder').onclick = () => panel.remove();
+  panel.scrollIntoView({behavior:'smooth', block:'start', inline:'start'});
+  panel.querySelector('.ladder-scroll').scrollLeft = 0;
+};
+$('#stage-trim-editor').addEventListener('change', () => document.querySelector('#ladder-visual')?.remove());
+
+$("#btn-stage-export").addEventListener("click", async () => {
+  const plan = stagePlan();
   const res=await api("stage_export",plan,ST.stage.model+'-配置阶梯');
   $('#md-preview').hidden=false; $('#md-preview-text').textContent=res.md;
   $("#stage-export-status").textContent=res.ok?'✓ 已导出：'+res.path:'✕ '+res.error;

@@ -234,6 +234,27 @@ class Bridge:
             return {"ok": False, "error": "请先抓取车型。"}
         return {"ok": True, "raw": self.stage_raw.to_dict()}
 
+    def stage_preview(self, plan):
+        try:
+            if not self.stage_raw:
+                return {"ok": False, "error": "请先选择历史车型或抓取车型。"}
+            raw = self.stage_raw
+            stage_one.validate_plan(raw, plan)
+            fs = stage_one.features(raw)
+            columns = []
+            for entry in plan:
+                i, b = entry['target'], entry['base']
+                columns.append({
+                    'name': raw.trims[i].short,
+                    'price': raw.trims[i].price_guide,
+                    'base': raw.trims[b].short if b is not None else None,
+                    'items': stage_one._compact_items(stage_one._change_items(fs, i, b), b),
+                    'options': stage_one._option_lines(raw, i),
+                })
+            return {'ok': True, 'model': raw.model, 'columns': columns}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
     def stage_export(self, plan, filename=''):
         try:
             if not self.stage_raw:
