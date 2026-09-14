@@ -18,4 +18,4 @@ def test_filters_and_custom_export(tmp_path):
     result = bridge.stage_export(plan, choose_path=True)
     assert result['ok']
     assert Path(result['path']) == tmp_path / '自选位置.md'
-    assert Path(result['path']).read_text() == result['md']
+    assert Path(result['path']).read_text(encoding='utf-8') == result['md']

@@ -42,7 +42,7 @@ if (-not $python) {
 Write-Host "[2/4] Install build dependencies" -ForegroundColor Cyan
 $packages = @("pywebview", "playwright", "openpyxl", "lxml", "beautifulsoup4", "pyinstaller", "pytest")
 if (-not (Test-BuildPython $python)) {
-    & $pip install --upgrade pip -q
+    & $python -m pip install --upgrade pip -q
     & $pip install @packages -q
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Default package index failed; retrying with the Tsinghua mirror." -ForegroundColor Yellow
