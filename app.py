@@ -37,6 +37,7 @@ def main():
         min_size=(1024, 700),
         background_color="#f6f7f9",
     )
+    window.events.closed += bridge.shutdown
     # Windows 上强制 WebView2（Edge Chromium）；缺失时 pywebview 会报错提示安装
     webview.start(debug=os.environ.get("CARKIT_DEBUG") == "1")
 

@@ -24,8 +24,7 @@
         <div class="row">
           <label>车型名称或汽车之家配置页网址</label>
           <input id="scrape-series" type="text" placeholder="如 比亚迪元UP、启源Q05 或配置页网址" style="flex:1">
-          <label>年款</label><input id="scrape-year" type="text" placeholder="留空自动选最新" style="width:120px">
-          <button id="btn-scrape-open" class="primary">搜索并抓取</button>
+          <button id="btn-scrape-open" class="primary">搜索车型</button>
           <button id="btn-scrape-capture">验证后继续读取</button>
         </div>
         <p class="dim">程序只读取汽车之家主站完整配置表，自动取消“隐藏相同参数/隐藏暂无内容”，并检查版型列数和指导价；遇到网站验证时在浏览器完成验证后点“继续读取”。</p>
@@ -33,14 +32,13 @@
       </div>
       <div class="card" id="stage-candidates" hidden><h2>请选择车型</h2><div id="stage-candidate-list"></div></div>
       <div class="card" id="stage-trims" hidden><h2>选择输出版型与比较基准</h2><p class="dim">第一行作为基本配置；后续版型可选择之前已输出的版型作为比较基准。程序只写相对基准的变化，继承项不重复。</p><button id="inspect-raw">查看完整配置</button><div id="raw-inspector" class="table-wrap" hidden></div><div id="stage-trim-editor"></div><button id="btn-stage-export" class="primary">导出配置阶梯 Markdown</button><div id="stage-export-status" class="status"></div><details id="md-preview" hidden><summary>查看导出文档</summary><pre id="md-preview-text"></pre></details></div>
-      <div class="card">
-        <h2>导入本地配置数据</h2>
+      <details class="card advanced-import"><summary>备用：导入本地配置数据</summary>
         <div class="row">
-          <button id="btn-import-raw">导入已保存的 HTML / raw JSON…</button>
-          <span class="dim">反爬拦截或页面改版时：在浏览器 Ctrl+S 保存配置页，或导入既有 raw JSON</span>
+          <button id="btn-import-raw">导入 HTML / raw JSON…</button>
+          <span class="dim">页面验证或改版时使用</span>
         </div>
         <div id="import-status" class="status"></div>
-      </div>
+      </details>
       <div class="card">
         <h2>历史车型</h2>
         <ul id="raw-list" class="file-list"></ul>

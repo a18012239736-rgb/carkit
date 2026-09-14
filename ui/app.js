@@ -155,7 +155,7 @@ $("#btn-scrape-open").addEventListener("click", async () => {
   if (!sid) return toast("请填写 seriesId 或 URL", "err");
   $("#scrape-status").textContent = "搜索和读取中…";
   $("#scrape-status").className = "status";
-  const res = await api("stage_search", sid, $("#scrape-year").value.trim());
+  const res = await api("stage_search", sid, "");
   handleStageResult(res);
 });
 
@@ -165,6 +165,7 @@ $("#btn-scrape-capture").addEventListener("click", async () => {
 });
 
 function handleStageResult(res) {
+  if (res.filters) { renderCaptureFilters(res.filters); return; }
   if (res.candidates) {
     $("#stage-candidates").hidden = false;
     $("#stage-candidate-list").innerHTML = res.candidates.map(c => `<button class="candidate" data-sid="${c.id}">${esc(c.name)}（车系 ${c.id}）</button>`).join(" ");
@@ -181,6 +182,27 @@ function handleStageResult(res) {
   $("#scrape-status").className = "status ok";
   renderStageTrimEditor();
   refreshRawList();
+}
+
+function renderCaptureFilters(filters) {
+  $('#stage-candidates').hidden = true;
+  let panel = $('#capture-filters');
+  if (!panel) { panel=document.createElement('div'); panel.id='capture-filters'; panel.className='card'; $('#stage-trims').before(panel); }
+  panel.hidden=false;
+  panel.innerHTML='<div class="capture-heading"><div><h2>选择抓取条件</h2><p>按需选择，可多选。未勾选的条件不作限制。</p></div><span class="capture-step">抓取前筛选</span></div>'+filters.map((f,i)=>`<fieldset class="capture-filter"><legend>${esc(f.label)}</legend><div class="capture-options">${f.values.map(v=>`<label class="capture-option"><input type="checkbox" data-filter="${i}" data-value="${esc(v.value)}"><span>${esc(v.label)}</span></label>`).join('')}</div></fieldset>`).join('')+'<div class="capture-actions"><button id="btn-confirm-capture" class="primary">开始抓取</button><span id="capture-filter-status" class="status" role="status" aria-live="polite"></span></div>';
+  $('#btn-confirm-capture').onclick=async()=>{
+    const selected={}; $$('#capture-filters [data-filter]:checked').forEach(x=>(selected[filters[+x.dataset.filter].label] ||= []).push(x.dataset.value));
+    const button=$('#btn-confirm-capture'), status=$('#capture-filter-status');
+    button.disabled=true; button.textContent='正在抓取…';
+    status.className='status'; status.textContent='正在读取配置，请稍候';
+    try {
+      const result=await api('stage_apply_filters', selected);
+      handleStageResult(result);
+      status.textContent=result.needs_browser ? '请完成浏览器验证后继续' : '配置读取完成';
+    } catch (error) {
+      status.className='status err'; status.textContent=error.message || '抓取失败，请重试';
+    } finally { button.disabled=false; button.textContent='开始抓取'; }
+  };
 }
 
 function renderStageTrimEditor() {
@@ -239,7 +261,8 @@ $('#stage-trim-editor').addEventListener('change', () => document.querySelector(
 
 $("#btn-stage-export").addEventListener("click", async () => {
   const plan = stagePlan();
-  const res=await api("stage_export",plan,ST.stage.model+'-配置阶梯');
+  const res=await api("stage_export",plan,ST.stage.model+'-配置阶梯',true);
+  if (res.cancelled) return;
   $('#md-preview').hidden=false; $('#md-preview-text').textContent=res.md;
   $("#stage-export-status").textContent=res.ok?'✓ 已导出：'+res.path:'✕ '+res.error;
   $("#stage-export-status").className=res.ok?'status ok':'status err';

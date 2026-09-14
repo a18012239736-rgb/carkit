@@ -10,6 +10,7 @@ import os
 import sys
 import traceback
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -29,10 +30,22 @@ class Bridge:
         self.workdir = workdir          # 使用者数据目录（快照/阶梯/赋值表/结果）
         self.rules = Rules()
         self.acquirer = acquire.Acquirer()
+        # Playwright's sync API is thread-affine. pywebview may invoke JS API
+        # methods on different worker threads, so serialize all browser work
+        # through one stable owner thread.
+        self._acquire_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='carkit-browser')
         self.stage_raw = None
         os.makedirs(workdir, exist_ok=True)
         for sub in ("raw", "阶梯", "快照", "赋值", "结果"):
             os.makedirs(os.path.join(workdir, sub), exist_ok=True)
+
+    def shutdown(self):
+        """Close the Playwright owner thread when the native window exits."""
+        try:
+            self._acquire_executor.submit(self.acquirer.close).result(timeout=10)
+        except Exception:
+            pass
+        self._acquire_executor.shutdown(wait=True, cancel_futures=True)
 
     # ---------- 通用 ----------
 
@@ -203,7 +216,7 @@ class Bridge:
     def stage_search(self, query: str, year: str = ""):
         """Search by model name, or accept an Autohome series URL/id."""
         try:
-            result = self.acquirer.search(query, year=year)
+            result = self._acquire_executor.submit(self.acquirer.search, query, year).result()
             if result.get('raw'):
                 return self._stage_store(result['raw'])
             return {"ok": True, **result}
@@ -212,7 +225,16 @@ class Bridge:
 
     def stage_choose_series(self, sid: str):
         try:
-            result = self.acquirer.fetch(sid)
+            result = self._acquire_executor.submit(self.acquirer.fetch, sid).result()
+            if result.get('raw'):
+                return self._stage_store(result['raw'])
+            return {"ok": True, **result}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def stage_apply_filters(self, selected=None):
+        try:
+            result = self._acquire_executor.submit(self.acquirer.apply_filters, selected or {}).result()
             if result.get('raw'):
                 return self._stage_store(result['raw'])
             return {"ok": True, **result}
@@ -221,7 +243,7 @@ class Bridge:
 
     def stage_continue(self):
         try:
-            result = self.acquirer.resume()
+            result = self._acquire_executor.submit(self.acquirer.resume).result()
             if result.get('raw'):
                 return self._stage_store(result['raw'])
             return {"ok": True, **result}
@@ -244,6 +266,24 @@ class Bridge:
             return {"ok": False, "error": "请先抓取车型。"}
         return {"ok": True, "raw": self.stage_raw.to_dict()}
 
+    def stage_filters(self):
+        if not self.stage_raw:
+            return {'ok': True, 'filters': []}
+        raw = self.stage_raw
+        fields = [('年款', None), ('能源类型', '能源类型'), ('排量', '排量(L)'),
+                  ('变速箱', '变速箱'), ('驱动类型', '驱动方式'), ('四驱形式', '四驱形式')]
+        filters = []
+        for label, name in fields:
+            if name is None:
+                values = [(re.search(r'(20\d{2})款', t.full).group(1) if re.search(r'(20\d{2})款', t.full) else '') for t in raw.trims]
+            else:
+                row = raw.row(name)
+                values = [' / '.join(stage_one.parts(c)) for c in row.cells] if row else []
+            options = list(dict.fromkeys(v for v in values if v and v not in {'-', '无'}))
+            if options:
+                filters.append({'label': label, 'values': values, 'options': options})
+        return {'ok': True, 'filters': filters}
+
     def stage_preview(self, plan):
         try:
             if not self.stage_raw:
@@ -265,7 +305,7 @@ class Bridge:
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
-    def stage_export(self, plan, filename=''):
+    def stage_export(self, plan, filename='', choose_path=False):
         try:
             if not self.stage_raw:
                 return {"ok": False, "error": "请先抓取车型。"}
@@ -273,6 +313,13 @@ class Bridge:
             md = stage_one.render(self.stage_raw, plan)
             safe = re.sub(r'[^\w\-一-龥]+', '_', filename or self.stage_raw.model or '车型配置阶梯').strip('_')
             path = os.path.join(self.workdir, '阶梯', safe + '-' + _today() + '.md')
+            if choose_path:
+                selected = self.save_file_dialog(os.path.basename(path), ['Markdown (*.md)'])
+                if isinstance(selected, dict):
+                    return {'ok': False, 'error': selected.get('error', '无法选择保存位置')}
+                if not selected:
+                    return {'ok': True, 'cancelled': True}
+                path = selected if selected.lower().endswith('.md') else selected + '.md'
             with open(path, 'w', encoding='utf-8') as f: f.write(md)
             return {"ok": True, "path": path, "md": md}
         except Exception as e:

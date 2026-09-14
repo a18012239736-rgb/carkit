@@ -53,8 +53,8 @@ def validate(data, live=False):
         if len(rows) < 30 or not required <= names:
             raise ValueError('配置表未完整加载，不能将缺失行当作无配置。')
     price = next((r for r in rows if r['n'] == '厂商指导价(元)'), None)
-    if not price or any(rawschema._parse_price(v) is None for v in price['v']):
-        raise ValueError('有版型缺少有效指导价，请先核对网页，不能以0元代替。')
+    if not price or not any(rawschema._parse_price(v) is not None for v in price['v']):
+        raise ValueError('配置表没有读到任何有效指导价，请先核对网页，不能以0元代替。')
 
 
 class Acquirer:
@@ -103,7 +103,7 @@ class Acquirer:
         while time.monotonic()<deadline:
             results=self.page.evaluate(SEARCH_JS)
             if results:
-                if len(results)==1: return self.fetch(results[0]['id'], year=year)
+                if len(results)==1: return self.fetch(results[0]['id'])
                 return {'candidates':results}
             self.page.wait_for_timeout(500)
         return {'needs_browser':True,'message':'未读到车型结果。若浏览器提示验证，请完成后点“继续读取”；也可输入汽车之家配置页网址。'}
@@ -116,7 +116,32 @@ class Acquirer:
             self.year = str(year or '').strip()
         self.sid, self.mode = sid, 'config'
         self.page.goto(f'https://www.autohome.com.cn/config/series/{sid}.html', wait_until='domcontentloaded', timeout=45000)
-        return self.capture(year=self.year)
+        return self.filter_options()
+
+    def filter_options(self):
+        self.page.locator('a[class*="style_col_spec_name"]').first.wait_for(timeout=20000)
+        return {'filters': self.page.evaluate("""() => [...document.querySelectorAll('div.tw-mb-3')].map(g => {
+          const title=g.querySelector(':scope > span')?.textContent.trim();
+          const values=[...g.querySelectorAll('input[type=checkbox]')].map(i=>({value:i.value,label:i.parentElement.parentElement.textContent.trim()}));
+          return title && values.length ? {label:title,values} : null;
+        }).filter(Boolean)""")}
+
+    def apply_filters(self, selected=None):
+        selected = selected or {}
+        for label, values in selected.items():
+            for value in values:
+                box = self.page.locator(f'input[type="checkbox"][value="{value}"]').first
+                if box.count() and not box.is_checked():
+                    try:
+                        box.check()
+                    except Exception:
+                        # Autohome rerenders the filter group after a selection;
+                        # the requested value may already be selected in the new DOM.
+                        self.page.wait_for_timeout(250)
+                        if box.count() and not box.is_checked():
+                            self.page.locator(f'input[type="checkbox"][value="{value}"]').first.click(force=True)
+        self.page.wait_for_timeout(900)
+        return self.capture(year='')
 
     def _select_year(self, year=''):
         boxes = self.page.locator('input[type="checkbox"][value^="20"]')
@@ -140,7 +165,7 @@ class Acquirer:
             self.page.locator('a[class*="style_col_spec_name"]').first.wait_for(timeout=20000)
         except Exception:
             return {'needs_browser':True,'message':'配置页尚未加载。请在浏览器完成网站验证，再点“继续读取”。'}
-        years = self._select_year(year)
+        years = self._select_year(year) if year else []
         for name in ('隐藏相同参数','隐藏暂无内容'):
             inp = self.page.locator('label').filter(has_text=name).locator('input')
             if inp.count() and inp.first.is_checked(): inp.first.uncheck()

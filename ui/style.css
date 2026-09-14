@@ -186,3 +186,24 @@ summary { cursor:pointer; padding:14px 0; }
 .ladder-column li { overflow-wrap: anywhere; padding: 7px 0; border-bottom: 1px solid #f0f4f5; }
 .ladder-column details { border-top: 1px dashed #ccdadd; padding-top: 14px; font-size: 12px; color: #658087; }
 #btn-stage-preview { margin-right: 10px; }
+.advanced-import { color: #526b72; }
+.advanced-import summary { cursor: pointer; font-weight: 600; }
+
+#capture-filters { padding: 28px; border-radius: 16px; }
+.capture-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:22px; }
+.capture-heading h2 { margin:0 0 8px; font-size:20px; }
+.capture-heading p { margin:0; color:#788991; font-size:13px; }
+.capture-step { background:#edf5f5; color:#47747d; font-size:12px; padding:6px 10px; border-radius:6px; white-space:nowrap; }
+#capture-filters .capture-filter { border:0; border-top:1px solid #edf1f3; padding:18px 0; margin:0; min-width:0; display:flex; align-items:center; gap:24px; }
+#capture-filters .capture-filter legend { float:left; width:90px; flex:0 0 90px; padding:9px 0; color:#40555f; font-size:13px; font-weight:600; }
+.capture-options { display:flex; flex-wrap:wrap; gap:10px; }
+#capture-filters .capture-option { display:inline-flex; align-items:center; gap:8px; padding:9px 14px; border:1px solid #dce5e9; border-radius:8px; background:#fff; color:#536874; cursor:pointer; transition:background .15s,border-color .15s; }
+#capture-filters .capture-option input { min-height:0; width:15px; height:15px; margin:0; accent-color:#245e6b; flex:none; }
+#capture-filters .capture-option:has(input:checked) { background:#e9f4f3; border-color:#3b858a; color:#195563; }
+#capture-filters .capture-option:hover { border-color:#82a9af; background:#f2f8f8; }
+#capture-filters .capture-option:focus-within { outline:2px solid #367d89; outline-offset:2px; }
+.capture-actions { display:flex; flex-wrap:wrap; align-items:center; gap:18px; border-top:1px solid #e7edef; padding-top:22px; margin-top:4px; }
+.capture-actions .status { margin:0; flex:1; min-width:160px; color:#6b7e86; }
+.capture-actions button { min-width:138px; }
+.capture-actions button:disabled { opacity:.65; cursor:wait; }
+@media(max-width:700px) { #capture-filters .capture-filter { flex-direction:column; align-items:flex-start; gap:10px; } #capture-filters .capture-filter legend { float:none; width:auto; flex:auto; } .capture-step { display:none; } }
