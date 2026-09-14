@@ -1,0 +1,43 @@
+name: Build Windows executable
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Build and run regression tests
+        shell: pwsh
+        run: ./build/build_windows.ps1
+      - name: Verify standalone startup
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'standalone'
+          New-Item -ItemType Directory -Path $target | Out-Null
+          Copy-Item dist/carkit.exe $target
+          $app = Start-Process (Join-Path $target 'carkit.exe') -ArgumentList (Join-Path $target 'data') -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              Start-Sleep -Seconds 2
+              $windows = Get-Process | Where-Object { $_.MainWindowTitle -like 'carkit*' }
+              if ($windows) { $ready = $true; break }
+              if ($app.HasExited) { throw "Application exited early: $($app.ExitCode)" }
+            }
+            if (-not $ready) { throw 'Application window did not appear within 120 seconds.' }
+          } finally {
+            taskkill /PID $app.Id /T /F
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: carkit-windows-x64
+          path: dist/carkit.exe
+          if-no-files-found: error
+          retention-days: 7

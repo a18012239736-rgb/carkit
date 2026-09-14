@@ -16,8 +16,9 @@ cd carkit
 .\build\build_windows.ps1
 ```
 
-产物：`dist\carkit\carkit.exe`（**onedir 模式**：整个 `dist\carkit` 文件夹就是一个绿色程序，
-拷到任何 Win10/11 机器都能双击运行，无需装 Python）。
+产物：`dist\carkit.exe`（**onefile 模式**：Python DLL、Playwright driver、UI 和规则文件都在
+一个 exe 中，拷到任何 Win10/11 机器都能双击运行，无需装 Python）。构建脚本还会把该文件
+复制到 `release\carkit.exe`，提交并推送后，同事可直接从仓库下载。
 
 > 为什么必须在 Windows 上打包：PyInstaller 不能跨系统编译，且 playwright 的
 > node driver 是平台二进制。macOS 只负责开发 engine/CLI。
@@ -42,7 +43,8 @@ cd carkit
 | 抓取 0 行 | 页面没加载完就确认了；等表格出现再点②，或改导入 HTML |
 | 白屏 | 缺 WebView2 Runtime，见上文第 4 条 |
 | pypi 连不上 | 打包脚本会自动切清华镜像 |
-| 规则更新（清单 v1→v2） | 替换 `engine/rules/*.json` 后重打包，或直接改 dist 内 `_internal/engine/rules/`（热更新） |
+| `Failed to load Python DLL ... _internal\python312.dll` | 这是旧目录版只复制了 exe；删除旧文件，用最新构建脚本重新打包并下载 `release/carkit.exe` |
+| 规则更新（清单 v1→v2） | 替换 `engine/rules/*.json` 后重新打包；单文件版不支持直接修改 `_internal` 热更新 |
 
 ## 五、开发自检
 

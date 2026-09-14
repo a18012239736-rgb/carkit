@@ -4,7 +4,8 @@
 
 ## 下载 Windows 程序
 
-同事无需安装 Python 或了解代码，直接点击下面的链接下载并运行：
+同事无需安装 Python 或了解代码，直接点击下面的链接下载并运行。当前发布包是
+**真正的单文件程序**，只需下载 `carkit.exe`，不需要另带 `_internal` 文件夹：
 
 **[下载产品小工具 Windows 程序](https://github.com/a18012239736-rgb/carkit/raw/refs/heads/master/release/carkit.exe)**
 
@@ -114,7 +115,9 @@
 
 ## 常见问题
 
-**下载后无法运行？** 先确认下载的是 `release/carkit.exe`，并在 Windows 安全提示中允许运行。程序需要 WebView2，Windows 10/11 通常已经安装。
+**提示 `Failed to load Python DLL ... _internal\python312.dll`？** 下载到的是旧的目录版残留 exe，缺少运行库，单独复制该 exe 无法运行。请删除旧文件，重新下载最新的 `release/carkit.exe`。若最新文件仍报错，检查 Windows 安全中心的“保护历史记录”是否隔离了程序，然后重新下载。
+
+**下载后无法运行？** 先确认下载的是最新 `release/carkit.exe`，并在 Windows 安全提示中允许运行。程序需要 WebView2，Windows 10/11 通常已经安装。
 
 **汽车之家页面显示验证？** 在程序打开的浏览器中完成验证，然后回到程序点击“验证后继续读取”。
 
@@ -142,4 +145,4 @@ powershell -ExecutionPolicy Bypass -File .\build\build_windows.ps1
 powershell -ExecutionPolicy Bypass -File .\build\deploy_desktop.ps1
 ```
 
-打包产物位于 `dist/carkit/`，桌面部署目录为 `C:\Users\Administrator\Desktop\Codex`。
+单文件打包产物位于 `dist/carkit.exe`，脚本同时会更新 `release/carkit.exe`。桌面部署目录为当前用户的 `Desktop\Codex`。

@@ -4,18 +4,16 @@
 $ErrorActionPreference = "Stop"
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$source = Join-Path $repo "dist\carkit"
+$source = Join-Path $repo "dist\carkit.exe"
 $target = Join-Path ([Environment]::GetFolderPath("Desktop")) "Codex"
 
-if (-not (Test-Path -LiteralPath $source -PathType Container)) {
-    throw "Packaged directory not found: $source. Build carkit first."
+if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+    throw "Packaged executable not found: $source. Build carkit first."
 }
 
 New-Item -ItemType Directory -Path $target -Force | Out-Null
-# Only overwrite program files; do not delete existing user data or results.
-# Use -Path here because the source contains a wildcard; -LiteralPath would
-# treat the asterisk literally and silently skip the executable.
-Copy-Item -Path (Join-Path $source "*") -Destination $target -Recurse -Force
+# Only overwrite the program; do not delete existing user data or results.
+Copy-Item -LiteralPath $source -Destination (Join-Path $target "carkit.exe") -Force
 $folders = @(
     "raw",
     [string]::Concat([char]0x9636, [char]0x68AF),
