@@ -483,15 +483,20 @@ class Bridge:
     # ---------- ⑤ 对比 ----------
 
     def run_diff(self, snapshot_path: str, ladder_path: str, pairs: list,
-                 valuation_path: str = ""):
+                 valuation_path: str = "", left_is_competitor: bool = False):
         """pairs: [{"self_trim":..,"comp_trim":..}] —— 必须由使用者指定（铁律）"""
         try:
             if not pairs:
                 return {"ok": False, "error": "请先指定版型配对（程序不自动配对）"}
-            snap = resolve(Snapshot.load(snapshot_path))
-            if snap.status == '待确认':
-                raise ValueError('PPT解析草稿尚未确认，请先到本品配置核对并保存')
-            self_lad = snap.to_ladder(self.rules.checklist["items"])
+            if left_is_competitor:
+                from types import SimpleNamespace
+                self_lad = Ladder.load(snapshot_path)
+                snap = SimpleNamespace(model=self_lad.model, pending=[])
+            else:
+                snap = resolve(Snapshot.load(snapshot_path))
+                if snap.status == '待确认':
+                    raise ValueError('PPT解析草稿尚未确认，请先到本品配置核对并保存')
+                self_lad = snap.to_ladder(self.rules.checklist["items"])
             comp_lad = Ladder.load(ladder_path)
             self_trims = [t["name"] for t in self_lad.trims]
             comp_trims = [t["name"] for t in comp_lad.trims]

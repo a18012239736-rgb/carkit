@@ -7,6 +7,7 @@ const ST = {
   snapshot: null, snapshotPath: "",
   valuation: null, valuationPath: "",
   diff: null,
+  leftLadder: null, leftLadderPath: "",
   stage: {trims: [], seriesId: "", model: ""},
 };
 
@@ -209,16 +210,23 @@ function renderStageTrimEditor() {
   document.querySelector('#ladder-visual')?.remove();
   $("#stage-trims").hidden = false;
   const trims = ST.stage.trims;
-  $("#stage-trim-editor").innerHTML = trims.map((t,i) => `<div class="stage-trim-row"><label><input type="checkbox" class="stage-use" data-i="${i}" checked> ${esc(t.name)}（${t.price_guide ?? '待核'}万）</label><select class="stage-base" data-i="${i}" ${i===0?'disabled':''}><option value="">基本配置</option></select></div>`).join("");
-  $$(".stage-base").forEach(sel => { const i=+sel.dataset.i; for(let j=0;j<i;j++) sel.insertAdjacentHTML('beforeend', `<option value="${j}">${esc(trims[j].name)}</option>`); });
+  const price = t => t.price_guide == null || !Number.isFinite(Number(t.price_guide)) ? Infinity : Number(t.price_guide);
+  const order = trims.map((_,i)=>i).sort((a,b)=>price(trims[a])-price(trims[b]) || a-b);
+  $("#stage-trim-editor").innerHTML = order.map(i => `<div class="stage-trim-row"><label><input type="checkbox" class="stage-use" data-i="${i}" checked> ${esc(trims[i].name)}（${trims[i].price_guide ?? '待核'}万）</label><select class="stage-base" data-i="${i}"><option value="">基本配置</option></select></div>`).join("");
   $$(".stage-use").forEach(cb => cb.addEventListener('change', updateStageBases));
-  const selected=trims.map((t,i)=>document.querySelector(`.stage-use[data-i="${i}"]`)?.checked?i:null).filter(i=>i!==null);
-  $$(".stage-base").forEach(sel => { const i=+sel.dataset.i; sel.innerHTML='<option value="">基本配置</option>'+selected.filter(j=>j<i).map(j=>`<option value="${j}">${esc(trims[j].name)}</option>`).join(''); });
+  updateStageBases(true);
 }
 
-function updateStageBases() {
-  const selected=new Set($$(".stage-use:checked").map(x=>+x.dataset.i));
-  $$(".stage-base").forEach(sel => { const i=+sel.dataset.i; const old=sel.value; sel.innerHTML='<option value="">基本配置</option>'+[...selected].filter(j=>j<i).map(j=>`<option value="${j}">${esc(ST.stage.trims[j].name)}</option>`).join(''); if([...sel.options].some(o=>o.value===old)) sel.value=old; });
+function updateStageBases(reset=false) {
+  const earlier=[];
+  $$('.stage-use').forEach(cb => {
+    const i=+cb.dataset.i, sel=document.querySelector(`.stage-base[data-i="${i}"]`), old=sel.value;
+    sel.innerHTML='<option value="">基本配置</option>'+earlier.map(j=>`<option value="${j}">${esc(ST.stage.trims[j].name)}</option>`).join('');
+    if (reset !== true && [...sel.options].some(o=>o.value===old)) sel.value=old;
+    else sel.value=ST.stage.trims[i].price_guide != null && earlier.length ? String(earlier[earlier.length-1]) : '';
+    sel.disabled=!cb.checked || !earlier.length;
+    if(cb.checked) earlier.push(i);
+  });
 }
 
 function stagePlan() {
@@ -328,8 +336,7 @@ $("#btn-export-ladder-md").addEventListener("click", async () => {
   toast(res && res.ok ? "md 已导出: " + res.path : "已保存 JSON（md 随生成时输出于同目录）");
 });
 
-function renderLadderTable(target="#ladder-table-wrap") {
-  const lad = ST.ladder;
+function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
   if (!lad) return;
   const wrap = $(target);
   let html = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
@@ -352,11 +359,11 @@ function renderLadderTable(target="#ladder-table-wrap") {
   addConfigurationChoices(wrap);
 }
 
-function collectLadderEdits(target="#ladder-table-wrap") {
-  if (!ST.ladder) return;
+function collectLadderEdits(target="#ladder-table-wrap", ladder=ST.ladder) {
+  if (!ladder) return;
   $$(target+" td[data-no]").forEach((td) => {
     const no = +td.dataset.no, i = +td.dataset.i;
-    const it = ST.ladder.items.find((x) => x.no === no);
+    const it = ladder.items.find((x) => x.no === no);
     if (!it) return;
     if (td.dataset.sub) {
       const sr = (it.subs || []).find((s) => s.sub === td.dataset.sub);
@@ -569,6 +576,9 @@ async function refreshDiffSelects() {
   const sel = $('#diff-vehicle'); const previous = sel.value;
   sel.innerHTML = '<option value="">请选择已抓取的竞品</option>'+history.map(r=>`<option value="${esc(r.file)}">${esc(r.label)}</option>`).join('');
   if ([...sel.options].some(o=>o.value===previous)) sel.value=previous;
+  const left=$('#diff-left-vehicle'), oldLeft=left.value;
+  left.innerHTML=sel.innerHTML;
+  if([...left.options].some(o=>o.value===oldLeft)) left.value=oldLeft;
   if(sel.value) await selectCompetitor();
 }
 function fillSelect(sel, files, placeholder) {
@@ -580,17 +590,28 @@ function fillSelect(sel, files, placeholder) {
 }
 
 $("#diff-snapshot").addEventListener("change", rebuildPairs);
+$('#diff-left-vehicle').addEventListener('change', async()=>{ $('#diff-result').hidden=true; ST.diff=null; await rebuildPairs(); });
+$('#diff-mode').addEventListener('change', async()=>{
+  const competitor=$('#diff-mode').value==='competitor';
+  $('#diff-left-vehicle').hidden=!competitor; $('#diff-snapshot').hidden=competitor;
+  $('#delete-self-file').hidden=competitor;
+  $('#diff-edit-self').textContent=competitor?'修改左侧竞品配置':'修改当前本品配置';
+  $('#diff-save-self').textContent=competitor?'保存左侧竞品修正':'保存本品修正';
+  $('#diff-self-editor').hidden=true; $('#diff-result').hidden=true; ST.diff=null;
+  await rebuildPairs();
+});
 $("#diff-ladder").addEventListener("change", rebuildPairs);
 
 async function rebuildPairs() {
   const box = $("#pairs-editor");
   box.querySelectorAll(".pair-row").forEach((r) => r.remove());
-  const [sn, ld] = [$("#diff-snapshot").value, $("#diff-ladder").value];
+  const competitor=$('#diff-mode').value==='competitor';
+  const [sn, ld] = [competitor ? $('#diff-left-vehicle').value : $("#diff-snapshot").value, $("#diff-ladder").value];
   if (!sn || !ld) return;
   const sp = await api("workdir_path", "快照", sn);
   const lp = await api("workdir_path", "阶梯", ld);
-  const [sres, lres] = [await api("load_snapshot", sp), await api("load_ladder", lp)];
-  const st = sres.snapshot.trims.map((t) => t.name);
+  const [sres, lres] = [competitor ? await api('prepare_competitor',sn) : await api("load_snapshot", sp), await api("load_ladder", lp)];
+  const st = (competitor ? sres.ladder : sres.snapshot).trims.map((t) => t.name);
   const ct = lres.ladder.trims.map((t) => t.name);
   box.dataset.selfTrims = JSON.stringify(st);
   box.dataset.compTrims = JSON.stringify(ct);
@@ -615,19 +636,20 @@ function addPairRow(st, ct) {
 }
 
 $("#btn-run-diff").addEventListener("click", async () => {
-  const sn = $("#diff-snapshot").value, ld = $("#diff-ladder").value;
+  const competitor=$('#diff-mode').value==='competitor';
+  const sn = competitor ? $('#diff-left-vehicle').value : $("#diff-snapshot").value, ld = $("#diff-ladder").value;
   if (!sn || !ld) return toast("请先选择快照与竞品阶梯", "err");
   const pairs = $$("#pairs-editor .pair-row").map((r) => ({
     self_trim: r.querySelector(".pair-self").value,
     comp_trim: r.querySelector(".pair-comp").value,
   }));
   if (!pairs.length) return toast("请至少指定一组版型配对（铁律：人工指定）", "err");
-  const sp = await api("workdir_path", "快照", sn);
+  const sp = competitor ? (await api('prepare_competitor',sn)).path : await api("workdir_path", "快照", sn);
   const lp = await api("workdir_path", "阶梯", ld);
   const vv = $("#diff-valuation").value;
   const vp = vv ? await api("workdir_path", "赋值", vv) : "";
   $("#diff-status").textContent = "计算中…";
-  const res = await api("run_diff", sp, lp, pairs, vp);
+  const res = await api("run_diff", sp, lp, pairs, vp, competitor);
   if (res.ok) {
     ST.diff = res;
     $("#diff-status").textContent = "✓ 结果已生成: " + res.md_path +
@@ -766,11 +788,26 @@ $('#diff-snapshot').addEventListener('change',()=>{
   $('#diff-self-editor').hidden=true; comparisonSelf=null;
 });
 $('#diff-edit-self').onclick=async()=>{
+  const competitor=$('#diff-mode').value==='competitor';
+  if(competitor){
+    const file=$('#diff-left-vehicle').value;
+    if(!file)return toast('请先选择左侧竞品','err');
+    const r=await api('prepare_competitor',file);
+    if(!r || r.error)return toast(r?.error||'竞品配置读取失败','err');
+    ST.leftLadder=r.ladder; ST.leftLadderPath=r.path;
+    $('#diff-self-editor h3').textContent='修改左侧竞品配置';
+    $('#diff-self-editor p').textContent='仅修改本次对比使用的竞品配置，不影响原始抓取记录。';
+    renderLadderTable('#diff-self-table',ST.leftLadder);
+    $('#diff-self-editor').hidden=false;
+    return;
+  }
   const file=$('#diff-snapshot').value;
   if(!file)return toast('请先选择本品配置','err');
   comparisonSelfPath=await api('workdir_path','快照',file);
   const r=await api('load_snapshot',comparisonSelfPath);
   comparisonSelf=r.snapshot;
+  $('#diff-self-editor h3').textContent='修改本品配置';
+  $('#diff-self-editor p').textContent='逐项修改后保存，再运行对比。未提及填 ✕，明确未定填 [待定]。';
   const checklist=await loadChecklist();
   const names=Object.fromEntries(checklist.items.map(x=>[x.no,x.name]));
   let html='<table class="grid"><tr><th>配置项</th>'+comparisonSelf.trims.map(t=>`<th>${esc(t.name)}</th>`).join('')+'</tr>';
@@ -790,6 +827,13 @@ $('#diff-edit-self').onclick=async()=>{
   $('#diff-self-editor').hidden=false;
 };
 $('#diff-save-self').onclick=async()=>{
+  if($('#diff-mode').value==='competitor'){
+    if(!ST.leftLadder||!ST.leftLadderPath)return toast('请先选择左侧竞品','err');
+    collectLadderEdits('#diff-self-table',ST.leftLadder);
+    const r=await api('save_ladder_edit',ST.leftLadderPath,ST.leftLadder);
+    if(r&&r.ok){$('#diff-result').hidden=true;ST.diff=null;await rebuildPairs();toast('左侧竞品修正已保存，请运行对比','ok');}
+    return;
+  }
   if(!comparisonSelf)return;
   $$('#diff-self-table input[data-cell]').forEach(el=>{
     const c=comparisonSelf.cells[+el.dataset.cell], name=comparisonSelf.trims[+el.dataset.trim].name;
@@ -898,3 +942,24 @@ $('#ppt-save').onclick=async()=>{
   $('#ppt-review').hidden=true;
   toast('本品配置已保存','ok');
 };
+
+// Arrange existing controls without replacing their event handlers.
+const compareCard=$('#diff-mode').closest('.card');
+const oldRow=$('#diff-mode').parentElement;
+const modeRow=document.createElement('div'); modeRow.className='compare-mode';
+modeRow.innerHTML='<strong>选择对比方式</strong>'; modeRow.append($('#diff-mode'));
+const sides=document.createElement('div'); sides.className='compare-sides';
+for(const [title,ids] of [['左侧 · 比较主体',['diff-snapshot','diff-left-vehicle','diff-edit-self','delete-self-file']],['右侧 · 对照车型',['diff-vehicle','diff-ladder','review-competitor']]]) {
+  const side=document.createElement('div'); side.className='compare-side';
+  const heading=document.createElement('h3'); heading.textContent=title; side.append(heading);
+  ids.forEach(id=>side.append(document.getElementById(id))); sides.append(side);
+}
+const ruleRow=document.createElement('div'); ruleRow.className='compare-rules';
+ruleRow.hidden=true;
+ruleRow.innerHTML='<label>赋值规则</label>'; ruleRow.append($('#diff-valuation'));
+compareCard.prepend(modeRow,sides,ruleRow); oldRow.remove();
+$$('[data-goto="valuation"]').forEach(button=>button.hidden=true);
+$('#page-diff .notice').hidden=true;
+$('#page-diff .steps').textContent='01 选择车型　→　02 指定版型配对　→　03 查看并导出结果';
+$('#pairs-editor strong').textContent='版型配对';
+$('#page-diff .intro').textContent='选择两侧车型，指定版型配对，查看配置差异与赋值结果。';

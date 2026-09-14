@@ -15,6 +15,44 @@ NS = {'p': 'http://schemas.openxmlformats.org/presentationml/2006/main',
       'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
 UNKNOWN = '[待定]PPT未说明'
 
+_BASE_MARKERS = ('基础配置', '标准配置', '入门配置', '全系标配', '标配')
+
+def _is_trim_name(text):
+    """判断文本块是否可能是版型名称，避免把“基础型”写死。"""
+    text = str(text or '').strip()
+    if not text or len(text) > 32 or '+' in text or re.search(r'价格|配置表|车型|轴距|指导价', text):
+        return False
+    if re.search(r'(型|版|款|系|级|配置|车型)$', text):
+        return True
+    return bool(re.fullmatch(r'(?:Pro|Max|Ultra|Plus|Air|Lite|Premium|Sport|智享|高配|低配|高功率|低功率|长续航|短续航)', text, re.I)
+                or re.fullmatch(r'\d+(?:km|KM|kWh)', text))
+
+def _base_from_marker(marker, trim_names):
+    marker = str(marker or '').strip()
+    if any(marker.startswith(x) for x in _BASE_MARKERS):
+        return None
+    m = re.match(r'(.+?)\s*[+＋]', marker)
+    if m:
+        candidate = m.group(1).strip()
+        return candidate if candidate in trim_names else None
+    m = re.search(r'(?:基于|继承|沿用)\s*(.+?)(?:配置|增加|升级|：|:|$)', marker)
+    if m:
+        candidate = m.group(1).strip()
+        return candidate if candidate in trim_names else None
+    return None
+
+def _table_rows(blocks):
+    """从图形表格展开出的单元格块中按 y 聚合行。"""
+    rows=[]
+    for block in blocks:
+        if not block.get('w') or not block.get('h'):
+            continue
+        row=next((r for r in rows if abs(r[0]-block['y']) <= max(block['h']*.35, 1000)), None)
+        if row is None:
+            row=[block['y'], []]; rows.append(row)
+        row[1].append(block)
+    return [sorted(cells,key=lambda b:b['x']) for _,cells in sorted(rows,key=lambda r:r[0]) if len(cells)>=2]
+
 def _root(z, name):
     entry = z.getinfo(name)
     if entry.file_size > 20_000_000:
@@ -91,16 +129,19 @@ def parse_page(path,page):
         slides=_slides(z)
         if type(page) is not int or not 1<=page<=len(slides):raise ValueError('页码超出范围')
         blocks=_blocks(_root(z,slides[page-1]))
-    # Explicit ladder marker is required. Do not silently interpret a chart as a ladder.
+    # First support conventional text-block ladder pages.
     bodies=[b for b in blocks if re.match(r'^(?:基础配置\s*[:：]|.+?\s*[+＋]\s*[:：])',b['lines'][0])]
     if not bodies:
-        raise ValueError('这一页未识别到“基础配置：”或“基础型+：”等阶梯文本。请选择配置阶梯页；图片式页面暂不支持自动识别。')
+        return _parse_table_page(path, page, blocks)
     bodies.sort(key=lambda b:b['x'])
     columns=[]; used=set()
+    # Names are collected before bases are resolved, so names like Pro/Max are valid.
+    possible_names=[b['lines'][0].strip() for b in blocks if len(b['lines'])==1 and _is_trim_name(b['lines'][0])]
     for body in bodies:
         center=body['x']+body['w']/2
         candidates=[b for b in blocks if b['y']<body['y'] and len(b['lines'])==1
-                    and re.search(r'(型|版)$',b['lines'][0]) and '+' not in b['lines'][0]
+                    and _is_trim_name(b['lines'][0])
+                    and '+' not in b['lines'][0]
                     and abs(b['x']+b['w']/2-center)<max(body['w']*.65,300000)]
         if len(candidates)!=1:raise ValueError('版型列头无法唯一对应，请使用每列上方一个版型名称的配置阶梯页')
         header=candidates[0]; name=header['lines'][0]
@@ -111,7 +152,7 @@ def parse_page(path,page):
                 and abs(b['x']+b['w']/2-center)<max(body['w']*.65,300000)]
         price=float(re.sub(r'万元|万','',prices[0]['lines'][0])) if len(prices)==1 else None
         marker=body['lines'][0]
-        base=None if marker.startswith('基础配置') else re.split(r'[+＋]',marker)[0].strip()
+        base=_base_from_marker(marker, possible_names)
         columns.append({'name':name,'base':base,'price':price,'text':'\n'.join(body['lines'][1:])})
     texts='\n'.join('\n'.join(b['lines']) for b in blocks)
     model_candidates=[b['lines'][0] for b in blocks if len(b['lines'])==1 and re.fullmatch(r'[A-Za-z]+[\w -]*\d[\w -]*',b['lines'][0])]
@@ -120,6 +161,42 @@ def parse_page(path,page):
             'page':page,'source':Path(path).name,'price_kind':price_kind,'columns':columns,
             'source_text':texts,'warnings':['请确认版型与继承关系；未写配置保留待定，不按无配置处理。',
             '仅当明确选择指导价时，价格才用于指导价比较。']}
+
+def _parse_table_page(path, page, blocks):
+    """解析常见横向配置表：首行版型、次行价格、首列配置名称。"""
+    rows=_table_rows(blocks)
+    if len(rows)<2:
+        raise ValueError('未识别到配置阶梯文本或表格，请选择配置阶梯页；图片式页面暂不支持自动识别。')
+    header_idx=next((i for i,row in enumerate(rows) if len(row)>=3 and sum(_is_trim_name(c['lines'][0]) for c in row)>=2), None)
+    if header_idx is None:
+        raise ValueError('未识别到版型列，请确保表格首行包含版型名称（如标准版、Pro、Max）。')
+    header=rows[header_idx]
+    names=[c['lines'][0].strip() for c in header[1:] if _is_trim_name(c['lines'][0])]
+    if len(names)<2:
+        raise ValueError('表格中的版型数量不足，请至少保留两个版型列。')
+    col_count=len(names); columns=[{'name':n,'base':None,'price':None,'text_lines':[]} for n in names]
+    texts=[]; price_kind='未确定'
+    for row in rows[header_idx+1:]:
+        cells=[c['lines'] for c in row]
+        if not cells: continue
+        label=' '.join(cells[0]).strip()
+        values=[(' '.join(x).strip() if x else '') for x in cells[1:1+col_count]]
+        if re.search(r'指导价|TP价格|价格',label):
+            price_kind='TP价格' if 'TP' in label.upper() else ('指导价' if '指导' in label else '未确定')
+            for i,v in enumerate(values):
+                m=re.search(r'(\d+(?:\.\d+)?)',v)
+                if m: columns[i]['price']=float(m.group(1))
+        elif label:
+            for i,v in enumerate(values):
+                if v: columns[i]['text_lines'].append(f'{label}: {v}')
+    for c in columns:
+        c['text']='\n'.join(c.pop('text_lines'))
+    all_text='\n'.join(' '.join(b['lines']) for b in blocks)
+    model_candidates=[b['lines'][0] for b in blocks if len(b['lines'])==1 and re.fullmatch(r'[A-Za-z]+[\w -]*\d[\w -]*',b['lines'][0])]
+    return {'model':model_candidates[0] if len(model_candidates)==1 else Path(path).stem.split('产品')[0],
+            'page':page,'source':Path(path).name,'price_kind':price_kind,'columns':columns,
+            'source_text':all_text,'warnings':['已按表格结构识别；请核对版型列、价格和配置映射。',
+            '表格未明确继承关系，默认各版型独立配置。']}
 
 def _apply(text, values, evidence, leftovers):
     def put(no,value,line):
