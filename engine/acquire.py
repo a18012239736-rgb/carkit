@@ -50,8 +50,7 @@ def validate(data, live=False):
         # 行数随汽车之家改版和车型类别变化；用稳定的关键行判断完整加载，
         # 不把“短车型配置表”误判成失败，也不把半截动态表当成无配置。
         required = {'厂商指导价(元)', '能源类型', '车身结构'}
-        range_names = {'CLTC纯电续航里程(km)', 'WLTC纯电续航里程(km)', 'NEDC纯电续航里程(km)'}
-        if len(rows) < 30 or not required <= names or not names & range_names:
+        if len(rows) < 30 or not required <= names:
             raise ValueError('配置表未完整加载，不能将缺失行当作无配置。')
     price = next((r for r in rows if r['n'] == '厂商指导价(元)'), None)
     if not price or any(rawschema._parse_price(v) is None for v in price['v']):

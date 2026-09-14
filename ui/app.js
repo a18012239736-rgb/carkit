@@ -14,7 +14,7 @@ const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
 function configurationChoices(no) {
-  const base=['✕','[待定]'];
+  const base=['✕','[待定]','不适用'];
   const choices={
     3:['400V','800V'],
     4:Array.from({length:8},(_,i)=>i+16).flatMap(n=>[`R${n}钢轮毂`,`R${n}铝轮毂`]),

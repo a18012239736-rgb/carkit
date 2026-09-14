@@ -321,6 +321,14 @@ def diff(self_ladder, comp_ladder, pairs, rules):
             backup_more = backup_less = ""
             core = ""
 
+            from .powertrain import not_applicable
+            range_excluded = no == 1 and (
+                not_applicable(self_ladder.trims[si].get('energy_type', ''), no)
+                or not_applicable(comp_ladder.trims[ci].get('energy_type', ''), no))
+            if range_excluded or sv == '不适用' or cv == '不适用':
+                cells.append(_cell(no, pi, NA, '不计(动力类型不适用)', sv, cv, 'not_applicable', '', ''))
+                continue
+
             # ---- 全局豁免：待定 ----
             if _is_pending(sv):
                 verdict, exempt = NA, "pending"

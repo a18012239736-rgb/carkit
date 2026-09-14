@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 from .models import Ladder, LadderItem
 from .mapper import map_raw_to_ladder
+from .powertrain import energy_types, not_applicable
 
 
 def _fmt(v) -> str:
@@ -13,11 +14,13 @@ def _fmt(v) -> str:
 
 def build_ladder(raw, rules, model: str = "", date: str = "", series_id: str = "") -> Ladder:
     mapped = map_raw_to_ladder(raw, rules)
+    energies = energy_types(raw)
     items = []
     for item_cfg in rules.items:
         no = item_cfg["no"]
         m = mapped.get(no, {"values": [], "row_absent": True, "subs": []})
         values = [_fmt(v) for v in m["values"]]
+        values = ['不适用' if not_applicable(energies[i], no) else v for i, v in enumerate(values)]
         if item_cfg.get("value_type") == "airbag_count":
             # 气囊：值=「数量(成分)」显示串（如 4(主副+前侧) / 6(+前气帘)），differ 取前导数字比较
             values = _airbag_display(m["values"], m.get("airbag_comps", []))
@@ -27,7 +30,7 @@ def build_ladder(raw, rules, model: str = "", date: str = "", series_id: str = "
                         subs=m.get("subs", []),
                         note=item_cfg.get("fill_rule") or "")
         items.append(li)
-    trims = [{"name": t.short, "price_guide": t.price_guide} for t in raw.trims]
+    trims = [{"name": t.short, "price_guide": t.price_guide, "energy_type": energies[i]} for i, t in enumerate(raw.trims)]
     return Ladder(side="competitor", model=model or raw.model,
                   series_id=series_id or raw.series_id,
                   checklist=rules.version,

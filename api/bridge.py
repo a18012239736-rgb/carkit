@@ -164,6 +164,16 @@ class Bridge:
             output = os.path.join(self.workdir, '阶梯', 'compare-'+key+'.json')
             if os.path.exists(output):
                 lad = Ladder.load(output)
+                # Refresh applicability without discarding manual configuration edits.
+                from engine.powertrain import energy_types, not_applicable
+                energies = energy_types(raw)
+                for i, trim in enumerate(lad.trims):
+                    trim['energy_type'] = energies[i]
+                for item in lad.items:
+                    for i in range(len(item.values)):
+                        if not_applicable(energies[i], item.no):
+                            item.values[i] = '不适用'
+                lad.save(output)
             else:
                 lad = ladder_mod.build_ladder(raw, self.rules, model=raw.model,
                                               series_id=raw.series_id, date=_today())
