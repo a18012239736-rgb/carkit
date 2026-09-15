@@ -609,16 +609,31 @@ def _backup_display(no, verdict, sv, cv, ss, cs):
     elif no == 21:
         out = f"{_num(sv):g}中控({_num(cv):g})"
     elif no == 9:
-        out = f"{ss}({cs})" if verdict == MORE else f"{ss}"
-        if verdict == MORE:
-            out = f"{s}({c})" if c not in ("✕", "") else s
+        # Keep both sides: valuation also reads this description.
+        # In particular, absence vs cruise control must not collapse to ✕.
+        out = f"{ss}({cs})" if cs not in ("✕", "") else ss
     elif no == 37:
         out = f"{_num(sv):g}扬({_num(cv):g})" if _num(cv) is not None else f"{_num(sv):g}扬"
     elif no == 33:
         if verdict == MORE:
-            out = "前排双50W快充(单)" if "双" in s else f"前排{_num(sv) or ''}W快充"
+            power = re.search(r"(\d+(?:\.\d+)?)\s*W", s, re.I)
+            watts = f"{float(power[1]):g}W" if power else ""
+            out = f"前排双{watts}无线充电(单)" if "双" in s else f"前排{watts}无线充电"
         else:
             out = "前排单50W无线充电" if _num(cv) else "无线充电"
+    elif no == 32:
+        def ports(value):
+            text = str(value)
+            total = sum(int(n) for n in re.findall(r"\d+", text)) if _has(value) else 0
+            front = re.search(r"前(?:排)?\s*(\d+)", text)
+            rear = re.search(r"后(?:排)?\s*(\d+)", text)
+            location = []
+            if front:
+                location.append(f"前{front[1]}")
+            if rear:
+                location.append(f"后{rear[1]}")
+            return "".join(location) if location else f"{total}个"
+        out = f"USB/Type-C：{ports(sv)}（{ports(cv)}）"
     elif no == 5:
         out = f"{_num(sv):g}气囊({_num(cv):g})"
     elif no == 4:

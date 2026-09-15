@@ -127,6 +127,12 @@ code { background: var(--gray-bg); border-radius: 4px; padding: 0 4px; font-size
 
 /* Task-focused workspace */
 [hidden] { display:none !important; }
+#snapshot-table-wrap:empty { display:none; }
+/* Page titles and controls already describe these workflows. */
+#page-scrape > .intro, #page-scrape > .steps,
+#page-diff > .intro, #page-diff > .steps,
+#page-ladder > .intro { display:none; }
+#diff-self-editor > p { display:none; }
 :root { --accent:#235a67; --bg:#f3f5f5; }
 #sidebar { width:218px; background:#172f35; padding:26px 14px; }
 .logo { font-size:23px; letter-spacing:2px; }

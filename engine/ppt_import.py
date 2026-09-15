@@ -34,7 +34,12 @@ def _base_from_marker(marker, trim_names):
     m = re.match(r'(.+?)\s*[+＋]', marker)
     if m:
         candidate = m.group(1).strip()
-        return candidate if candidate in trim_names else None
+        def key(s):
+            return re.sub(r'(型|版)$', '', re.sub(r'\s+', '', s)).casefold()
+        matches = [n for n in trim_names if key(n) == key(candidate)]
+        if len(matches) != 1:
+            raise ValueError('继承版型无法唯一匹配：' + candidate)
+        return matches[0]
     m = re.search(r'(?:基于|继承|沿用)\s*(.+?)(?:配置|增加|升级|：|:|$)', marker)
     if m:
         candidate = m.group(1).strip()
@@ -128,7 +133,18 @@ def parse_page(path,page):
     with ZipFile(path) as z:
         slides=_slides(z)
         if type(page) is not int or not 1<=page<=len(slides):raise ValueError('页码超出范围')
-        blocks=_blocks(_root(z,slides[page-1]))
+        root=_root(z,slides[page-1])
+        blocks=_blocks(root)
+    tables = [_parse_native_table(t) for t in root.findall('.//a:tbl', NS)]
+    tables = [t for t in tables if t is not None]
+    if len(tables) > 1:
+        raise ValueError('本页包含多个配置表，请拆分后导入，避免混合车型。')
+    if tables:
+        result = tables[0]
+        result.update(page=page, source=Path(path).name,
+                      model=re.split(r'商品|产品', Path(path).stem)[0],
+                      source_text='\n'.join('\n'.join(b['lines']) for b in blocks))
+        return result
     # First support conventional text-block ladder pages.
     bodies=[b for b in blocks if re.match(r'^(?:基础配置\s*[:：]|.+?\s*[+＋]\s*[:：])',b['lines'][0])]
     if not bodies:
@@ -161,6 +177,62 @@ def parse_page(path,page):
             'page':page,'source':Path(path).name,'price_kind':price_kind,'columns':columns,
             'source_text':texts,'warnings':['请确认版型与继承关系；未写配置保留待定，不按无配置处理。',
             '仅当明确选择指导价时，价格才用于指导价比较。']}
+
+def _parse_native_table(table):
+    """Use OOXML grid indices and spans; empty cells must not shift columns."""
+    rows = []
+    for row in table.findall('a:tr', NS):
+        cells = []
+        for index, cell in enumerate(row.findall('a:tc', NS)):
+            cells.append({'index': index, 'span': int(cell.get('gridSpan', '1')),
+                          'merged': cell.get('hMerge') == '1',
+                          'lines': _paragraphs(cell)})
+        rows.append(cells)
+    header_index = next((i for i, row in enumerate(rows)
+                         if row and ''.join(row[0]['lines']).strip() in
+                         ('版型', '车型', '配置项目', '配置项', '项目')
+                         and sum(bool(c['lines']) and not c['merged'] for c in row[1:]) >= 2), None)
+    if header_index is None:
+        return None
+    headers = [c for c in rows[header_index][1:] if c['lines'] and not c['merged']]
+    columns = [{'name': ' '.join(c['lines']).strip(), 'base': None,
+                'price': None, 'text': ''} for c in headers]
+    names = [c['name'] for c in columns]
+    if len(set(names)) != len(names):
+        raise ValueError('表格版型名称重复，请先区分。')
+    warnings = ['已按表格合并单元格识别，请核对版型、价格及继承关系。']
+    price_kind = '未确定'
+    previous_label = ''
+    for row in rows[header_index + 1:]:
+        label = ''.join(row[0]['lines']).strip() or previous_label
+        previous_label = label
+        if re.search(r'成本|边际|贡献率|售价差|比例|占比', label):
+            continue
+        price_row = bool(re.search(r'MSRP|指导价|TP\s*价格|售价|价格', label, re.I))
+        if price_row:
+            price_kind = '指导价' if re.search(r'MSRP|指导价', label, re.I) else ('TP价格' if 'TP' in label.upper() else '未确定')
+        for header, column in zip(headers, columns):
+            cells = [c for c in row if header['index'] <= c['index'] < header['index'] + header['span'] and not c['merged']]
+            lines = [line for c in cells for line in c['lines']]
+            if price_row:
+                value = ''.join(lines).strip()
+                if value:
+                    match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(?:万元|万|元)?', value)
+                    if match:
+                        column['price'] = float(match[1]) / (10000 if '元' in label and '万' not in label else 1)
+                    else:
+                        warnings.append(f"{column['name']}价格需核对：{value}")
+                continue
+            for line in lines:
+                if re.fullmatch(r'.+?[+＋]\s*[:：]?', line.strip()):
+                    column['base'] = _base_from_marker(line, names)
+                elif line.strip().rstrip(':：') not in _BASE_MARKERS:
+                    column['text'] += ('' if label in ('配置', '基础配置', '配置内容') else label + '：') + line + '\n'
+    for column in columns:
+        column['text'] = column['text'].strip()
+    return {'columns': columns, 'price_kind': price_kind, 'warnings': warnings,
+            'parser': '原生表格（合并单元格）'}
+
 
 def _parse_table_page(path, page, blocks):
     """解析常见横向配置表：首行版型、次行价格、首列配置名称。"""
@@ -290,6 +362,13 @@ def make_snapshot(draft):
             vals={it['no']:'✕' for it in Rules().items if not it.get('merged_into')}
             vals[36]={s:'✕' for s in ['前加热通风','前按摩','头枕音响','二排']};ev={}
         rest=[];_apply(str(col.get('text','')),vals,ev,rest)
+        # A range in an upgrade column may be a delta, not the absolute range.
+        if base and re.search(r'\d+\s*km续航', str(col.get('text', '')), re.I):
+            stated = re.search(r'(\d+)\s*km续航', str(col.get('text', '')), re.I)
+            named_range = re.match(r'(\d{3,4})', name)
+            if named_range and stated[1] != named_range[1]:
+                vals[1] = '[待定]续航原文' + stated[0] + '，请确认总续航或增量'
+                rest.append(vals[1])
         expanded[name]=vals;traces[name]=ev;remaining[name]=rest
     for name in names:expand(name,[])
     trims=[]

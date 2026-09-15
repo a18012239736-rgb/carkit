@@ -13,7 +13,7 @@
     <button class="nav-item active" data-page="scrape">01　配置阶梯</button>
     <button class="nav-item" data-page="diff">02　竞争力对比</button>
     <button class="nav-item" data-page="settings">设置与帮助</button>
-    <div class="sidebar-foot"><span id="rules-version"></span><br><span id="workdir-label" class="dim"></span></div>
+    <div class="sidebar-foot" hidden><span id="rules-version"></span><span id="workdir-label"></span></div>
   </nav>
 
   <main id="main">
@@ -27,7 +27,6 @@
           <button id="btn-scrape-open" class="primary">搜索车型</button>
           <button id="btn-scrape-capture">验证后继续读取</button>
         </div>
-        <p class="dim">程序只读取汽车之家主站完整配置表，自动取消“隐藏相同参数/隐藏暂无内容”，并检查版型列数和指导价；遇到网站验证时在浏览器完成验证后点“继续读取”。</p>
         <div id="scrape-status" class="status"></div>
       </div>
       <div class="card" id="stage-candidates" hidden><h2>请选择车型</h2><div id="stage-candidate-list"></div></div>
@@ -57,18 +56,17 @@
         </div>
         <div id="diff-competitor-editor" class="card" hidden>
           <h3>竞品配置校对（仅用于本次对比）</h3>
-          <p class="dim">可直接点击单元格修改。修改保存到竞品阶梯副本，不覆盖原始抓取数据；填 X 表示无配置，填 [待定] 表示暂不计入。</p>
           <div class="table-wrap" id="diff-ladder-table-wrap"></div>
           <button id="diff-save-competitor">保存本次竞品修正</button>
         </div>
         <div class="row">
           <button id="btn-save-ladder">保存修改</button>
           <button id="btn-export-ladder-md">导出 md</button>
-          <span id="ladder-info" class="dim"></span>
+          <span id="ladder-info" hidden></span>
         </div>
       </div>
       <div class="card table-wrap" id="ladder-table-wrap">
-        <p class="dim">尚无数据。「无该行 = ✕」自动应用；映射不中的项会标 <span class="tag warn">待映射</span>，请点击单元格人工修正——程序不脑补。</p>
+        <p class="dim">暂无配置</p>
       </div>
     </section>
 
@@ -78,23 +76,24 @@
       <div class="card">
         <div class="row">
           <button id="btn-import-ppt" class="primary">导入本品PPT…</button>
+          <button id="btn-manual-product">手动添加本品配置</button>
           <button id="btn-new-snapshot" hidden>新建快照</button>
           <button id="btn-load-snapshot" hidden>载入快照 JSON…</button>
           <button id="btn-save-snapshot" class="primary" hidden>保存</button>
-          <span id="snapshot-info" class="dim"></span>
+          <span id="snapshot-info" hidden></span>
         </div>
-        <p class="dim">请导入本品配置阶梯 PPT，系统会自动识别版型、价格和配置；核对无误后确认保存。</p><div id="snapshot-trims" class="trims-editor"></div>
+        <div id="snapshot-trims" class="trims-editor"></div>
       </div>
       <div class="card" id="ppt-import-panel" hidden>
         <h2>1. 选择配置阶梯页</h2>
         <p id="ppt-file-label" class="dim"></p>
         <div class="row"><select id="ppt-page"></select><button id="ppt-parse" class="primary">解析这一页</button></div>
-        <p class="dim">支持可编辑文本框及表格中的列式阶梯，形如“基础配置：”“基础型+：”。图片式页面暂不支持。</p>
         <div id="ppt-draft-panel" hidden>
           <h2>2. 核对版型、价格与继承关系</h2>
           <div class="row"><label>本品车型</label><input id="ppt-model"><label>页面价格口径</label><select id="ppt-price-kind"><option>未确定</option><option>TP价格</option><option>指导价</option></select></div>
-          <p class="notice">TP价格仅作参考，不自动填入指导价。按完整清单比较，未提及的配置按无处理；继承以你确认的比较基准为准。明确待定的配置保留待定。</p>
+          <p class="dim">TP价格仅作参考，不用于指导价比较。</p>
           <div id="ppt-columns"></div>
+          <button id="ppt-add-trim">＋ 添加版型</button>
           <button id="ppt-expand" class="primary">展开为完整配置，进入核对</button>
         </div>
         <div id="ppt-review" hidden>
@@ -107,7 +106,6 @@
         <div id="ppt-status" class="status"></div>
       </div>
       <div class="card table-wrap" id="snapshot-table-wrap">
-        <p class="dim">单元格填法：<code>●值</code>（有，带具体值）/ <code>✕</code>（无）/ <code>[待定]</code>（设计未定，不计入多/少）。#36 座椅功能按子项分行填写。</p>
       </div>
     </section>
 

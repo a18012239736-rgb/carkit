@@ -120,14 +120,14 @@ def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
             missing.append(no)
         else:
             total_more += abs(amt)
-            detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": "多", "amount": abs(amt), "display": disp, "rule": explain_rule(valuation, no)})
+            detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": "多", "amount": round(abs(amt), 2), "display": disp, "rule": explain_rule(valuation, no)})
     for no, disp in less_map.items():
         amt = _amount_for(valuation, no, disp, side="less")
         if amt is None:
             missing.append(no)
         else:
             total_less += abs(amt)
-            detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": "少", "amount": -abs(amt), "display": disp, "rule": explain_rule(valuation, no)})
+            detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": "少", "amount": round(-abs(amt), 2), "display": disp, "rule": explain_rule(valuation, no)})
     if missing:
         return {"config_adv": None, "flat_adv": None, "overall": None,
                 "missing": sorted(set(missing)), "detail": detail}
@@ -218,7 +218,13 @@ def _default_rule_amount(no, disp, side):
         return abs(cluster(cur) - cluster(prev))
     if no == 30: return 2000 if "AR-HUD" in cur else 1000 if "HUD" in cur else 0
     if no == 31: return 1000 if "流媒体" in cur and "流媒体" not in prev else 0
-    if no == 32: return abs(num(cur) - num(prev)) * 50
+    if no == 32:
+        def ports(value):
+            total = re.search(r'(\d+)个USB/Type-C接口', value)
+            if total:
+                return int(total[1])
+            return sum(int(n) for n in re.findall(r'\d+', value))
+        return abs(ports(cur) - ports(prev)) * 50
     if no == 33:
         def chargers(v):
             if v.strip() in ('✕','X','无',''): return 0

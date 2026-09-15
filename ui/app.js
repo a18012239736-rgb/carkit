@@ -892,11 +892,59 @@ $('#inspect-raw').onclick=async()=>{
 
 // PPT import is local, draft-first, and requires explicit review before persistence.
 ST.pptPath=''; ST.pptDraft=null;
+function renderDraftColumns(draft) {
+  $('#ppt-columns').innerHTML=draft.columns.map((c,i)=>`<div class="ppt-column" data-col="${i}"><label>版型名称<input class="ppt-name" value="${esc(c.name)}"></label><label>比较基准<select class="ppt-base"><option value="">独立基础配置</option>${draft.columns.filter((v,j)=>j!==i).map(v=>`<option ${v.name===c.base?'selected':''} value="${esc(v.name)}">${esc(v.name)}</option>`).join('')}</select></label><label>价格（万元）<input class="ppt-price" type="number" step="0.01" value="${esc(c.price??'')}"></label><label>配置内容（每行一项，也可稍后在完整表格填写）<textarea class="ppt-text">${esc(c.text)}</textarea></label><button type="button" data-remove-trim="${i}">删除版型</button></div>`).join('');
+}
+function collectDraftColumns() {
+  const previous=ST.pptDraft.columns.map(c=>c.name);
+  const rows=$$('#ppt-columns .ppt-column');
+  const names=rows.map(r=>r.querySelector('.ppt-name').value.trim());
+  const rename=Object.fromEntries(previous.map((n,i)=>[n,names[i]]));
+  ST.pptDraft.columns=rows.map((r,i)=>({name:names[i],base:rename[r.querySelector('.ppt-base').value]||null,
+    price:r.querySelector('.ppt-price').value||null,text:r.querySelector('.ppt-text').value}));
+}
+function invalidateDraftPreview() {
+  $('#ppt-review').hidden=true; $('#ppt-confirm').checked=false;
+}
+$('#btn-manual-product').onclick=()=>{
+  if(ST.pptDraft && !window.confirm('开始手动填写将清空当前导入草稿，是否继续？'))return;
+  ST.pptDraft={model:'',price_kind:'指导价',source:'手动填写',columns:[{name:'',base:null,price:null,text:''}]};
+  $('#ppt-model').value=''; $('#ppt-price-kind').value='指导价';
+  $('#ppt-import-panel').hidden=false; $('#ppt-draft-panel').hidden=false;
+  $('#ppt-parse').closest('.row').hidden=true;
+  $('#ppt-file-label').textContent='手动填写本品配置';
+  $('#ppt-status').textContent='填写车型，添加版型和价格；配置可逐行粘贴，或展开后直接在完整表格中填写。';
+  renderDraftColumns(ST.pptDraft); invalidateDraftPreview();
+};
+$('#ppt-add-trim').onclick=()=>{
+  collectDraftColumns();
+  ST.pptDraft.columns.push({name:'',base:null,price:null,text:''});
+  renderDraftColumns(ST.pptDraft); invalidateDraftPreview();
+};
+$('#ppt-columns').addEventListener('click', e=>{
+  const button=e.target.closest('[data-remove-trim]'); if(!button)return;
+  collectDraftColumns();
+  if(ST.pptDraft.columns.length===1)return toast('至少保留一个版型','err');
+  const removed=ST.pptDraft.columns.splice(Number(button.dataset.removeTrim),1)[0];
+  ST.pptDraft.columns.forEach(c=>{if(c.base===removed.name)c.base=null;});
+  renderDraftColumns(ST.pptDraft); invalidateDraftPreview();
+});
+$('#ppt-columns').addEventListener('change',()=>{
+  collectDraftColumns();
+  $$('#ppt-columns .ppt-base').forEach((select,i)=>{
+    const current=ST.pptDraft.columns[i].base;
+    select.innerHTML='<option value="">独立基础配置</option>'+ST.pptDraft.columns.filter((c,j)=>j!==i&&c.name).map(c=>`<option value="${esc(c.name)}" ${c.name===current?'selected':''}>${esc(c.name)}</option>`).join('');
+  });
+  invalidateDraftPreview();
+});
+$('#ppt-model').addEventListener('input',invalidateDraftPreview);
+$('#ppt-price-kind').addEventListener('change',invalidateDraftPreview);
 $('#btn-import-ppt').onclick=async()=>{
   const path=await api('open_file_dialog',['PowerPoint (*.pptx)']);
   if(!path || path.error)return;
   const res=await api('ppt_pages',path);
   ST.pptPath=path;
+  $('#ppt-parse').closest('.row').hidden=false;
   $('#ppt-file-label').textContent=path.split(/[\\/]/).pop();
   $('#ppt-page').innerHTML=res.pages.map(p=>`<option value="${p.page}">P${p.page} · ${esc(p.title)}</option>`).join('');
   const suggested=res.pages.find(p=>p.title.includes('配置阶梯'));
@@ -912,7 +960,8 @@ $('#ppt-parse').onclick=async()=>{
     $('#ppt-model').value=draft.model; $('#ppt-price-kind').value=draft.price_kind;
     $('#ppt-columns').innerHTML=draft.columns.map((c,i)=>`<div class="ppt-column" data-col="${i}"><label>版型名称<input class="ppt-name" value="${esc(c.name)}"></label><label>比较基准<select class="ppt-base"><option value="">独立基础配置</option>${draft.columns.filter(v=>v.name!==c.name).map(v=>`<option ${v.name===c.base?'selected':''} value="${esc(v.name)}">${esc(v.name)}</option>`).join('')}</select></label><label>页面价格（万元）<input class="ppt-price" type="number" step="0.01" value="${c.price??''}"></label><label>本列配置原文<textarea class="ppt-text">${esc(c.text)}</textarea></label></div>`).join('');
     $('#ppt-draft-panel').hidden=false; $('#ppt-review').hidden=true;
-    $('#ppt-status').textContent=`已识别${draft.columns.length}个版型，请核对比较基准。`;
+    renderDraftColumns(draft);
+    $('#ppt-status').textContent=`已识别${draft.columns.length}个版型，请核对比较基准。` + (draft.warnings||[]).join(' ');
   } catch(e){$('#ppt-status').textContent='解析未完成：'+e.message;}
 };
 $('#ppt-expand').onclick=async()=>{
