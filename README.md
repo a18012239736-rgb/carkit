@@ -7,7 +7,7 @@
 同事无需安装 Python 或了解代码，直接点击下面的链接下载并运行。当前发布包是
 **真正的单文件程序**，只需下载 `carkit.exe`，不需要另带 `_internal` 文件夹：
 
-**[下载产品小工具 Windows 程序](https://github.com/a18012239736-rgb/carkit/raw/refs/heads/master/release/carkit.exe)**
+**[下载产品小工具 Windows 程序（最新版本）](https://github.com/a18012239736-rgb/carkit/releases/latest/download/carkit.exe)**
 
 如果直接点击没有开始下载，也可以打开 [`release`](https://github.com/a18012239736-rgb/carkit/tree/master/release) 文件夹，点击 `carkit.exe` 后选择下载。下载后双击 `carkit.exe` 即可启动。
 
