@@ -305,6 +305,29 @@ class Bridge:
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
+    def export_excel(self, kind, payload):
+        try:
+            from engine.excel_export import export_report
+            data = self.stage_preview(payload) if kind == 'ladder' else payload
+            if kind not in ('ladder', 'diff'):
+                raise ValueError('不支持的导出类型')
+            if data.get('ok') is False:
+                return data
+            if kind == 'diff' and not data.get('groups'):
+                raise ValueError('请先运行对比')
+            name = '配置阶梯.xlsx' if kind == 'ladder' else '竞争力对比.xlsx'
+            path = self.save_file_dialog(name, ['Excel (*.xlsx)'])
+            if isinstance(path, dict):
+                return {'ok': False, 'error': path.get('error', '无法选择保存位置')}
+            if not path:
+                return {'ok': True, 'cancelled': True}
+            if not path.lower().endswith('.xlsx'):
+                path += '.xlsx'
+            export_report(path, kind, data)
+            return {'ok': True, 'path': path}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
     def stage_export(self, plan, filename='', choose_path=False):
         try:
             if not self.stage_raw:

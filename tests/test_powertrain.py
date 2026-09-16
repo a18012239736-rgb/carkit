@@ -30,7 +30,10 @@ def test_mixed_powertrain_applicability_and_ladder():
     assert lad.items[0].values[:2] == ['不适用', '不适用']
     assert lad.items[0].values[2] != '不适用'
     assert lad.items[2].values[0] != '不适用'
-    assert '1.6T' in stage_one.render(raw, [{'target': 0, 'base': None}])
+    assert '1.6T' not in stage_one.render(raw, [{'target': 0, 'base': None}])
+    keys = {f['key'] for f in stage_one.features(raw)}
+    assert not keys.intersection({'能源类型', '发动机', '变速箱', '最大功率(kW)', '最大扭矩(N·m)'})
+    assert raw.row('发动机').cells[0].text == '1.6T'
     cells = diff(lad, lad, [{'self_trim': lad.trims[0]['name'], 'comp_trim': lad.trims[2]['name']}], rules)
     assert '不适用' in str(cells[0])
 

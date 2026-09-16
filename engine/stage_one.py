@@ -30,18 +30,12 @@ def features(raw):
     out=[]
     consumed=set()
     allowed={n for item in Rules().items for n in item.get('source_rows',[])}
-    allowed |= {'手机互联/映射','感应雨刷功能','辅助泊车入位','循迹倒车','外观套件',
-                 '芯片总算力','辅助驾驶芯片','哨兵模式/千里眼','内置行车记录仪',
+    allowed |= {'手机互联/映射','感应雨刷功能','外观套件',
+                 '辅助驾驶芯片','哨兵模式/千里眼','内置行车记录仪',
                  '无钥匙进入功能','车窗一键升降功能','车窗防夹手功能','前/后电动车窗',
-                 '车内化妆镜','自适应远近光','语音识别控制系统','多功能方向盘',
+                 '车内化妆镜','多功能方向盘',
                  '空调温度控制方式','电动座椅记忆','前排座椅头枕扬声器',
                  '后排座椅头枕扬声器'}
-    allowed |= {'能源类型', '发动机', '变速箱', '驱动方式', '四驱形式',
-                '排量(L)', '进气形式', '最大功率(kW)', '最大扭矩(N·m)',
-                '发动机最大功率(kW)', '发动机最大扭矩(N·m)',
-                'WLTC综合油耗(L/100km)', 'NEDC综合油耗(L/100km)',
-                'WLTC最低荷电状态油耗(L/100km)', '电动机总功率(kW)',
-                '电动机总扭矩(N·m)', '电池能量(kWh)', '燃料形式'}
     count=len(raw.trims)
     def get(name,i):
         r=raw.row(name)
@@ -112,14 +106,21 @@ def features(raw):
             add('影像',[['540影像'] if get('透明底盘/540度影像',i) else [clean(x) for x in get('驾驶辅助影像',i)] for i in range(count)],True)
         elif name in {'主座椅调节方式','副座椅调节方式','主/副驾驶座电动调节'}:
             consumed.update({'主座椅调节方式','副座椅调节方式','主/副驾驶座电动调节'})
+            electric=[]
+            for i in range(count):
+                text=' '.join(get('主/副驾驶座电动调节', i))
+                electric.append([pos+'座椅电调' for pos, pattern in
+                                 [('主驾', r'主驾|(?<!副)驾驶位'), ('副驾', r'副驾|副驾驶位')]
+                                 if re.search(pattern, text)])
+            add('座椅电调', electric)
             for pos, source in [('主驾', '主座椅调节方式'), ('副驾', '副座椅调节方式')]:
                 totals = []
                 for i in range(count):
                     text = clean(' '.join(get(source, i)))
                     directions = 0
-                    # Count standard base movements and support adjustments once.
-                    # An explicit direction count overrides the usual two-way pair.
-                    pattern = r'(?:前后调节|靠背调节|高低调节|腿部支撑(?:调节)?|腰部支撑(?:调节)?|腿托(?:调节)?|肩部支撑(?:调节)?|头枕(?:调节)?)(?:\((\d+)向\))?'
+                    # Seat directions include leg-rest adjustment, not lumbar,
+                    # bolster, shoulder or headrest support.
+                    pattern = r'(?:前后调节|靠背调节|高低调节|腿托调节|腿部支撑调节)(?:\((\d+)向\))?'
                     for match in re.finditer(pattern, text):
                         directions += int(match[1] or 2)
                     if not directions:
@@ -224,6 +225,13 @@ def features(raw):
                 else:
                     values.append([])
             add('方向盘', values, True)
+        elif name == '电动座椅记忆':
+            memory=[]
+            for vs in values:
+                text=' '.join(vs)
+                memory.append([pos+'座椅记忆' for pos in ('主驾','副驾','后排')
+                               if pos in text or (pos in ('主驾','副驾') and '前排' in text)])
+            add(name, memory)
         elif name in {'前排座椅功能','第二排座椅功能','后排座椅功能'}:
             v=[]
             for vs in values:
@@ -258,7 +266,6 @@ def features(raw):
                 if name=='方向盘位置调节': return value
                 if name=='内后视镜功能': return value+'内后视镜'
                 if name=='USB/Type-C接口数量': return 'USB/Type-C接口'+value
-                if name=='语音识别控制系统': return '语音识别'
                 if name=='多功能方向盘': return '多功能方向盘'
                 if name=='前/后电动车窗': return ('前/后' if value=='有' else value)+'电动车窗'
                 if name=='车窗一键升降功能': return ('全车' if value=='有' else value)+'电动车窗一键升降'
@@ -315,7 +322,6 @@ _BASE_GROUPS = [
     ('无钥匙进入功能', '主动闭合式进气格栅'),
     ('前/后电动车窗', '车窗一键升降功能', '车窗防夹手功能'),
     ('方向盘', '方向盘材质', '方向盘位置调节', '多功能方向盘'),
-    ('4G/5G网络', '语音识别控制系统'),
     ('座椅材质', '主驾座椅调节', '主驾支撑', '副驾座椅调节', '副驾支撑'),
     ('扬声器数量', '车外扬声器数量'),
     ('空调温度控制方式', '后座出风口'),
@@ -355,6 +361,27 @@ def _change_items(fs, trim_index, base_index):
 
 
 def _compact_items(items, base_index):
+    def compact_seats(lines):
+        result = []
+        functions_order = ('通风', '加热', '按摩', '记忆', '电调')
+        seat_tokens = {p+'座椅'+f for p in ('主驾','副驾','后排') for f in functions_order}
+        found = {p:set() for p in ('主驾','副驾','后排')}
+        insertion = None
+        for line in lines:
+            tokens = line.split('+')
+            for position in found:
+                found[position].update(f for f in functions_order if position+'座椅'+f in tokens)
+            if any(t in seat_tokens for t in tokens) and insertion is None:
+                insertion=len(result)
+            rest=[t for t in tokens if t not in seat_tokens]
+            if rest: result.append('+'.join(rest))
+        common=found['主驾'] & found['副驾']
+        labels=[]
+        for position, funcs in [('前排',common), ('主驾',found['主驾']-common),
+                                ('副驾',found['副驾']-common), ('后排',found['后排'])]:
+            if funcs: labels.append(position+''.join(f for f in functions_order if f in funcs))
+        if labels: result.insert(insertion if insertion is not None else len(result), '+'.join(labels))
+        return result
     if base_index is None:
         groups = {key: index for index, group in enumerate(_BASE_GROUPS) for key in group}
         grouped = []
@@ -369,7 +396,7 @@ def _compact_items(items, base_index):
                 grouped.append(value)
             else:
                 grouped[positions[group_index]] += '+' + value
-        return grouped
+        return compact_seats(grouped)
     # Upgrade blocks should remain relative to their chosen baseline.  Merge
     # repeated rows only; never pull inherited values back into the line.
     grouped = []
@@ -380,7 +407,7 @@ def _compact_items(items, base_index):
         else:
             positions[key] = len(grouped)
             grouped.append(value)
-    return grouped
+    return compact_seats(grouped)
 
 
 def _position_line(raw, plan):

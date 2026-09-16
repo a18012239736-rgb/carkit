@@ -1007,6 +1007,32 @@ const ruleRow=document.createElement('div'); ruleRow.className='compare-rules';
 ruleRow.hidden=true;
 ruleRow.innerHTML='<label>赋值规则</label>'; ruleRow.append($('#diff-valuation'));
 compareCard.prepend(modeRow,sides,ruleRow); oldRow.remove();
+modeRow.append($('#page-diff [data-goto="snapshot"]'));
+$('#btn-run-diff').closest('.row').classList.add('compare-actions');
+$('#btn-run-diff').textContent='开始对比';
+$('#btn-export-result').textContent='导出 Markdown';
+for(const [anchor,kind] of [['btn-stage-export','ladder'],['btn-export-result','diff']]) {
+  const markdown=document.getElementById(anchor);
+  const group=document.createElement('div');
+  group.className='export-buttons';
+  markdown.before(group);
+  markdown.textContent='导出 Markdown';
+  markdown.classList.remove('primary');
+  markdown.classList.add('export-button');
+  group.append(markdown);
+  const button=document.createElement('button');
+  button.textContent='导出 Excel';
+  button.className='export-button';
+  group.append(button);
+  button.onclick=async()=>{
+    if(kind==='diff'&&!ST.diff)return toast('请先运行对比','err');
+    button.disabled=true;
+    try {
+      const result=await api('export_excel',kind,kind==='ladder'?stagePlan():ST.diff);
+      if(!result.cancelled)toast(result.ok?'Excel 已导出：'+result.path:result.error,result.ok?'ok':'err');
+    } finally {button.disabled=false;}
+  };
+}
 $$('[data-goto="valuation"]').forEach(button=>button.hidden=true);
 $('#page-diff .notice').hidden=true;
 $('#page-diff .steps').textContent='01 选择车型　→　02 指定版型配对　→　03 查看并导出结果';
