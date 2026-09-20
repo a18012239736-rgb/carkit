@@ -161,9 +161,19 @@ class Ladder:
     def from_dict(cls, d):
         items = [LadderItem(**it) for it in d.get("items", [])]
         from .usb import usb_label
+        from .seat_functions import SUBS, normalize
         for item in items:
             if item.no == 32:
                 item.values = [usb_label(value) for value in item.values]
+            if item.no == 36 and item.subs and any(row['sub'] not in SUBS for row in item.subs):
+                old = {row['sub']:row['values'] for row in item.subs}
+                converted = []
+                for i, value in enumerate(item.values):
+                    combined = normalize(value)
+                    combined.update({key:state for key,state in normalize({key:values[i] for key,values in old.items() if i < len(values)}).items()
+                                     if key.startswith('二排') or key.endswith('头枕音响')})
+                    converted.append(combined)
+                item.subs = [{'sub':sub,'values':[value[sub] for value in converted]} for sub in SUBS]
         central = next((it for it in items if it.no == 42), None)
         if central:
             airbags = next((it for it in items if it.no == 5), None)

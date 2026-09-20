@@ -17,14 +17,13 @@ def test_branch_inheritance_and_tp_price():
     assert all(t['price_guide'] is None for t in snap.trims)
     assert snap.trims[0]['price_reference']==8.99
     assert cells[1]['豪华型']=='600km'
-    assert cells[36]['豪华型']['前加热通风']=='●'
-    assert cells[36]['豪华型']['前按摩']=='●'
-    assert cells[36]['长续航基础型']['前加热通风']=='✕'
+    assert all(cells[36]['豪华型'][seat+feature]=='●' for seat in ('主驾','副驾') for feature in ('通风','加热','按摩'))
+    assert cells[36]['长续航基础型']['主驾通风']=='✕'
     assert cells[37]['豪华型']=='17扬声器'
     assert cells[37]['长续航基础型']=='12扬声器'
     assert _is_pending(cells[35]['基础型'])
     assert _is_pending(cells[8]['豪华型'])
-    assert not _is_pending(cells[36]['豪华型'])
+    assert _is_pending(cells[36]['豪华型']['主驾头枕音响'])  # 原PPT未说明头枕属于哪一座位
     assert cells[2]['基础型']=='✕'
 
 def test_side_curtains_add_two_without_double_counting():

@@ -337,13 +337,13 @@ def _apply(text, values, evidence, leftovers):
         if '座椅电调' in t or re.search(r'[主副]驾\d+向',t):
             # A known power adjustment without a direction count is still unresolved for valuation.
             setv(35,'[待定]'+t+'（请确认主副驾方向数）')
+        from .seat_functions import from_text
         subs=copy.deepcopy(values.get(36,{}))
         if not isinstance(subs,dict):subs={}
-        if '前排' in t and '通风' in t and '加热' in t:subs['前加热通风']='●';setv(36,subs)
-        if '前排' in t and '按摩' in t:subs['前按摩']='●';setv(36,subs)
-        if '前排' in t and ('加热' in t or '通风' in t) and not ('加热' in t and '通风' in t):
-            setv(36,'[待定]'+t+'（请核对前排座椅功能）')
-        if '头枕音响' in t:subs['头枕音响']='●';setv(36,subs)
+        if any(feature in t for feature in ('通风','加热','按摩','头枕音响')) and any(scope in t for scope in ('座椅','主驾','副驾','前排','二排','后排','头枕音响')):
+            additions=from_text(t if '二排' not in t and '后排' not in t else '', t if '二排' in t or '后排' in t else '', t if '头枕音响' in t else '')
+            subs.update({key:value for key,value in additions.items() if value!='✕'})
+            setv(36,subs)
         m=re.search(r'(\d+)扬(?:声器|伯牙之音)',t)
         if m:setv(37,m[1]+'扬声器')
         if '车外扬声器' in t:setv(38,'[待定]有车外扬声器，数量未写')
@@ -379,7 +379,8 @@ def make_snapshot(draft):
             expand(base,stack+[name]); vals=copy.deepcopy(expanded[base]); ev=copy.deepcopy(traces[base])
         else:
             vals={it['no']:'✕' for it in Rules().items if not it.get('merged_into')}
-            vals[36]={s:'✕' for s in ['前加热通风','前按摩','头枕音响','二排']};ev={}
+            from .seat_functions import empty
+            vals[36]=empty();ev={}
         before={no:len(lines) for no,lines in ev.items()}
         rest=[];_apply(str(col.get('text','')),vals,ev,rest)
         declared[name]={no for no,lines in ev.items() if len(lines)>before.get(no,0)}

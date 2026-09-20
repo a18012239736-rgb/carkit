@@ -38,6 +38,22 @@ function configurationChoices(no) {
 }
 
 function addConfigurationChoices(root, snapshotCells=null) {
+  const seatCells=snapshotCells?root.querySelectorAll('input[data-cell][data-sub]'):root.matches('td[data-no="36"][data-sub]')?[root]:root.querySelectorAll('td[data-no="36"][data-sub]');
+  seatCells.forEach(field=>{
+    const no=snapshotCells?snapshotCells[+field.dataset.cell].no:+field.dataset.no;
+    if(no!==36)return;
+    const current=snapshotCells?field.value:field.textContent.trim();
+    const container=snapshotCells?field.parentElement:field;
+    if(!snapshotCells){field.contentEditable='false';field.textContent='';}
+    const stored=snapshotCells?field:document.createElement('input');
+    stored.hidden=true;stored.value=current;
+    if(!snapshotCells){stored.dataset.configValue='true';container.append(stored);}
+    const select=document.createElement('select');
+    select.style.cssText='width:100%;min-width:105px';
+    [...new Set([current,'✕','●','[待定]'])].forEach(value=>select.add(new Option(value==='✕'?'无配置':value==='●'?'有':value,value)));
+    select.value=current;select.onchange=()=>{stored.value=select.value;container.classList.toggle('pending',select.value.includes('[待定]'));};
+    container.prepend(select);
+  });
   const fields=snapshotCells ? root.querySelectorAll('input[data-cell]') : root.matches('td[data-no]:not([data-sub])') ? [root] : root.querySelectorAll('td[data-no]:not([data-sub])');
   fields.forEach(field=>{
     const no=snapshotCells?snapshotCells[+field.dataset.cell].no:+field.dataset.no;

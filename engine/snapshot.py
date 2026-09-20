@@ -15,6 +15,13 @@ BASE_CONFIG = {4: 'R16钢轮毂', 17: '卤素大灯', 25: '塑料', 26: '手调'
 def prepare_snapshot(snap):
     """Fill baseline tiers and establish links once; edited overrides keep no link."""
     by_no = {c['no']: c for c in snap.cells}
+    seat = by_no.get(36)
+    if seat:
+        from .seat_functions import normalize
+        old = seat['values']
+        seat['values'] = {name: normalize(value) for name, value in old.items()}
+        if seat['values'] != old:
+            seat.pop('links', None)
     for no, default in BASE_CONFIG.items():
         cell = by_no.get(no)
         if cell is None:
@@ -114,6 +121,7 @@ def parse_snapshot_md(path: str) -> Snapshot:
             vals_raw = cols[:len(trim_names)]
             no = int(no_s)
             if no == 36:
+                from .seat_functions import normalize
                 values = {}
                 for t, v in zip(trim_names, vals_raw):
                     subs = {}
@@ -123,7 +131,7 @@ def parse_snapshot_md(path: str) -> Snapshot:
                             if part.startswith(key):
                                 subs["头枕音响" if key == "头枕" else key] = \
                                     "●" if part.endswith("●") else "✕"
-                    values[t] = subs
+                    values[t] = normalize(subs)
             else:
                 values = dict(zip(trim_names, vals_raw))
             cells.append({"no": no, "values": values, "basis": basis})

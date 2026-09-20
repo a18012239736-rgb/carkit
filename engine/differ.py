@@ -215,61 +215,31 @@ def cmp_cluster(sv, cv, **kw):
 # ---------- #36 座椅功能 ----------
 
 def cmp_seat36(sv, cv, comp_sub_vals=None, **kw):
-    """comp_sub_vals: {"头枕音响": v, "二排": v}"""
-    if isinstance(sv, dict):
-        s = {"前加热通风": 1 if sv.get("前加热通风") == "●" else 0,
-             "前按摩": 1 if sv.get("前按摩") == "●" else 0,
-             "二排": 1 if sv.get("二排") == "●" else 0}
-        s_head = sv.get("头枕音响") == "●"
-    else:
-        s = {"前加热通风": 0, "前按摩": 0, "二排": 0}
-        s_head = False
-        # 自方为字符串时（旧格式），从文本推断
-        if _has(str(sv)):
-            core = _strip_dot(str(sv))
-            if "加热" in core or "通风" in core:
-                s["前加热通风"] = 1
-            if "按摩" in core:
-                s["前按摩"] = 1
-    c = {"前加热通风": 0, "前按摩": 0, "二排": 0}
-    c_scope = ""
-    cvs = cv if isinstance(cv, str) else "✕"
-    if _has(cvs):
-        core = _strip_dot(cvs)
-        c_scope = "主驾" if "仅主驾" in core else "主副"
-        if "加热" in core or "通风" in core:
-            c["前加热通风"] = 1
-        if "按摩" in core:
-            c["前按摩"] = 1
+    from .seat_functions import SUBS, PRICES, normalize
+    s = normalize(sv)
+    c = normalize(cv)
     if comp_sub_vals:
-        if _has(str(comp_sub_vals.get("二排", "✕"))):
-            c["二排"] = 1
-    diffs = [k for k in ("前加热通风", "前按摩", "二排") if s[k] != c[k]]
-    verdict = SAME
-    for k in diffs:
-        verdict = MORE if s[k] > c[k] else LESS
-        break   # 首个差异定方向（golden 场景差异同向）
-    # 显示串
-    if not diffs:
-        state = "●" if s["前加热通风"] else "✕"
-        disp = f"{verdict} 前加热通风按摩{state}({state})"
-    elif len(diffs) >= 2 and set(diffs) >= {"前加热通风", "前按摩"}:
-        sstate = "●" if s["前加热通风"] else "✕"
-        disp = f"{verdict} 前加热通风按摩{sstate}({c_scope}加热通风按摩●)"
-    else:
-        name = diffs[0]
-        sstate = "●" if s[name] else "✕"
-        disp = f"{verdict} {name}{sstate}(●)" if verdict == LESS else f"{verdict} {name}●(✕)"
-    if s_head:
-        disp += "；头枕豁免"
-    # BACKUP 少/多 栏显示
-    backup = ""
-    if diffs:
-        funcs = "加热通风按摩" if set(diffs) >= {"前加热通风", "前按摩"} else \
-            {"前加热通风": "加热通风", "前按摩": "按摩", "二排": "二排功能"}[diffs[0]]
-        scope = "主驾" if c_scope == "主驾" else "前排"
-        backup = f"{scope}座椅{funcs}"
-    return verdict, disp, backup
+        c.update(normalize(comp_sub_vals) if any(k in comp_sub_vals for k in SUBS) else {})
+    more, less, unknown = [], [], []
+    for key in SUBS:
+        left, right = str(s[key]), str(c[key])
+        if '[待定]' in left or '[待定]' in right:
+            unknown.append(key)
+        elif left == '●' and right != '●':
+            more.append(key)
+        elif right == '●' and left != '●':
+            less.append(key)
+    amount = sum(PRICES[next(f for f in PRICES if k.endswith(f))] for k in more) - \
+             sum(PRICES[next(f for f in PRICES if k.endswith(f))] for k in less)
+    verdict = MORE if amount > 0 else LESS if amount < 0 else SAME
+    detail = '；'.join(part for part in (
+        '本品多：'+'、'.join(more) if more else '',
+        '本品少：'+'、'.join(less) if less else '',
+        '待核对：'+'、'.join(unknown) if unknown else '',
+    ) if part) or '配置相同'
+    display = f'{verdict} {detail}'
+    backup = f'{detail}（差价{abs(amount)}元）' if amount else ''
+    return verdict, display, backup
 
 
 # ---------- 主流程 ----------
@@ -343,7 +313,7 @@ def diff(self_ladder, comp_ladder, pairs, rules):
                 continue
 
             # ---- 全局豁免：待定 ----
-            if _is_pending(sv) or _is_pending(cv):
+            if no != 36 and (_is_pending(sv) or _is_pending(cv)):
                 verdict, exempt = NA, "pending"
                 comp_core = _strip_dot(cv) if not _plain(cv) else "✕"
                 disp = f"不计(待定vs{comp_core})" if pi == 0 else "不计(待定)"

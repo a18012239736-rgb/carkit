@@ -39,7 +39,7 @@
     {"no": 33, "name": "无线充电", "md_name": "手机无线充电功能", "fill_rule": "只标前后排和有无；前排只有一个的情况pjy自己再分辨", "value_type": "wireless_charge", "normalize": "wireless_charge", "source_rows": ["手机无线充电功能", "手机无线充电功率"], "merge": true},
     {"no": 34, "name": "座椅材质", "fill_rule": "织物、仿皮、真皮、翻毛皮", "value_type": "material", "normalize": "material", "source_rows": ["座椅材质"]},
     {"no": 35, "name": "座椅调节", "fill_rule": "分主副驾；看手调/电调和多少向", "value_type": "seat_adjust", "normalize": "seat_adjust", "source_rows": ["主座椅调节方式", "副座椅调节方式", "主/副驾驶座电动调节"], "merge": true},
-    {"no": 36, "name": "座椅功能", "fill_rule": "分主副驾、前后排；看通风/加热/按摩/头枕扬声器", "value_type": "seat_func", "normalize": "seat_func", "source_rows": ["前排座椅功能", "第二排座椅功能", "后排座椅功能"], "merge": true, "sub_items": ["前加热通风", "前按摩", "头枕音响", "二排"], "exempt_subs": ["头枕音响"]},
+    {"no": 36, "name": "座椅功能", "fill_rule": "主驾、副驾、二排分别记录通风、加热、按摩、头枕音响", "value_type": "seat_func", "normalize": "seat_func", "source_rows": ["前排座椅功能", "第二排座椅功能", "后排座椅功能", "前排座椅头枕扬声器", "头枕音响"], "merge": true, "sub_items": ["主驾通风", "主驾加热", "主驾按摩", "主驾头枕音响", "副驾通风", "副驾加热", "副驾按摩", "副驾头枕音响", "二排通风", "二排加热", "二排按摩", "二排头枕音响"]},
     {"no": 37, "name": "扬声器数量", "fill_rule": "不含头枕音响、不含车外扬声器，分开计数", "value_type": "speaker_count", "normalize": "speaker_count", "source_rows": ["扬声器数量"]},
     {"no": 38, "name": "车外扬声器", "fill_rule": "与#37分开写", "value_type": "speaker_count", "normalize": "speaker_count", "source_rows": ["车外扬声器数量"]},
     {"no": 39, "name": "氛围灯", "md_name": "车内氛围灯", "fill_rule": "看有无、单色还是多色（多色=256色/1680色等只是叫法不同，统一写256色）", "value_type": "ambient", "normalize": "ambient", "source_rows": ["车内环境氛围灯", "主动式环境氛围灯"], "merge": true},

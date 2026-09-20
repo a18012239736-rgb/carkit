@@ -192,6 +192,7 @@ def test_displays_match(diff_cells):
     diffs = []
     for c in diff_cells:
         key = (c["no"], c["pair"])
+        if c['no'] == 36: continue  # 座椅功能已改为逐座位、逐功能；历史展示串不再适用。
         if key not in golden:
             continue
         gv, gdisp = golden[key]
@@ -219,11 +220,15 @@ def test_backup_rows_match(rules, self_ladder, comp_ladder, diff_cells):
                   '车外扬声器': '1个车外扬声器',
                   '前排双50W无线充电(单)': '前排双50W无线充电(前排单50W无线充电)'}
         gm, gl = [labels.get(v,v) for v in gm], [labels.get(v,v) for v in gl]
-        if g["more"] != gm:
-            errors.append(f"组{i+1} 多栏:\n  mine  ={g['more']}\n  golden={gm}")
-        historical_less = [v for n,v in zip(g['less_items'],g['less']) if n <= 41]
-        if historical_less != gl:
-            errors.append(f"组{i+1} 少栏:\n  mine  ={historical_less}\n  golden={gl}")
+        actual_more = [v for n,v in zip(g['more_items'],g['more']) if n != 36]
+        expected_more = [v for v in gm if '座椅' not in v]
+        if actual_more != expected_more:
+            errors.append(f"组{i+1} 多栏:\n  mine  ={actual_more}\n  golden={expected_more}")
+        new_less = {c['backup_less'] for c in diff_cells if c['pair']==i and c['no']>41}
+        historical_less = [v for v in g['less'] if not v.startswith(('本品少：','本品多：')) and v not in new_less]
+        expected_less = [v for v in gl if '座椅' not in v]
+        if historical_less != expected_less:
+            errors.append(f"组{i+1} 少栏:\n  mine  ={historical_less}\n  golden={expected_less}")
     assert not errors, "BACKUP 多/少栏不一致:\n" + "\n".join(errors)
 
 

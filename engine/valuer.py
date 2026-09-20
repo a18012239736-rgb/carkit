@@ -238,6 +238,9 @@ def _default_rule_amount(no, disp, side):
             return sum(int(n)*50+(400 if mode=='电调' else 0) for n,mode in found) if found else num(v)*50+(400 if '电调' in v else 0)
         return abs(seats(cur)-seats(prev))
     if no == 36:
+        difference = re.search(r'差价(\d+)元', text)
+        if difference:
+            return int(difference[1])
         vals = {"通风":400, "加热":250, "按摩":600, "记忆":100, "头枕":100}
         def seats(v):
             count = 2 if '前排' in v or '主副' in v else 1

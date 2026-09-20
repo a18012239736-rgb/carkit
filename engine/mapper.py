@@ -452,35 +452,29 @@ _SEAT_FUNCS = ["加热", "通风", "按摩"]
 
 
 def n_seat_func(raw, i, cfg):
+    from .seat_functions import SUBS, from_text
     c = _cell(raw, ["前排座椅功能"], i)
-    if c is None:
-        return ABSENT, [], {}
     parts = []
-    for src in ([c] if c.text else []) + list(c.subs or []):
-        if src.dot == "●" and src.text:
-            parts.append(src.text)
-    if not parts:
-        return ABSENT, [], {}
+    if c:
+        for src in ([c] if c.text else []) + list(c.subs or []):
+            if src.dot == "●" and src.text:
+                parts.append(src.text)
     funcs = [f for f in _SEAT_FUNCS if any(f in p for p in parts)]
     only_driver = any("仅驾驶位" in p or "仅主驾" in p for p in parts)
-    if only_driver:
+    if not funcs:
+        val = ABSENT
+    elif only_driver:
         val = f"{'/'.join(funcs)}(仅主驾)"
     else:
         val = f"前排{'/'.join(funcs)}(主副)"
-    # 子项行：头枕音响、二排
-    headrest = ABSENT
     hc = _cell(raw, ["前排座椅头枕扬声器", "头枕音响"], i)
-    if _solid(hc):
-        headrest = "●"
     row2 = _cell(raw, ["第二排座椅功能", "后排座椅功能"], i)
-    if row2 is None:
-        rear = ABSENT
-    else:
+    rparts = []
+    if row2:
         rparts = ([row2.text] if row2.dot == "●" and row2.text else []) + \
                  [s.text for s in (row2.subs or []) if s.dot == "●"]
-        rfuncs = [f for f in _SEAT_FUNCS if any(f in p for p in rparts)]
-        rear = f"{'/'.join(rfuncs)}" if rfuncs else ABSENT
-    return val, funcs, {"头枕音响": headrest, "二排": rear}
+    sub_map = from_text('+'.join(parts), '+'.join(rparts), (_txt(hc) or '头枕音响') if _solid(hc) else '')
+    return val, funcs, {sub: sub_map[sub] for sub in SUBS}
 
 
 def n_speaker(raw, i, cfg):
@@ -566,10 +560,11 @@ def map_raw_to_ladder(raw: RawTable, rules) -> dict:
                 values.append(cnt)
                 airbag_comps.append(comps)
             elif vt == "seat_func":
+                from .seat_functions import SUBS
                 val, funcs, sub_map = fn(raw, i, item)
                 values.append(val)
                 if not subs_rows:
-                    subs_rows = [{"sub": s, "values": []} for s in ("头枕音响", "二排")]
+                    subs_rows = [{"sub": s, "values": []} for s in SUBS]
                 for sr in subs_rows:
                     sr["values"].append(sub_map.get(sr["sub"], ABSENT))
             else:
