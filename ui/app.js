@@ -57,6 +57,17 @@ function addConfigurationChoices(root, snapshotCells=null) {
   const fields=snapshotCells ? root.querySelectorAll('input[data-cell]') : root.matches('td[data-no]:not([data-sub])') ? [root] : root.querySelectorAll('td[data-no]:not([data-sub])');
   fields.forEach(field=>{
     const no=snapshotCells?snapshotCells[+field.dataset.cell].no:+field.dataset.no;
+    if(no===1 || no===37){
+      const current=snapshotCells?field.value:field.textContent.trim();
+      const container=snapshotCells?field.parentElement:field;
+      const number=document.createElement('input'); number.type='number'; number.step='1'; number.min='0'; number.style.width='90%';
+      const m=String(current).match(/\d+(?:\.\d+)?/); number.value=m?m[0]:'';
+      const stored=snapshotCells?field:document.createElement('input'); stored.hidden=true; stored.value=current;
+      if(!snapshotCells){field.contentEditable='false';field.textContent='';stored.dataset.configValue='true';container.append(stored);}
+      number.oninput=()=>{stored.value=number.value+(no===1?'km':'扬声器');};
+      container.prepend(number);
+      return;
+    }
     if([21,22,29].includes(no)){
       addScreenEditor(field,no,!!snapshotCells);
       return;
