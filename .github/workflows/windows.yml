@@ -1,8 +1,11 @@
 name: Build Windows executable
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: windows-latest
@@ -41,3 +44,13 @@ jobs:
           path: dist/carkit.exe
           if-no-files-found: error
           retention-days: 7
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME dist/carkit.exe `
+            --title "产品小工具 $env:GITHUB_REF_NAME" `
+            --notes "Windows 单文件版。下载 carkit.exe 后双击运行。" `
+            --verify-tag
