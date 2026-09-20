@@ -57,6 +57,7 @@ function addConfigurationChoices(root, snapshotCells=null) {
   const fields=snapshotCells ? root.querySelectorAll('input[data-cell]') : root.matches('td[data-no]:not([data-sub])') ? [root] : root.querySelectorAll('td[data-no]:not([data-sub])');
   fields.forEach(field=>{
     const no=snapshotCells?snapshotCells[+field.dataset.cell].no:+field.dataset.no;
+    if(!snapshotCells && field.querySelector('input[data-step]')) return;
     if(no===1 || no===37){
       const current=snapshotCells?field.value:field.textContent.trim();
       const container=snapshotCells?field.parentElement:field;
@@ -463,7 +464,9 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
   for (const it of lad.items) {
     html += `<tr><td class="no">${it.no}</td><td>${it.name}${it.unmapped ? ' <span class="tag warn">待映射</span>' : ""}</td>`;
     html += it.values.map((v, i) =>
-      `<td contenteditable data-no="${it.no}" data-i="${i}" class="${cellCls(v)}">${esc(v)}</td>`).join("");
+      it.no===1 || it.no===37
+        ? `<td data-no="${it.no}" data-i="${i}" class="${cellCls(v)}"><input data-step type="number" min="0" step="1" value="${(String(v).match(/\d+(?:\.\d+)?/)||[''])[0]}"></td>`
+        : `<td contenteditable data-no="${it.no}" data-i="${i}" class="${cellCls(v)}">${esc(v)}</td>`).join("");
     html += "</tr>";
     for (const sr of it.subs || []) {
       html += `<tr><td class="no">—</td><td class="dim">${seatSubLabel(sr.sub)}</td>`;
@@ -483,7 +486,10 @@ function collectLadderEdits(target="#ladder-table-wrap", ladder=ST.ladder) {
     const no = +td.dataset.no, i = +td.dataset.i;
     const it = ladder.items.find((x) => x.no === no);
     if (!it) return;
-    if (td.dataset.sub) {
+    if (td.querySelector('input[data-step]')) {
+      const raw=td.querySelector('input[data-step]').value;
+      it.values[i]=raw+(no===1?'km':'扬声器');
+    } else if (td.dataset.sub) {
       const sr = (it.subs || []).find((s) => s.sub === td.dataset.sub);
       if (sr) sr.values[i] = configurationCellValue(td);
     } else {
