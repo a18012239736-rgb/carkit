@@ -986,12 +986,12 @@ $('#diff-edit-self').onclick=async()=>{
   $('#diff-self-editor p').textContent='修改会同步到继承该项的版型，保存后重新对比。';
   const checklist=await loadChecklist();
   const names=Object.fromEntries(checklist.items.map(x=>[x.no,x.name]));
-  let html='<table class="grid"><tr><th>配置项</th>'+comparisonSelf.trims.map(t=>`<th>${esc(t.name)}</th>`).join('')+'</tr>';
-  html+='<tr><th>指导价（万元）</th>'+comparisonSelf.trims.map((t,i)=>`<td><input data-price="${i}" type="number" step="0.01" value="${t.price_guide??''}"></td>`).join('')+'</tr>';
+  let html='<table class="grid"><thead><tr><th>#</th><th>配置项</th>'+comparisonSelf.trims.map(t=>`<th>${esc(t.name)}<br><span class="dim">${t.price_guide??''}万</span></th>`).join('')+'</tr></thead><tbody>';
+  html+='<tr><td class="no">—</td><td>指导价（万元）</td>'+comparisonSelf.trims.map((t,i)=>`<td><input data-price="${i}" type="number" step="0.01" value="${t.price_guide??''}"></td>`).join('')+'</tr>';
   comparisonSelf.cells.forEach((c,i)=>{
     if(c.no===36){
       ['通风','加热','按摩','头枕音响'].forEach(feature=>{
-        html+=`<tr><th>座椅${feature}</th>`;
+        html+=`<tr><td class="no">36</td><td>座椅${feature}</td>`;
         html+=comparisonSelf.trims.map((t,j)=>{
           const v=c.values[t.name]||{};
           return `<td><label>主驾<select data-cell="${i}" data-trim="${j}" data-seat="主驾${feature}"><option value="✕" ${v['主驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['主驾'+feature]==='●'?'selected':''}>有</option></select></label><label>副驾<select data-cell="${i}" data-trim="${j}" data-seat="副驾${feature}"><option value="✕" ${v['副驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['副驾'+feature]==='●'?'selected':''}>有</option></select></label></td>`;
@@ -1001,14 +1001,14 @@ $('#diff-edit-self').onclick=async()=>{
     }
     const subs=[...new Set(Object.values(c.values).flatMap(v=>v&&typeof v==='object'?Object.keys(v):[]))];
     (subs.length?subs:[null]).forEach(sub=>{
-        html+=`<tr><th>${esc(names[c.no]||String(c.no))}${sub?' · '+esc(seatSubLabel(sub)):''}</th>`;
+        html+=`<tr><td class="no">${c.no}</td><td>${esc(names[c.no]||String(c.no))}${sub?' · '+esc(seatSubLabel(sub)):''}</td>`;
       html+=comparisonSelf.trims.map((t,j)=>{
         const v=sub?(c.values[t.name]||{})[sub]:c.values[t.name];
         return `<td><input style="min-width:180px;width:95%" data-cell="${i}" data-trim="${j}" data-sub="${esc(sub||'')}" value="${esc(v??'✕')}"></td>`;
       }).join('')+'</tr>';
     });
   });
-  $('#diff-self-table').innerHTML=html+'</table>';
+  $('#diff-self-table').innerHTML=html+'</tbody></table>';
   addConfigurationChoices($('#diff-self-table'),comparisonSelf.cells);
   bindSnapshotEditor($('#diff-self-table'),comparisonSelf,true);
   $('#diff-self-editor').hidden=false;
