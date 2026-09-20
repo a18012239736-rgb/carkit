@@ -462,6 +462,18 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
   html += lad.trims.map((t) => `<th>${t.name}<br><span class="dim">${t.price_guide ?? ""}万</span></th>`).join("");
   html += "</tr></thead><tbody>";
   for (const it of lad.items) {
+    if(it.no===36){
+      const bySub=Object.fromEntries((it.subs||[]).map(sr=>[sr.sub,sr.values]));
+      ['通风','加热','按摩','头枕音响'].forEach(feature=>{
+        html+=`</tr><tr><td class="no">36</td><td>座椅${feature}</td>`;
+        html+=it.values.map((_,i)=>{
+          const main=(bySub['主驾'+feature]||[])[i]||'✕',副=(bySub['副驾'+feature]||[])[i]||'✕';
+          return `<td><label>主驾<select data-seat="主驾${feature}" data-no="36" data-i="${i}"><option value="✕" ${main==='✕'?'selected':''}>无</option><option value="●" ${main==='●'?'selected':''}>有</option></select></label><label>副驾<select data-seat="副驾${feature}" data-no="36" data-i="${i}"><option value="✕" ${副==='✕'?'selected':''}>无</option><option value="●" ${副==='●'?'selected':''}>有</option></select></label></td>`;
+        }).join('');
+      });
+      html+=`</tr>`;
+      continue;
+    }
     html += `<tr><td class="no">${it.no}</td><td>${it.name}${it.unmapped ? ' <span class="tag warn">待映射</span>' : ""}</td>`;
     html += it.values.map((v, i) =>
       it.no===1 || it.no===37
@@ -486,7 +498,9 @@ function collectLadderEdits(target="#ladder-table-wrap", ladder=ST.ladder) {
     const no = +td.dataset.no, i = +td.dataset.i;
     const it = ladder.items.find((x) => x.no === no);
     if (!it) return;
-    if (td.querySelector('input[data-step]')) {
+    if (td.dataset.seat) {
+      const sr=(it.subs||[]).find(s=>s.sub===td.dataset.seat); if(sr)sr.values[i]=td.querySelector('select')?.value||'✕';
+    } else if (td.querySelector('input[data-step]')) {
       const raw=td.querySelector('input[data-step]').value;
       it.values[i]=raw+(no===1?'km':'扬声器');
     } else if (td.dataset.sub) {
