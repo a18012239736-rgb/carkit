@@ -760,7 +760,7 @@ $('#diff-mode').addEventListener('change', async()=>{
   $('#delete-self-file').hidden=competitor;
   $('#diff-edit-self').textContent=competitor?'修改左侧竞品配置':'修改当前本品配置';
   $('#diff-save-self').textContent=competitor?'保存左侧竞品修正':'保存本品修正';
-  $('#diff-self-editor').hidden=true; $('#diff-result').hidden=true; ST.diff=null;
+  hideComparisonEditors(); $('#diff-result').hidden=true; ST.diff=null;
   await rebuildPairs();
 });
 $("#diff-ladder").addEventListener("change", rebuildPairs);
@@ -940,6 +940,12 @@ $('#pairs-editor').before($('#diff-competitor-editor'));
 $('#review-competitor').textContent='修改当前竞品配置';
 $('#diff-competitor-editor h3').textContent='修改竞品配置';
 let comparisonSelf=null, comparisonSelfPath='';
+function hideComparisonEditors() {
+  $('#diff-self-editor').hidden = true;
+  $('#diff-competitor-editor').hidden = true;
+  $('#diff-self-table').innerHTML = '';
+  $('#diff-ladder-table-wrap').innerHTML = '';
+}
 $('#delete-self-file').onclick=async()=>{
   const file=$('#diff-snapshot').value;
   if(!file)return toast('请先选择要删除的本品文件','err');
@@ -958,6 +964,7 @@ $('#diff-snapshot').addEventListener('change',()=>{
 });
 $('#diff-edit-self').onclick=async()=>{
   const competitor=$('#diff-mode').value==='competitor';
+  hideComparisonEditors();
   if(competitor){
     const file=$('#diff-left-vehicle').value;
     if(!file)return toast('请先选择左侧竞品','err');
@@ -1037,6 +1044,8 @@ $('#diff-save-self').onclick=async()=>{
 };
 $('#review-competitor').onclick=()=>{
   if(!ST.ladder || !$('#diff-ladder').value) return toast('请先选择竞品');
+  $('#diff-self-editor').hidden=true;
+  $('#diff-self-table').innerHTML='';
   const panel=$('#diff-competitor-editor'); panel.hidden=!panel.hidden;
   if(!panel.hidden) renderLadderTable('#diff-ladder-table-wrap');
 };
