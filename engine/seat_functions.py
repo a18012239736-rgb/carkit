@@ -3,7 +3,7 @@ import re
 
 FEATURES = ('通风', '加热', '按摩', '头枕音响')
 SEATS = ('主驾', '副驾', '二排')
-SUBS = tuple(seat + feature for seat in SEATS for feature in FEATURES)
+SUBS = tuple(seat + feature for feature in FEATURES for seat in SEATS)
 PRICES = {'通风': 400, '加热': 250, '按摩': 600, '头枕音响': 100}
 
 

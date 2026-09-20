@@ -100,6 +100,10 @@ function addConfigurationChoices(root, snapshotCells=null) {
     };
   });
 }
+function seatSubLabel(sub){
+  const m=String(sub).match(/^(主驾|副驾|二排)(通风|加热|按摩|头枕音响)$/);
+  return m?`座椅${m[2]} · ${m[1]}`:sub;
+}
 function addScreenEditor(field,no,isInput){
   const current=isInput?field.value:field.textContent.trim();
   const container=isInput?field.parentElement:field;
@@ -451,7 +455,7 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
       `<td contenteditable data-no="${it.no}" data-i="${i}" class="${cellCls(v)}">${esc(v)}</td>`).join("");
     html += "</tr>";
     for (const sr of it.subs || []) {
-      html += `<tr><td class="no">—</td><td class="dim">${sr.sub}</td>`;
+      html += `<tr><td class="no">—</td><td class="dim">${seatSubLabel(sr.sub)}</td>`;
       html += sr.values.map((v, i) =>
         `<td contenteditable data-no="${it.no}" data-sub="${sr.sub}" data-i="${i}" class="${cellCls(v)}">${esc(v)}</td>`).join("");
       html += "</tr>";
@@ -935,7 +939,7 @@ $('#diff-edit-self').onclick=async()=>{
   comparisonSelf.cells.forEach((c,i)=>{
     const subs=[...new Set(Object.values(c.values).flatMap(v=>v&&typeof v==='object'?Object.keys(v):[]))];
     (subs.length?subs:[null]).forEach(sub=>{
-      html+=`<tr><th>${esc(names[c.no]||String(c.no))}${sub?' · '+esc(sub):''}</th>`;
+        html+=`<tr><th>${esc(names[c.no]||String(c.no))}${sub?' · '+esc(seatSubLabel(sub)):''}</th>`;
       html+=comparisonSelf.trims.map((t,j)=>{
         const v=sub?(c.values[t.name]||{})[sub]:c.values[t.name];
         return `<td><input style="min-width:180px;width:95%" data-cell="${i}" data-trim="${j}" data-sub="${esc(sub||'')}" value="${esc(v??'✕')}"></td>`;
