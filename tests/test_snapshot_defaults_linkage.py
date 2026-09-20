@@ -46,7 +46,7 @@ context.updateSnapshotValue(snap,3,'舒适','400V');
 context.updateSnapshotValue(snap,3,'基础','900V');
 console.log(JSON.stringify({first,final:snap}));
 """
-    result=json.loads(subprocess.run(['node','-e',script],input=snap.to_json(),text=True,capture_output=True,
+    result=json.loads(subprocess.run(['node','-e',script],input=snap.to_json(),text=True,encoding='utf-8',capture_output=True,
                                     cwd=Path(__file__).resolve().parents[1],check=True).stdout)
     first=next(c for c in result['first']['cells'] if c['no']==3)
     assert first['values']=={'基础':'800V','舒适':'800V','豪华':'800V','独立分支':'✕','明确400V':'400V'}
