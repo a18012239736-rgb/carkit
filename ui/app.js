@@ -580,6 +580,14 @@ async function renderSnapshot() {
   html += "<th>依据</th></tr></thead><tbody>";
   for (const it of items) {
     const c = cellByNo[it.no];
+    if(it.no===36 && c){
+      ['通风','加热','按摩','头枕音响'].forEach(feature=>{
+        html+=`<tr><td class="no">36</td><td>座椅${feature}</td>`;
+        html+=snap.trims.map(t=>{const v=c.values[t.name]||{};return `<td><label>主驾<select data-seat="主驾${feature}" data-no="36" data-t="${esc(t.name)}"><option value="✕" ${v['主驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['主驾'+feature]==='●'?'selected':''}>有</option></select></label><label>副驾<select data-seat="副驾${feature}" data-no="36" data-t="${esc(t.name)}"><option value="✕" ${v['副驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['副驾'+feature]==='●'?'selected':''}>有</option></select></label></td>`;}).join('');
+        html+=`<td class="dim">${esc(c.basis||'')}</td></tr>`;
+      });
+      continue;
+    }
     const isSub = c && typeof Object.values(c.values)[0] === "object";
     if (isSub) {
       const subNames = Object.keys(Object.values(c.values)[0]);
@@ -600,6 +608,9 @@ async function renderSnapshot() {
   }
   html += "</tbody></table>";
   $("#snapshot-table-wrap").innerHTML = html;
+  $("#snapshot-table-wrap").querySelectorAll('select[data-seat]').forEach(el=>el.onchange=()=>{
+    const c=cellByNo[36]; c.values[el.dataset.t][el.dataset.seat]=el.value; ST.diff=null; $('#diff-result').hidden=true;
+  });
   addConfigurationChoices($('#snapshot-table-wrap'));
   bindSnapshotEditor($('#snapshot-table-wrap'),snap);
 }
@@ -620,6 +631,9 @@ function collectSnapshotEdits() {
     } else {
       c.values[td.dataset.t] = v;
     }
+  });
+  $$("#snapshot-table-wrap select[data-seat]").forEach(el=>{
+    const c=cellByNo[36]; if(c) c.values[el.dataset.t][el.dataset.seat]=el.value;
   });
 }
 
@@ -937,6 +951,16 @@ $('#diff-edit-self').onclick=async()=>{
   let html='<table class="grid"><tr><th>配置项</th>'+comparisonSelf.trims.map(t=>`<th>${esc(t.name)}</th>`).join('')+'</tr>';
   html+='<tr><th>指导价（万元）</th>'+comparisonSelf.trims.map((t,i)=>`<td><input data-price="${i}" type="number" step="0.01" value="${t.price_guide??''}"></td>`).join('')+'</tr>';
   comparisonSelf.cells.forEach((c,i)=>{
+    if(c.no===36){
+      ['通风','加热','按摩','头枕音响'].forEach(feature=>{
+        html+=`<tr><th>座椅${feature}</th>`;
+        html+=comparisonSelf.trims.map((t,j)=>{
+          const v=c.values[t.name]||{};
+          return `<td><label>主驾<select data-cell="${i}" data-trim="${j}" data-seat="主驾${feature}"><option value="✕" ${v['主驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['主驾'+feature]==='●'?'selected':''}>有</option></select></label><label>副驾<select data-cell="${i}" data-trim="${j}" data-seat="副驾${feature}"><option value="✕" ${v['副驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['副驾'+feature]==='●'?'selected':''}>有</option></select></label></td>`;
+        }).join('')+'</tr>';
+      });
+      return;
+    }
     const subs=[...new Set(Object.values(c.values).flatMap(v=>v&&typeof v==='object'?Object.keys(v):[]))];
     (subs.length?subs:[null]).forEach(sub=>{
         html+=`<tr><th>${esc(names[c.no]||String(c.no))}${sub?' · '+esc(seatSubLabel(sub)):''}</th>`;
@@ -966,6 +990,10 @@ $('#diff-save-self').onclick=async()=>{
       if(!c.values[name]||typeof c.values[name]!=='object')c.values[name]={};
       c.values[name][el.dataset.sub]=el.value.trim()||'✕';
     }else c.values[name]=el.value.trim()||'✕';
+  });
+  $$('#diff-self-table select[data-seat]').forEach(el=>{
+    const c=comparisonSelf.cells[+el.dataset.cell], name=comparisonSelf.trims[+el.dataset.trim].name;
+    c.values[name][el.dataset.seat]=el.value;
   });
   for(const el of $$('#diff-self-table input[data-price]')){
     const v=el.value===''?null:Number(el.value);
