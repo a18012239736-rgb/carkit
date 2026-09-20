@@ -59,10 +59,10 @@ def _airbag_display(counts, comps):
 def render_md(ladder: Ladder, title: str = "") -> str:
     lines = []
     model = ladder.model
-    lines.append(f"# 竞品配置阶梯-{model}（赋值对比专用 · 41项清单格式）")
+    lines.append(f"# 竞品配置阶梯-{model}（赋值对比专用）")
     lines.append("")
     lines.append(f"- **来源**：{ladder.source}，{ladder.date}，{len(ladder.trims)}版型")
-    lines.append(f"- **格式**：按 `对比配置清单-{ladder.checklist}` 41 项 + pjy 填写规则；`○`=选装；**汽车之家无该配置行 = 没有（✕）**")
+    lines.append(f"- **格式**：按 `对比配置清单-{ladder.checklist}` {len(ladder.items)} 项 + pjy 填写规则；`○`=选装；**汽车之家无该配置行 = 没有（✕）**")
     lines.append(f"- 由 carkit engine 生成（rules {ladder.checklist}）")
     lines.append("")
     lines.append("## 版型与价格")
@@ -73,7 +73,7 @@ def render_md(ladder: Ladder, title: str = "") -> str:
     prices = [("—" if t.get("price_guide") is None else f"{t['price_guide']:g}") for t in ladder.trims]
     lines.append("| 指导价(万) | " + " | ".join(prices) + " |")
     lines.append("")
-    lines.append("## 41 项配置阶梯")
+    lines.append(f"## {len(ladder.items)} 项配置阶梯")
     lines.append("")
     lines.append("| # | 配置项 | " + " | ".join(names) + " |")
     lines.append("|---" * (len(names) + 2) + "|")

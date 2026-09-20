@@ -298,8 +298,17 @@ def _apply(text, values, evidence, leftovers):
         m=re.search(r'(?:R)?(\d+)寸?(钢|铝(?:合金)?)轮毂',t)
         if m:setv(4,'R'+m[1]+('钢' if m[2]=='钢' else '铝')+'轮毂')
         m=re.search(r'(\d+)气囊',t)
+        previous_evidence=list(evidence.get(5,[]))
         if m:setv(5,m[1]+'气囊')
-        if '侧气帘' in t:setv(5,'[待定]'+str(values.get(5,UNKNOWN))+'+侧气帘（数量需确认）')
+        for component, number in [('侧气帘',2),('中央安全气囊',1)]:
+            if component not in t:continue
+            previous = re.search(r'(\d+)气囊',str(values.get(5,'')))
+            already_counted = bool(re.search(r'(?:含|包含|包括|已含)'+component,t)) or (
+                not m and any(component in source for source in previous_evidence))
+            if previous and not already_counted:
+                setv(5,str(int(previous[1])+number)+'气囊')
+            elif not previous:
+                setv(5,'[待定]'+component+'已配置，气囊基础数量未明确')
         if '540' in t and ('影像' in t or '全景' in t):setv(7,'540影像')
         elif '360' in t and '影像' in t:setv(7,'360影像')
         for value in ['城市NOA','高速NOA','基础L2']:
@@ -310,15 +319,17 @@ def _apply(text, values, evidence, leftovers):
         if 'LED' in t and '灯' in t:setv(17,'LED大灯')
         if '后雨刮' in t or '后雨刷' in t:setv(19,'●')
         if '外后视镜' in t:setv(20,'●'+t.split('外后视镜',1)[1])
-        m=re.search(r'(\d+(?:\.\d+)?)寸中控',t)
-        if m:setv(21,m[1]+'寸中控')
-        m=re.search(r'(\d+(?:\.\d+)?)寸[^+]*?仪表',t)
-        if m:setv(29,m[1]+'寸仪表')
+        from .screen_config import normalize_screen
+        for phrase in re.split(r'[+＋；;]', t):
+            screens = [no for no, keyword in ((21,'中控'), (22,'副驾'), (29,'仪表'))
+                       if keyword in phrase and (no != 22 or '屏' in phrase)]
+            for no in screens:
+                setv(no, '[待定]'+phrase if len(screens)>1 else normalize_screen(phrase.strip(), no))
         m=re.search(r'[45]G',t)
         if m:setv(23,m[0])
         if '皮质方向盘' in t:setv(25,'仿皮')
         if '方向盘加热' in t:setv(27,'●')
-        if 'HUD' in t:setv(30,'AR-HUD' if 'AR-HUD' in t else 'HUD')
+        if 'HUD' in t.upper():setv(30,'P-HUD' if 'P-HUD' in t.upper() else 'AR-HUD' if 'AR-HUD' in t.upper() else 'HUD')
         if '无线充电' in t:setv(33,'●'+t)
         if '仿皮座椅' in t:setv(34,'仿皮')
         elif '真皮座椅' in t:setv(34,'真皮')
@@ -328,8 +339,10 @@ def _apply(text, values, evidence, leftovers):
             setv(35,'[待定]'+t+'（请确认主副驾方向数）')
         subs=copy.deepcopy(values.get(36,{}))
         if not isinstance(subs,dict):subs={}
-        if '前排座椅' in t and '通风' in t and '加热' in t:subs['前加热通风']='●';setv(36,subs)
-        if '前排座椅' in t and '按摩' in t:subs['前按摩']='●';setv(36,subs)
+        if '前排' in t and '通风' in t and '加热' in t:subs['前加热通风']='●';setv(36,subs)
+        if '前排' in t and '按摩' in t:subs['前按摩']='●';setv(36,subs)
+        if '前排' in t and ('加热' in t or '通风' in t) and not ('加热' in t and '通风' in t):
+            setv(36,'[待定]'+t+'（请核对前排座椅功能）')
         if '头枕音响' in t:subs['头枕音响']='●';setv(36,subs)
         m=re.search(r'(\d+)扬(?:声器|伯牙之音)',t)
         if m:setv(37,m[1]+'扬声器')
@@ -337,9 +350,15 @@ def _apply(text, values, evidence, leftovers):
         m=re.search(r'(\d+)色氛围灯',t)
         if m:setv(39,m[1]+'色氛围灯')
         if '后排出风口' in t:setv(41,'●')
+        if '冰箱' in t:setv(43,'●')
+        if '感应雨刮' in t or '感应雨刷' in t:setv(44,'●')
+        if '座椅记忆' in t:
+            setv(45,'前排座椅记忆' if '前排' in t or ('主驾' in t and '副驾' in t)
+                 else '主驾座椅记忆' if '主驾' in t else '副驾座椅记忆' if '副驾' in t
+                 else '[待定]座椅记忆位置未说明')
         if '电动后备箱' in t or '电动后备厢' in t:setv(13,'●')
         for no, aliases in {6:['悬架软硬','可变阻尼','FSD','悬架高低'],11:['电吸门','电动吸合门'],12:['电动前备箱','电动前备厢'],14:['车顶行李架'],15:['主动进气格栅','主动闭合式进气格栅'],16:['对外放电'],18:['全景天窗','全景天幕','电动天窗'],22:['副驾娱乐屏','副驾屏'],24:['KTV'],26:['方向盘调节','方向盘手动'],28:['方向盘记忆'],31:['内后视镜'],32:['USB','Type-C']}.items():
-            if any(a.lower() in t.lower() for a in aliases):setv(no,t)
+            if no != 22 and any(a.lower() in t.lower() for a in aliases):setv(no,t)
         # Always preserve mixed phrases; unhandled non-checklist details stay visible for review.
         if not matched or re.search(r'APA|芯片|钥匙|怀挡|Carmind|自动空调',t):leftovers.append(line)
 
@@ -350,7 +369,7 @@ def make_snapshot(draft):
     if any(not n for n in names) or len(set(names))!=len(names):raise ValueError('版型名称不能为空或重复')
     model=str(draft.get('model','')).strip()
     if not model:raise ValueError('请填写本品车型名称')
-    lookup=dict(zip(names,columns)); expanded={}; traces={}; remaining={}
+    lookup=dict(zip(names,columns)); expanded={}; traces={}; remaining={}; declared={}
     def expand(name,stack):
         if name in expanded:return
         if name in stack:raise ValueError('继承关系存在循环')
@@ -361,7 +380,9 @@ def make_snapshot(draft):
         else:
             vals={it['no']:'✕' for it in Rules().items if not it.get('merged_into')}
             vals[36]={s:'✕' for s in ['前加热通风','前按摩','头枕音响','二排']};ev={}
+        before={no:len(lines) for no,lines in ev.items()}
         rest=[];_apply(str(col.get('text','')),vals,ev,rest)
+        declared[name]={no for no,lines in ev.items() if len(lines)>before.get(no,0)}
         # A range in an upgrade column may be a delta, not the absolute range.
         if base and re.search(r'\d+\s*km续航', str(col.get('text', '')), re.I):
             stated = re.search(r'(\d+)\s*km续航', str(col.get('text', '')), re.I)
@@ -395,4 +416,10 @@ def make_snapshot(draft):
         pending=[],
         rulings=[{'type':'ppt_import','source':draft.get('source'),'page':draft.get('page'),
                   'draft':copy.deepcopy(draft),'remaining':remaining}])
+    from .snapshot import prepare_snapshot
+    prepare_snapshot(snap)
+    for cell in snap.cells:
+        for name in names:
+            if cell['no'] in declared[name] and not isinstance(cell['values'][name],dict):
+                cell['links'].pop(name,None)
     return snap

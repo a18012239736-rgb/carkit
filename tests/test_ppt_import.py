@@ -27,6 +27,21 @@ def test_branch_inheritance_and_tp_price():
     assert not _is_pending(cells[36]['豪华型'])
     assert cells[2]['基础型']=='✕'
 
+def test_side_curtains_add_two_without_double_counting():
+    d=draft()
+    d['columns'][0]['text']='4气囊'
+    d['columns'][1]['text']='侧气帘'
+    d['columns'][2]['text']='侧气帘\n侧气帘'
+    d['columns'][3]['text']='6气囊（含侧气帘）'
+    cells={c['no']:c['values'] for c in make_snapshot(d).cells}
+    assert cells[5]['基础型']=='4气囊'
+    assert cells[5]['舒适型']=='6气囊'
+    assert cells[5]['长续航基础型']=='6气囊'
+    assert cells[5]['豪华型']=='6气囊'
+    d['columns'][0]['text']='侧气帘'
+    cells={c['no']:c['values'] for c in make_snapshot(d).cells}
+    assert _is_pending(cells[5]['基础型'])
+
 def test_old_import_missing_values_are_reparsed_without_losing_edits():
     from engine.snapshot import resolve
     d=draft(); d['columns'][0]['text']+='\n对外放电'

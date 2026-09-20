@@ -4,8 +4,23 @@
 """
 from __future__ import annotations
 import json
+import copy
+import re
 from dataclasses import dataclass, field, asdict
 from typing import Optional
+
+
+def _merge_central_airbag(total, central):
+    """Upgrade the old separate row once; new files have no row 42."""
+    central = str(central or '').strip()
+    if central in ('', '✕', '×', 'X', '-', '无', '无配置') or central.startswith('○'):
+        return total
+    if '[待定]' in central or '[待定]' in str(total):
+        return '[待定]请核对含中央气囊的气囊总数'
+    if '中央' in str(total):
+        return total
+    number = re.match(r'^\s*(\d+)', str(total))
+    return f'{int(number[1])+1}气囊' if number else '[待定]中央气囊已配置，请确认气囊总数'
 
 
 # ---------- canonical RawTable ----------
@@ -145,6 +160,19 @@ class Ladder:
     @classmethod
     def from_dict(cls, d):
         items = [LadderItem(**it) for it in d.get("items", [])]
+        from .usb import usb_label
+        for item in items:
+            if item.no == 32:
+                item.values = [usb_label(value) for value in item.values]
+        central = next((it for it in items if it.no == 42), None)
+        if central:
+            airbags = next((it for it in items if it.no == 5), None)
+            if airbags is None:
+                airbags = LadderItem(no=5, name='气囊数量', values=['✕']*len(central.values))
+                items.append(airbags)
+            airbags.values = [_merge_central_airbag(v, central.values[i] if i < len(central.values) else '')
+                              for i,v in enumerate(airbags.values)]
+            items = [it for it in items if it.no != 42]
         return cls(**{k: v for k, v in d.items() if k != "items"}, items=items)
 
     @classmethod
@@ -206,6 +234,19 @@ class Snapshot:
 
     @classmethod
     def from_dict(cls, d):
+        d = copy.deepcopy(d)
+        cells = d.get('cells', [])
+        central = next((c for c in cells if c['no'] == 42), None)
+        if central:
+            airbags = next((c for c in cells if c['no'] == 5), None)
+            if airbags is None:
+                airbags = {'no':5, 'values':{}, 'basis':'旧中央气囊合并'}
+                cells.append(airbags)
+            for name, value in central.get('values', {}).items():
+                airbags['values'][name] = _merge_central_airbag(airbags['values'].get(name,'✕'), value)
+            airbags.pop('links', None)
+            d['cells'] = [c for c in cells if c['no'] != 42]
+            d['pending'] = [p for p in d.get('pending',[]) if p.get('no') != 42]
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
     @classmethod

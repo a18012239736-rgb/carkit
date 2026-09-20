@@ -85,12 +85,13 @@ def features(raw):
                     values=[]
                 v.append(values)
             add('激光雷达', v, True)
-        elif name in {'主/副驾驶座安全气囊','前/后排侧气囊','前/后排头部气囊(气帘)'}:
+        elif name in {'主/副驾驶座安全气囊','前/后排侧气囊','前/后排头部气囊(气帘)','中央安全气囊','前排中央安全气囊'}:
             ns=['主/副驾驶座安全气囊','前/后排侧气囊','前/后排头部气囊(气帘)']
             consumed.update(ns)
+            consumed.update({'中央安全气囊','前排中央安全气囊'})
             v=[]
             for i in range(count):
-                total=0
+                total=int(any(get(n,i) for n in ('中央安全气囊','前排中央安全气囊')))
                 for n in ns:
                     text=' '.join(get(n,i))
                     if not text: continue

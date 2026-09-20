@@ -48,7 +48,7 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
             lines.append(f"> {nt}")
         lines.append("")
 
-    lines.append("## 附：41 项判定明细（追溯用）")
+    lines.append("## 附：配置项判定明细（追溯用）")
     lines.append("")
     plabels = pair_labels or [f"{g['pair']['self_trim']}vs{g['pair']['comp_trim']}" for g in groups]
     lines.append("| # | 配置项 | " + " | ".join(plabels) + " |")

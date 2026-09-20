@@ -7,6 +7,40 @@ from __future__ import annotations
 import re
 from .models import Snapshot
 
+# Zero-price tiers explicitly defined by pjy, not unpriced '/' items.
+BASE_CONFIG = {4: 'R16钢轮毂', 17: '卤素大灯', 25: '塑料', 26: '手调',
+               31: '手动防眩目', 32: 'USB/Type-C 3个', 34: '织物', 35: '主驾手调+副驾手调'}
+
+
+def prepare_snapshot(snap):
+    """Fill baseline tiers and establish links once; edited overrides keep no link."""
+    by_no = {c['no']: c for c in snap.cells}
+    for no, default in BASE_CONFIG.items():
+        cell = by_no.get(no)
+        if cell is None:
+            cell = {'no': no, 'values': {}, 'basis': '基础配置默认档位'}
+            snap.cells.append(cell)
+        for trim in snap.trims:
+            if cell['values'].get(trim['name']) in (None, '', '✕', '×', 'X', '-', '无'):
+                cell['values'][trim['name']] = default
+    from .usb import usb_label
+    for name, value in by_no[32]['values'].items():
+        by_no[32]['values'][name] = usb_label(value)
+    snap.cells.sort(key=lambda c: c['no'])
+    for cell in snap.cells:
+        if 'links' in cell:
+            continue
+        cell['links'] = {}
+        for trim in snap.trims:
+            name, base = trim['name'], trim.get('base')
+            if not base or base not in cell['values']:
+                continue
+            value, parent = cell['values'].get(name), cell['values'][base]
+            if isinstance(value, dict) and isinstance(parent, dict):
+                cell['links'][name] = {sub: base for sub in value if value[sub] == parent.get(sub)}
+            elif value == parent:
+                cell['links'][name] = base
+    return snap
 
 def resolve(snap: Snapshot) -> Snapshot:
     """展开继承简写：'同基础'/裸'●'（继承本行左侧最近的具体值）"""
@@ -43,7 +77,7 @@ def resolve(snap: Snapshot) -> Snapshot:
                 vals[t] = last_concrete     # 裸●继承左侧带值的●
             elif v is not None and v != "":
                 last_concrete = v
-    return snap
+    return prepare_snapshot(snap)
 
 
 def parse_snapshot_md(path: str) -> Snapshot:

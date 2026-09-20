@@ -2,13 +2,13 @@
   "version": "v1",
   "source": "对比配置清单-v1.md（pjy 手写，2026-09-11 收讫；源 ~/Desktop/竞争力对比配置清单参考.xlsx）",
   "universal_rule": "某车在汽车之家没有该配置行 = 该车没有此配置（✕）",
-  "discipline": "赋值对比只遍历本清单 41 项，清单外配置一律不进多/少清单；写法严格遵守各项 fill_rule",
+  "discipline": "赋值对比只遍历本清单配置项，清单外配置一律不进多/少清单；写法严格遵守各项 fill_rule",
   "items": [
     {"no": 1, "name": "纯电续航", "md_name": "纯电续航里程", "fill_rule": "有CLTC优先填CLTC；热泵空调写到本项下一行(#41规则)", "value_type": "range_km", "normalize": "range_km", "source_rows": ["CLTC纯电续航里程(km)", "WLTC纯电续航里程(km)", "NEDC纯电续航里程(km)"]},
     {"no": 2, "name": "电芯品牌", "fill_rule": null, "value_type": "text", "normalize": "cell_brand", "source_rows": ["电芯品牌", "电池类型"]},
     {"no": 3, "name": "高压平台", "fill_rule": "汽车之家搜不到该配置行=没有", "value_type": "high_voltage", "normalize": "high_voltage", "source_rows": ["高压平台", "800V高压平台"]},
     {"no": 4, "name": "轮胎规格", "md_name": "轮胎规格(含轮圈)", "fill_rule": "不分前后，只写R多少；轮圈材质合并到本项（例：R17钢轮毂）", "value_type": "tire", "normalize": "tire", "source_rows": ["前轮胎规格", "后轮胎规格", "轮圈材质"], "merge": true},
-    {"no": 5, "name": "气囊数量", "fill_rule": "被动安全三项合成（主副+侧+气帘）", "value_type": "airbag_count", "normalize": "airbag_count", "source_rows": ["主/副驾驶座安全气囊", "前/后排侧气囊", "前/后排头部气囊(气帘)"], "merge": true},
+    {"no": 5, "name": "气囊数量", "fill_rule": "主副+侧气囊+侧气帘（2个）+中央安全气囊（1个）", "value_type": "airbag_count", "normalize": "airbag_count", "source_rows": ["主/副驾驶座安全气囊", "前/后排侧气囊", "前/后排头部气囊(气帘)", "中央安全气囊", "前排中央安全气囊"], "merge": true},
     {"no": 6, "name": "可变悬架", "md_name": "可变悬架功能", "fill_rule": "汽车之家分得细（软硬/高低调节）；有魔毯悬架单独写，不再重复写悬架", "value_type": "enum_text", "normalize": "suspend", "source_rows": ["可变悬架功能", "空气悬架", "魔毯智能悬架"]},
     {"no": 7, "name": "驾驶辅助影像", "fill_rule": "有透明底盘/540则必含360，直接写540影像", "value_type": "camera", "normalize": "camera540", "source_rows": ["驾驶辅助影像", "透明底盘/540度影像"], "merge": true},
     {"no": 8, "name": "激光雷达", "fill_rule": "标注数量和线束；一般只有华为雷达才有线束，没有就不写", "value_type": "lidar", "normalize": "lidar", "source_rows": ["激光雷达数量", "激光雷达品牌"], "merge": true},
@@ -35,7 +35,7 @@
     {"no": 29, "name": "仪表盘", "fill_rule": "有全液晶写全液晶；没有就写**寸仪表", "value_type": "cluster", "normalize": "cluster", "source_rows": ["全液晶仪表盘", "液晶仪表尺寸", "行车电脑显示屏幕"], "merge": true},
     {"no": 30, "name": "HUD", "fill_rule": "AR-HUD照写AR-HUD；普通写HUD", "value_type": "hud", "normalize": "hud", "source_rows": ["HUD抬头数字显示", "抬头显示", "HUD"], "car_kb_gap": true},
     {"no": 31, "name": "内后视镜", "md_name": "内后视镜功能", "fill_rule": "有流媒体写流媒体；手动防眩目默认双方●（行业事实标配），只有流媒体才参与比较", "value_type": "rearview", "normalize": "rearview", "source_rows": ["内后视镜功能"]},
-    {"no": 32, "name": "USB数量", "md_name": "USB/Type-C接口数量", "fill_rule": "标注前后排数量", "value_type": "usb", "normalize": "usb", "source_rows": ["USB/Type-C接口数量"]},
+    {"no": 32, "name": "USB数量", "md_name": "USB/Type-C接口数量", "fill_rule": "默认共3个（0元），仅额外接口计差价", "value_type": "usb", "normalize": "usb", "source_rows": ["USB/Type-C接口数量"]},
     {"no": 33, "name": "无线充电", "md_name": "手机无线充电功能", "fill_rule": "只标前后排和有无；前排只有一个的情况pjy自己再分辨", "value_type": "wireless_charge", "normalize": "wireless_charge", "source_rows": ["手机无线充电功能", "手机无线充电功率"], "merge": true},
     {"no": 34, "name": "座椅材质", "fill_rule": "织物、仿皮、真皮、翻毛皮", "value_type": "material", "normalize": "material", "source_rows": ["座椅材质"]},
     {"no": 35, "name": "座椅调节", "fill_rule": "分主副驾；看手调/电调和多少向", "value_type": "seat_adjust", "normalize": "seat_adjust", "source_rows": ["主座椅调节方式", "副座椅调节方式", "主/副驾驶座电动调节"], "merge": true},
@@ -44,7 +44,11 @@
     {"no": 38, "name": "车外扬声器", "fill_rule": "与#37分开写", "value_type": "speaker_count", "normalize": "speaker_count", "source_rows": ["车外扬声器数量"]},
     {"no": 39, "name": "氛围灯", "md_name": "车内氛围灯", "fill_rule": "看有无、单色还是多色（多色=256色/1680色等只是叫法不同，统一写256色）", "value_type": "ambient", "normalize": "ambient", "source_rows": ["车内环境氛围灯", "主动式环境氛围灯"], "merge": true},
     {"no": 40, "name": "热泵空调", "fill_rule": "写到纯电续航里程下一行", "value_type": "bool", "normalize": "bool", "source_rows": ["热泵空调", "热泵空调系统"]},
-    {"no": 41, "name": "后排出风口", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["后座出风口", "后排出风口"]}
+    {"no": 41, "name": "后排出风口", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["后座出风口", "后排出风口"]},
+    {"no": 42, "name": "中央安全气囊", "value_type": "merged", "merged_into": 5, "source_rows": []},
+    {"no": 43, "name": "车载冰箱", "fill_rule": "有车载冷暖冰箱按有配置", "value_type": "bool", "normalize": "bool", "source_rows": ["车载冰箱", "车内冰箱", "车载冷暖冰箱", "车载冷热冰箱"]},
+    {"no": 44, "name": "感应雨刮", "fill_rule": "雨量感应雨刮", "value_type": "bool", "normalize": "bool", "source_rows": ["感应雨刷功能", "感应雨刮", "雨量感应雨刷", "雨量感应雨刮"]},
+    {"no": 45, "name": "座椅记忆", "fill_rule": "主驾、副驾每座100元", "value_type": "seat_memory", "normalize": "seat_memory", "source_rows": ["电动座椅记忆", "座椅记忆功能"]}
   ],
   "car_kb_gaps": [11, 12, 14, 22, 30],
   "gap_rule": "缺口项现抓汽车之家时「无该行=没有」规则直接覆盖，无需特判"

@@ -177,6 +177,13 @@ class Bridge:
             output = os.path.join(self.workdir, '阶梯', 'compare-'+key+'.json')
             if os.path.exists(output):
                 lad = Ladder.load(output)
+                # Existing captures keep hand edits; append only newly defined items.
+                missing = {it['no'] for it in self.rules.items} - {it.no for it in lad.items}
+                if missing:
+                    fresh = ladder_mod.build_ladder(raw, self.rules, model=raw.model,
+                                                    series_id=raw.series_id, date=_today())
+                    lad.items.extend(it for it in fresh.items if it.no in missing)
+                    lad.items.sort(key=lambda it: it.no)
                 # Refresh applicability without discarding manual configuration edits.
                 from engine.powertrain import energy_types, not_applicable
                 energies = energy_types(raw)
@@ -440,6 +447,10 @@ class Bridge:
             if confirmed is not True:
                 raise ValueError('请先核对解析结果并勾选确认')
             snap = Snapshot.from_dict(snap_dict)
+            from engine.snapshot import prepare_snapshot
+            prepare_snapshot(snap)
+            from engine.screen_config import validate_snapshot_screens
+            validate_snapshot_screens(snap)
             if not snap.trims or not snap.model.strip():
                 raise ValueError('请填写车型和版型')
             names = [t['name'] for t in snap.trims]
@@ -459,6 +470,8 @@ class Bridge:
                         trims=trims,
                         cells=[{"no": it["no"], "values": {t["name"]: "✕" for t in trims},
                                 "basis": ""} for it in self.rules.items])
+        from engine.snapshot import prepare_snapshot
+        prepare_snapshot(snap)
         out = os.path.join(self.workdir, "快照", f"{model}-配置阶梯快照-{_today()}.json")
         snap.save(out)
         return {"ok": True, "path": out, "snapshot": json.loads(snap.to_json())}
@@ -472,7 +485,9 @@ class Bridge:
 
     def save_snapshot(self, path: str, snap_dict: dict):
         try:
-            Snapshot.from_dict(snap_dict).save(path)
+            from engine.screen_config import validate_snapshot_screens
+            from engine.snapshot import prepare_snapshot
+            validate_snapshot_screens(prepare_snapshot(Snapshot.from_dict(snap_dict))).save(path)
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -521,6 +536,9 @@ class Bridge:
                     raise ValueError('PPT解析草稿尚未确认，请先到本品配置核对并保存')
                 self_lad = snap.to_ladder(self.rules.checklist["items"])
             comp_lad = Ladder.load(ladder_path)
+            missing_items = {it['no'] for it in self.rules.items} - {it.no for it in comp_lad.items}
+            if missing_items:
+                raise ValueError('右侧竞品阶梯缺少新配置项，请重新抓取或从历史车型重新生成后再对比。')
             self_trims = [t["name"] for t in self_lad.trims]
             comp_trims = [t["name"] for t in comp_lad.trims]
             for p in pairs:

@@ -132,6 +132,9 @@ def n_airbag(raw, i, cfg):
             else:  # 气帘：物理上左右各1条覆盖前后排，无论标注均计2、统一叫「前气帘」（golden 口径）
                 count += 2
                 comps.append("前气帘")
+    if any(_solid(_cell(raw, [name], i)) for name in ('中央安全气囊', '前排中央安全气囊')):
+        count += 1
+        comps.append('中央气囊')
     if count == 0:
         return 0, []
     return count, comps
@@ -213,6 +216,20 @@ def n_adas(raw, i, cfg):
 def n_bool(raw, i, cfg):
     c = _cell(raw, cfg["source_rows"], i)
     return _bool_val(c)
+
+
+def n_seat_memory(raw, i, cfg):
+    c = _cell(raw, cfg['source_rows'], i)
+    if not _solid(c):
+        return _bool_val(c)
+    t = _txt(c)
+    if '前排' in t or ('主驾' in t and '副驾' in t):
+        return '前排座椅记忆'
+    if '副驾' in t or '副驾驶' in t:
+        return '副驾座椅记忆'
+    if '主驾' in t or '驾驶位' in t or '主驾驶' in t:
+        return '主驾座椅记忆'
+    return '[待定]座椅记忆位置未说明'
 
 
 def n_trunk(raw, i, cfg):
@@ -360,6 +377,8 @@ def n_hud(raw, i, cfg):
     if not _solid(c):
         return _bool_val(c)
     t = _txt(c).upper()
+    if "P-HUD" in t or "P HUD" in t:
+        return "●P-HUD"
     if "AR" in t:
         return "●AR-HUD"
     return "●HUD"
@@ -379,15 +398,11 @@ def n_rearview(raw, i, cfg):
 
 
 def n_usb(raw, i, cfg):
+    from .usb import usb_label
     c = _cell(raw, ["USB/Type-C接口数量"], i)
     if not _solid(c):
-        return _bool_val(c)
-    t = _txt(c)
-    front = re.search(r"前(?:排)?(\d+)个?", t)
-    rear = re.search(r"后(?:排)?(\d+)个?", t)
-    if front or rear:
-        return f"前{front.group(1) if front else 0}/后{rear.group(1) if rear else 0}"
-    return t
+        return usb_label('') if not c or not c.dot else _bool_val(c)
+    return usb_label(_txt(c))
 
 
 def n_wireless_charge(raw, i, cfg):
@@ -527,6 +542,7 @@ NORMALIZERS = {
     "wireless_charge": n_wireless_charge,
     "seat_adjust": n_seat_adjust,
     "seat_func": n_seat_func,
+    "seat_memory": n_seat_memory,
     "speaker_count": n_speaker,
     "ambient": n_ambient,
 }

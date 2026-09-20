@@ -279,6 +279,9 @@ def _pair_values(self_ladder, comp_ladder, no, si, ci):
     cit = comp_ladder.item(no)
     sv = sit.values[si] if sit and si < len(sit.values) else "✕"
     cv = cit.values[ci] if cit and ci < len(cit.values) else "✕"
+    if no == 32:
+        from .usb import usb_label
+        sv, cv = usb_label(sv), usb_label(cv)
     comp_sub_vals = {}
     if cit:
         for sr in cit.subs or []:
@@ -314,6 +317,16 @@ def diff(self_ladder, comp_ladder, pairs, rules):
         for item in rules.items:
             no = item["no"]
             sv, cv, cit, comp_subs = _pair_values(self_ladder, comp_ladder, no, si, ci)
+            screen_optional = ''
+            if no in (21, 22, 29):
+                from .screen_config import normalize_screen
+                sv, cv = normalize_screen(sv, no), normalize_screen(cv, no)
+                if str(sv).startswith('○'):
+                    screen_optional += ' 左侧选装按无配置计'
+                    sv = '✕'
+                if str(cv).startswith('○'):
+                    screen_optional += ' 右侧选装按无配置计'
+                    cv = '✕'
             if no == 9:
                 sv, cv = normalize_adas(sv), normalize_adas(cv)
             comp_absent = bool(cit and cit.row_absent)
@@ -330,7 +343,7 @@ def diff(self_ladder, comp_ladder, pairs, rules):
                 continue
 
             # ---- 全局豁免：待定 ----
-            if _is_pending(sv):
+            if _is_pending(sv) or _is_pending(cv):
                 verdict, exempt = NA, "pending"
                 comp_core = _strip_dot(cv) if not _plain(cv) else "✕"
                 disp = f"不计(待定vs{comp_core})" if pi == 0 else "不计(待定)"
@@ -403,6 +416,11 @@ def diff(self_ladder, comp_ladder, pairs, rules):
                 v, ss, cs = cmp_wireless(sv, cv)
             elif vt == "cluster":
                 v, ss, cs = cmp_cluster(sv, cv)
+            elif vt == "seat_memory":
+                def count(value): return 0 if not _has(value) else 2 if '前排' in str(value) or '主副' in str(value) else 1
+                s_count, c_count = count(sv), count(cv)
+                v = MORE if s_count > c_count else LESS if s_count < c_count else SAME
+                ss, cs = _strip_dot(str(sv)), _strip_dot(str(cv))
             elif vt == "network":
                 v, ss, cs = cmp_rank(["4G", "5G"])(sv, cv)
                 ss = ss.replace("[暂定]", "暂定")
@@ -413,7 +431,10 @@ def diff(self_ladder, comp_ladder, pairs, rules):
                 if _strip_dot(sn).replace("●", "") == _strip_dot(cn).replace("●", ""):
                     v, ss, cs = SAME, _strip_dot(sv), _strip_dot(cv)
                 else:
-                    v, ss, cs = cmp_bool(sn, cn)
+                    from .valuer import _default_rule_amount
+                    s_cost = _default_rule_amount(no, sn, 'more') if _has(sn) else 0
+                    c_cost = _default_rule_amount(no, cn, 'more') if _has(cn) else 0
+                    v = MORE if s_cost > c_cost else LESS if s_cost < c_cost else SAME
                     ss, cs = _strip_dot(sv), _strip_dot(cv)
             elif vt in ("screen",):
                 s_size, c_size = _num(sv), _num(cv)
@@ -440,8 +461,10 @@ def diff(self_ladder, comp_ladder, pairs, rules):
             verdict = v
             # ○选装注记：对方仅○ → 按无比较但显示注记
             disp = f"{verdict} {ss}({cs})"
+            if screen_optional:
+                disp += screen_optional
             # BACKUP 显示串
-            bm, bl = _backup_display(no, verdict, sv, cv, ss, cs)
+            bm, bl = _backup_display(no, verdict, sv, cv, ss, cs, item['name'])
             backup_more, backup_less = bm, bl
             cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less))
     return cells
@@ -458,9 +481,10 @@ _RANKS = {
     6: ["软硬调节", "空气悬架", "魔毯"],       # 可变悬架
     7: ["360", "540"],                          # 影像
     17: ["卤素", "氙气", "LED", "LCD"],          # 灯光（LED<LCD 按 pjy 规则 LCD 更高？保守同档处理）
-    30: ["HUD", "AR-HUD"],
+    30: ["HUD", "AR-HUD", "P-HUD"],
     39: ["单色", "多色"],
     26: ["手动", "电调", "电动"],
+    35: ["手调", "电调"],
 }
 
 
@@ -486,6 +510,11 @@ def ambient_level(value):
 
 def _cmp_generic(no, item, sv, cv):
     """带枚举序的通用比较；返回 (verdict, self_short, comp_short)"""
+    if no == 18:
+        from .valuer import _default_rule_amount
+        s = _default_rule_amount(no, str(sv), 'more') if _has(sv) else 0
+        c = _default_rule_amount(no, str(cv), 'more') if _has(cv) else 0
+        return (MORE if s > c else LESS if s < c else SAME), _short_generic(no, sv), _short_generic(no, cv)
     if no == 39:
         s, c = ambient_level(sv), ambient_level(cv)
         labels = ['✕', '单色', '多色']
@@ -521,8 +550,10 @@ def _cmp_generic(no, item, sv, cv):
             return SAME, ss, cs
         return (MORE if s_n > c_n else LESS), ss, cs
     if no == 32:
-        s_n = sum(int(x) for x in re.findall(r"(\d+)", str(sv))) if _has(sv) else 0
-        c_n = sum(int(x) for x in re.findall(r"(\d+)", str(cv))) if _has(cv) else 0
+        from .usb import usb_total
+        s_n, c_n = usb_total(sv), usb_total(cv)
+        if s_n is None or c_n is None:
+            return SAME, ss, cs
         if s_n == c_n:
             return SAME, ss, cs
         return (MORE if s_n > c_n else LESS), ss, cs
@@ -588,88 +619,103 @@ def _short_generic(no, v):
 
 # ---------- BACKUP 显示模板 ----------
 
-def _backup_display(no, verdict, sv, cv, ss, cs):
+def _backup_display(no, verdict, sv, cv, ss, cs, name=''):
     """返回 (backup_more, backup_less)；非多/少为空串"""
     if verdict not in (MORE, LESS):
         return "", ""
-    s, c = _strip_dot(str(sv)), _strip_dot(str(cv))
+    # A one-sided difference names only the equipment that exists.
+    if not _has(sv) and _has(cv):
+        out, _ = _backup_display(no, MORE, cv, '✕', cs, '✕', name)
+        return (out, '') if verdict == MORE else ('', out)
+    s, c = _strip_dot(str(sv) if sv is not None else '✕'), _strip_dot(str(cv) if cv is not None else '✕')
+    def number(value):
+        n = _num(value)
+        return f'{n:g}' if n is not None else '✕'
     out = ""
     if no == 3:
-        out = "800V" if "800" in s else s
+        out = f'{s}({c})' if _has(cv) else s
     elif no == 40:
         out = "热泵空调"
     elif no == 27:
         out = "方向盘加热"
+    elif no == 26:
+        if not _has(sv) or not _has(cv):
+            value = c if verdict == LESS else s
+            out = '方向盘电调' if '电' in value else '方向盘手动调节'
+        else:
+            out = f"方向盘调节：{ss}({cs})"
+    elif no == 39:
+        out = f"{ss}氛围灯({cs})" if _has(sv) and _has(cv) else f"{cs if verdict == LESS else ss}氛围灯"
     elif no == 30:
-        out = "AR-HUD" if "AR" in s.upper() else "HUD"
+        out = f'{s}({c})' if _has(cv) else s
     elif no == 23:
         sv2 = s.replace("[暂定]", "").replace("暂定", "")
         cv2 = c if c not in ("✕", "") else ""
         out = f"{sv2}车联网({cv2})" if cv2 else f"{sv2}车联网"
     elif no == 21:
-        out = f"{_num(sv):g}中控({_num(cv):g})"
+        out = f"{number(sv)}中控({number(cv)})"
     elif no == 9:
         # Keep both sides: valuation also reads this description.
         # In particular, absence vs cruise control must not collapse to ✕.
         out = f"{ss}({cs})" if cs not in ("✕", "") else ss
     elif no == 37:
-        out = f"{_num(sv):g}扬({_num(cv):g})" if _num(cv) is not None else f"{_num(sv):g}扬"
+        out = f"{number(sv)}扬({number(cv)})" if _num(cv) is not None else f"{number(sv)}扬"
     elif no == 33:
-        if verdict == MORE:
-            power = re.search(r"(\d+(?:\.\d+)?)\s*W", s, re.I)
+        def charging(value):
+            power = re.search(r"(\d+(?:\.\d+)?)\s*W", value, re.I)
             watts = f"{float(power[1]):g}W" if power else ""
-            out = f"前排双{watts}无线充电(单)" if "双" in s else f"前排{watts}无线充电"
-        else:
-            out = "前排单50W无线充电" if _num(cv) else "无线充电"
+            return f"前排{'双' if '双' in value else '单'}{watts}无线充电"
+        out = f'{charging(s)}({charging(c)})' if _has(cv) else charging(s)
     elif no == 32:
-        def ports(value):
-            text = str(value)
-            total = sum(int(n) for n in re.findall(r"\d+", text)) if _has(value) else 0
-            front = re.search(r"前(?:排)?\s*(\d+)", text)
-            rear = re.search(r"后(?:排)?\s*(\d+)", text)
-            location = []
-            if front:
-                location.append(f"前{front[1]}")
-            if rear:
-                location.append(f"后{rear[1]}")
-            return "".join(location) if location else f"{total}个"
-        out = f"USB/Type-C：{ports(sv)}（{ports(cv)}）"
+        from .usb import usb_label
+        out = f'{usb_label(sv)}（{usb_label(cv)}）'
     elif no == 5:
-        out = f"{_num(sv):g}气囊({_num(cv):g})"
+        out = f"{number(sv)}气囊({number(cv)})"
     elif no == 4:
         out = f"{s}({c})"
     elif no == 6:
-        out = f"可变悬架({c.replace('●', '').replace('○', '')})" if c not in ("✕", "") else "可变悬架"
+        def suspension(value):
+            return value if '悬架' in value else '悬架'+value if value else '可变悬架'
+        out = f'{suspension(s)}({suspension(c)})' if _has(cv) else suspension(s)
     elif no == 18:
-        out = f"天窗({c.replace('●', '').replace('○', '')})" if c not in ("✕", "") else "天窗"
+        def roof(value):
+            return value if '天窗' in value or '天幕' in value else value+'天窗'
+        out = f'{roof(s)}({roof(c)})' if _has(cv) else roof(s)
     elif no == 15:
         out = "主动闭合式进气格栅"
     elif no == 16:
-        pw = _num(cv)
-        out = f"对外放电{pw:g}kW" if pw else "对外放电"
+        def discharge(value):
+            pw = _num(value)
+            return f'对外放电{pw:g}kW' if pw else '对外放电'
+        out = f'{discharge(sv)}({discharge(cv)})' if _has(cv) else discharge(sv)
     elif no == 19:
         out = "后雨刷"
     elif no == 38:
-        out = "车外扬声器"
+        def speaker(value):
+            n = _num(value)
+            return f'{n:g}个车外扬声器' if n else '车外扬声器'
+        out = f'{speaker(s)}({speaker(c)})' if _has(cv) else speaker(s)
     elif no == 29:
         # ○全液晶选装 不算全液晶（选装○不计为有）
         c_full = ("全液晶" in c) and not re.search(r"○\s*全液晶", str(cv))
         c_size = _num(cv)
         cdisp = (f"全液晶{c_size:g}" if c_full else f"{c_size:g}") if c_size else c
-        out = f"{_num(sv):g}仪表({cdisp})"
+        out = f"{number(sv)}仪表({cdisp})"
     elif no == 1:
-        out = f"{_num(sv):g}km({_num(cv):g})" if _num(cv) is not None else f"{_num(sv):g}km"
+        out = f"{number(sv)}km({number(cv)})" if _num(cv) is not None else f"{number(sv)}km"
     else:
         out = f"{ss}({cs})" if cs not in ("✕", "") else ss
+    if not _has(cv):
+        out = re.sub(r'[（(](?:✕|×|0个)[)）]', '', out)
     # A generic boolean comparator uses ● for “有”.  Never let that marker
     # escape into the P21 summary as a standalone bullet.
-    if out in ("●", "●(✕)"):
+    if re.fullmatch(r'[●✕×○\s()（）]*', out):
         labels = {
             11: "电动吸合门", 12: "电动前备箱", 13: "电动后备箱", 14: "车顶行李架",
             15: "主动闭合式进气格栅", 22: "副驾娱乐屏", 27: "方向盘加热",
             28: "方向盘记忆", 30: "HUD", 41: "后排出风口",
         }
-        out = labels.get(no, "配置")
+        out = name or labels.get(no, f"配置项{no}")
     return (out, "") if verdict == MORE else ("", out)
 
 

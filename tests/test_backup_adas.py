@@ -6,7 +6,7 @@ def test_missing_adas_keeps_competitor_configuration_and_value():
     for ours, theirs, expected in [('✕', '定速巡航', 500), ('定速巡航', '基础L2', 500)]:
         more, less = _backup_display(9, LESS, ours, theirs, ours, theirs)
         assert not more
-        assert less == f'{ours}({theirs})'
+        assert less == (theirs if ours == '✕' else f'{ours}({theirs})')
         assert _default_rule_amount(9, less, 'less') == expected
         reverse, _ = _backup_display(9, MORE, theirs, ours, theirs, ours)
         assert _default_rule_amount(9, reverse, 'more') == expected

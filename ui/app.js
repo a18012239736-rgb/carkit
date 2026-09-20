@@ -24,22 +24,27 @@ function configurationChoices(no) {
     17:['卤素大灯','LED大灯'],18:['电动天窗','不可开启全景天窗','可开启全景天窗'],19:['●'],
     20:['电调','折叠','加热','电调+折叠','电调+加热','折叠+加热','电调+折叠+加热'],
     24:['●'],25:['塑料','仿皮','真皮','翻毛皮','NAPPA'],26:['手调','电调'],27:['●'],28:['●'],
-    30:['HUD','AR-HUD'],31:['流媒体'],32:Array.from({length:10},(_,i)=>`${i+1}个`),
+    30:['HUD','AR-HUD','P-HUD'],31:['流媒体'],32:Array.from({length:10},(_,i)=>`USB/Type-C ${i+1}个`),
     33:['1个无线充电','2个无线充电'],39:['单色','多色'],40:['●'],41:['●'],
     5:[2,4,6,7,8,9,10,11,12].map(n=>`${n}气囊`),
     8:[1,2,3,4,5].map(n=>`${n}颗激光雷达`),
-    35:['主驾6向电调+副驾4向手调','主驾6向电调+副驾4向电调','主驾8向电调+副驾4向电调','主驾10向电调+副驾6向电调'],
+    35:['主驾手调+副驾手调','主驾6向电调+副驾4向手调','主驾6向电调+副驾4向电调','主驾8向电调+副驾4向电调','主驾10向电调+副驾6向电调'],
     38:[1,2,3,4].map(n=>`${n}车外扬声器`),
     6:['悬架软硬调节','悬架高低调节','悬架软硬+高低调节'],
     23:['4G','5G'],34:['织物','仿皮','真皮','翻毛皮','NAPPA真皮'],
+    43:['●'],44:['●'],45:['主驾座椅记忆','副驾座椅记忆','前排座椅记忆'],
   };
   return choices[no]?base.concat(choices[no]):null;
 }
 
 function addConfigurationChoices(root, snapshotCells=null) {
-  const fields=snapshotCells ? root.querySelectorAll('input[data-cell]') : root.querySelectorAll('td[data-no]:not([data-sub])');
+  const fields=snapshotCells ? root.querySelectorAll('input[data-cell]') : root.matches('td[data-no]:not([data-sub])') ? [root] : root.querySelectorAll('td[data-no]:not([data-sub])');
   fields.forEach(field=>{
     const no=snapshotCells?snapshotCells[+field.dataset.cell].no:+field.dataset.no;
+    if([21,22,29].includes(no)){
+      addScreenEditor(field,no,!!snapshotCells);
+      return;
+    }
     const options=configurationChoices(no);
     if(!options)return;
     const current=snapshotCells?field.value:field.textContent.trim();
@@ -79,8 +84,90 @@ function addConfigurationChoices(root, snapshotCells=null) {
     };
   });
 }
+function addScreenEditor(field,no,isInput){
+  const current=isInput?field.value:field.textContent.trim();
+  const container=isInput?field.parentElement:field;
+  if(!isInput){field.contentEditable='false';field.textContent='';}
+  const stored=isInput?field:document.createElement('input');
+  stored.hidden=true;stored.value=current;
+  if(!isInput){stored.dataset.configValue='true';container.append(stored);}
+  const editor=document.createElement('div');
+  editor.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';
+  editor.innerHTML='<select aria-label="屏幕状态"><option value="present">有</option><option value="absent">无配置</option><option value="pending">待定</option><option value="optional">选装</option></select><input aria-label="屏幕尺寸（英寸）" type="number" min="0.1" max="100" step="0.01" placeholder="尺寸" style="width:85px"><span>英寸</span>'+(no===29?'<label><input type="checkbox">全液晶</label>':'');
+  const state=editor.querySelector('select'), size=editor.querySelector('input[type=number]'), lcd=editor.querySelector('input[type=checkbox]');
+  const match=current.match(/(\d+(?:\.\d+)?)\s*(?:英寸|吋|寸)/)||current.match(/^[●○]?\s*(\d+(?:\.\d+)?)(?![\d.]|\s*[kK])/);
+  state.value=current.includes('[待定]')?'pending':/^(✕|×|无|无配置|-|不适用)$/.test(current)?'absent':match?(current.startsWith('○')?'optional':'present'):'pending';
+  if(match)size.value=Number(match[1]);
+  if(lcd)lcd.checked=current.includes('全液晶');
+  const sync=()=>{
+    size.disabled=['absent','pending'].includes(state.value);
+    if(lcd)lcd.disabled=size.disabled;
+    stored.value=state.value==='absent'?'✕':state.value==='pending'?'[待定]':!size.value||!size.checkValidity()?'[待定]屏幕尺寸未填写':(state.value==='optional'?'○':'')+Number(size.value)+'寸'+(no===29?(lcd.checked?'全液晶仪表':'仪表'):no===21?'中控屏':'副驾娱乐屏');
+    container.classList.toggle('pending',stored.value.includes('[待定]'));
+  };
+  editor.oninput=sync;editor.onchange=sync;
+  container.append(editor);
+  // Preserve existing values (including optional alternatives) until actually edited.
+  size.disabled=['absent','pending'].includes(state.value);
+  if(lcd)lcd.disabled=size.disabled;
+  if(state.value==='pending'&&!current.includes('[待定]'))stored.value='[待定]'+current;
+}
 function configurationCellValue(td){
   return td.querySelector('input[data-config-value]')?.value.trim() ?? td.textContent.trim();
+}
+
+function updateSnapshotValue(snap,no,name,value,sub=''){
+  const cell=snap.cells.find(c=>c.no===no);
+  if(!cell)return [];
+  const get=n=>sub?(cell.values[n]||{})[sub]:cell.values[n];
+  if(get(name)===value)return [];
+  const links=cell.links||(cell.links={});
+  if(sub&&links[name]&&typeof links[name]==='object')delete links[name][sub];
+  else delete links[name];
+  const changed=[],queue=[name],seen=new Set();
+  while(queue.length){
+    const current=queue.shift();
+    if(seen.has(current))continue;
+    seen.add(current);
+    if(sub){
+      if(!cell.values[current]||typeof cell.values[current]!=='object')cell.values[current]={};
+      cell.values[current][sub]=value;
+    }else cell.values[current]=value;
+    changed.push(current);
+    for(const [child,link] of Object.entries(links)){
+      const parent=sub&&link&&typeof link==='object'?link[sub]:link;
+      if(parent===current)queue.push(child);
+    }
+  }
+  return changed;
+}
+
+function bindSnapshotEditor(root,snap,isInput=false){
+  const commit=td=>{
+    const stored=isInput?td.querySelector('input[data-cell]'):null;
+    if(isInput&&!stored || !isInput&&!td.dataset.no)return;
+    const no=isInput?snap.cells[+stored.dataset.cell].no:+td.dataset.no;
+    const name=isInput?snap.trims[+stored.dataset.trim].name:td.dataset.t;
+    const sub=isInput?stored.dataset.sub||'':td.dataset.sub||'';
+    const value=isInput?stored.value.trim():configurationCellValue(td);
+    const changed=updateSnapshotValue(snap,no,name,value,sub);
+    if(!changed.length)return;
+    ST.diff=null;$('#diff-result').hidden=true;
+    const fields=isInput?root.querySelectorAll('input[data-cell]'):root.querySelectorAll('td[data-no]');
+    fields.forEach(field=>{
+      const childNo=isInput?snap.cells[+field.dataset.cell].no:+field.dataset.no;
+      const child=isInput?snap.trims[+field.dataset.trim].name:field.dataset.t;
+      if(childNo!==no||child===name||!changed.includes(child)||(field.dataset.sub||'')!==sub)return;
+      const container=isInput?field.parentElement:field;
+      container.replaceChildren();
+      if(isInput){field.value=value;field.hidden=false;container.append(field);}
+      else {container.textContent=value;container.contentEditable='true';}
+      container.className=cellCls(value);
+      addConfigurationChoices(container,isInput?snap.cells:null);
+    });
+  };
+  root.onchange=e=>{const td=e.target.closest('td');if(td)commit(td);};
+  root.onfocusout=e=>{const td=e.target.closest('td[contenteditable="true"][data-no]');if(td)commit(td);};
 }
 
 function toast(msg, cls = "") {
@@ -443,7 +530,17 @@ async function renderSnapshot() {
         const old=t.name, name=inp.value.trim();
         if(!name || snap.trims.some(other=>other!==t && other.name===name)){inp.value=old;toast('版型名称不能为空或重复','err');return;}
         collectSnapshotEdits();
-        for(const c of snap.cells){c.values[name]=c.values[old];delete c.values[old];}
+        for(const c of snap.cells){
+          c.values[name]=c.values[old];delete c.values[old];
+          if(c.links){
+            if(old in c.links){c.links[name]=c.links[old];delete c.links[old];}
+            for(const [child,link] of Object.entries(c.links)){
+              if(link===old)c.links[child]=name;
+              else if(link&&typeof link==='object')for(const sub of Object.keys(link))if(link[sub]===old)link[sub]=name;
+            }
+          }
+        }
+        for(const other of snap.trims)if(other.base===old)other.base=name;
         t.name=name; renderSnapshot(); return;
       }
       t[inp.dataset.k] = inp.dataset.k === "price_guide" ? (parseFloat(inp.value) || null) : inp.value;
@@ -484,6 +581,7 @@ async function renderSnapshot() {
   html += "</tbody></table>";
   $("#snapshot-table-wrap").innerHTML = html;
   addConfigurationChoices($('#snapshot-table-wrap'));
+  bindSnapshotEditor($('#snapshot-table-wrap'),snap);
 }
 
 function collectSnapshotEdits() {
@@ -601,8 +699,11 @@ $('#diff-mode').addEventListener('change', async()=>{
   await rebuildPairs();
 });
 $("#diff-ladder").addEventListener("change", rebuildPairs);
+$('#diff-valuation').addEventListener('change',()=>{ST.diff=null;$('#diff-result').hidden=true;});
 
 async function rebuildPairs() {
+  ST.diff=null;
+  $('#diff-result').hidden=true;
   const box = $("#pairs-editor");
   box.querySelectorAll(".pair-row").forEach((r) => r.remove());
   const competitor=$('#diff-mode').value==='competitor';
@@ -619,6 +720,8 @@ async function rebuildPairs() {
 }
 
 $("#btn-add-pair").addEventListener("click", () => {
+  ST.diff=null;
+  $('#diff-result').hidden=true;
   const box = $("#pairs-editor");
   addPairRow(JSON.parse(box.dataset.selfTrims || "[]"), JSON.parse(box.dataset.compTrims || "[]"));
 });
@@ -631,7 +734,8 @@ function addPairRow(st, ct) {
     <span class="dim">VS</span>
     <select class="pair-comp">${ct.map((t) => `<option>${t}</option>`).join("")}</select>
     <button class="pair-del">✕</button>`;
-  row.querySelector(".pair-del").addEventListener("click", () => row.remove());
+  row.querySelector(".pair-del").addEventListener("click", () => {row.remove();ST.diff=null;$('#diff-result').hidden=true;});
+  row.addEventListener('change',()=>{ST.diff=null;$('#diff-result').hidden=true;});
   $("#pairs-editor").appendChild(row);
 }
 
@@ -807,7 +911,7 @@ $('#diff-edit-self').onclick=async()=>{
   const r=await api('load_snapshot',comparisonSelfPath);
   comparisonSelf=r.snapshot;
   $('#diff-self-editor h3').textContent='修改本品配置';
-  $('#diff-self-editor p').textContent='逐项修改后保存，再运行对比。未提及填 ✕，明确未定填 [待定]。';
+  $('#diff-self-editor p').textContent='修改会同步到继承该项的版型，保存后重新对比。';
   const checklist=await loadChecklist();
   const names=Object.fromEntries(checklist.items.map(x=>[x.no,x.name]));
   let html='<table class="grid"><tr><th>配置项</th>'+comparisonSelf.trims.map(t=>`<th>${esc(t.name)}</th>`).join('')+'</tr>';
@@ -824,6 +928,7 @@ $('#diff-edit-self').onclick=async()=>{
   });
   $('#diff-self-table').innerHTML=html+'</table>';
   addConfigurationChoices($('#diff-self-table'),comparisonSelf.cells);
+  bindSnapshotEditor($('#diff-self-table'),comparisonSelf,true);
   $('#diff-self-editor').hidden=false;
 };
 $('#diff-save-self').onclick=async()=>{
@@ -978,7 +1083,10 @@ $('#ppt-expand').onclick=async()=>{
   await renderSnapshot();
   $('#ppt-review').hidden=false;$('#ppt-confirm').checked=false;
   $('#ppt-evidence').textContent=JSON.stringify(res.snapshot.rulings[0],null,2);
-  $('#ppt-status').textContent='完整配置已展开在下方，修改后勾选确认并保存。';
+  const remaining=res.snapshot.rulings[0]?.remaining||{};
+  const unmatched=Object.entries(remaining).flatMap(([name,lines])=>lines.map(line=>`${name}：${line}`));
+  $('#ppt-status').style.whiteSpace='pre-line';
+  $('#ppt-status').textContent=unmatched.length?'以下原文未完全识别，请在下方对应配置行补充核对：\n'+unmatched.join('\n'):'完整配置已展开在下方，修改后勾选确认并保存。';
 };
 $('#ppt-save').onclick=async()=>{
   if(!$('#ppt-confirm').checked)return toast('请先核对并勾选确认','err');

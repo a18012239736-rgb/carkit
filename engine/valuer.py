@@ -20,7 +20,7 @@ OVERALL_FORMULAS = {}
 DEFAULT_FLAT = {
     2: 0, 3: 2000, 8: 0, 11: 2000, 12: 1000, 13: 800,
     14: 300, 15: 1000, 16: 500, 19: 0, 24: 0, 27: 200,
-    28: 100, 40: 800, 41: 200,
+    28: 100, 40: 800, 41: 200, 43: 1000, 44: 100,
 }
 ZERO_ITEMS = {2, 9, 20, 25}
 EXCLUDED_ITEMS = {2, 8, 19, 24}  # Workbook '/' entries, not zero-price base tiers.
@@ -33,7 +33,7 @@ def default_valuation(rules):
         no = item["no"]
         if item.get("merged_into"):
             continue
-        rule = "dynamic" if no in {1, 3, 4, 5, 6, 7, 9, 17, 18, 20, 21, 22, 23, 25, 26, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39} else "flat"
+        rule = "dynamic" if no in {1, 3, 4, 5, 6, 7, 9, 17, 18, 20, 21, 22, 23, 25, 26, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 45} else "flat"
         if no in EXCLUDED_ITEMS:
             rule = 'excluded'
         items.append({"no": no, "name": item.get("md_name") or item["name"],
@@ -198,7 +198,7 @@ def _default_rule_amount(no, disp, side):
             return {'城市NOA':8000,'高速NOA':3000,'基础L2':1000,'定速巡航':500}.get(normalize_adas(v), 0)
         return abs(adas(cur) - adas(prev))
     if no == 10: return 0
-    if no == 17: return 1000 if "LED" in cur and "LED" not in prev else 0
+    if no == 17: return abs((1000 if 'LED' in cur else 0)-(1000 if 'LED' in prev else 0))
     if no == 18:
         def roof(v): return 2000 if "不可开启全景" in v else 2500 if "可开启全景" in v else 1000 if "电动" in v else 0
         return abs(roof(cur) - roof(prev))
@@ -216,15 +216,13 @@ def _default_rule_amount(no, disp, side):
     if no == 29:
         def cluster(v): return (200 if "全液晶" in v else 0) + num(v)*100
         return abs(cluster(cur) - cluster(prev))
-    if no == 30: return 2000 if "AR-HUD" in cur else 1000 if "HUD" in cur else 0
+    if no == 30:
+        def hud(v): return 3000 if 'P-HUD' in v else 2000 if 'AR-HUD' in v else 1000 if 'HUD' in v else 0
+        return abs(hud(cur)-hud(prev))
     if no == 31: return 1000 if "流媒体" in cur and "流媒体" not in prev else 0
     if no == 32:
-        def ports(value):
-            total = re.search(r'(\d+)个USB/Type-C接口', value)
-            if total:
-                return int(total[1])
-            return sum(int(n) for n in re.findall(r'\d+', value))
-        return abs(ports(cur) - ports(prev)) * 50
+        from .usb import usb_total
+        return abs((usb_total(cur) or 3) - ((usb_total(prev) or 3) if bits else 3)) * 50
     if no == 33:
         def chargers(v):
             if v.strip() in ('✕','X','无',''): return 0
@@ -241,7 +239,10 @@ def _default_rule_amount(no, disp, side):
         return abs(seats(cur)-seats(prev))
     if no == 36:
         vals = {"通风":400, "加热":250, "按摩":600, "记忆":100, "头枕":100}
-        return abs(sum(v for k,v in vals.items() if k in cur)-sum(v for k,v in vals.items() if k in prev))
+        def seats(v):
+            count = 2 if '前排' in v or '主副' in v else 1
+            return count * sum(price for feature, price in vals.items() if feature in v)
+        return abs(seats(cur)-seats(prev))
     if no in {37, 38}:
         def speakers(v):
             return _num(v, 1 if '扬声器' in v else 0) or 0
@@ -252,6 +253,9 @@ def _default_rule_amount(no, disp, side):
         return abs(prices[ambient_level(cur)] - prices[ambient_level(prev)])
     if no == 40: return 800 if cur not in ("✕","") and prev in ("✕","") else 0
     if no == 41: return 200 if cur not in ("✕","") and prev in ("✕","") else 0
+    if no == 45:
+        def count(v): return 0 if v in ('✕','') else 2 if '前排' in v or '主副' in v else 1
+        return abs(count(cur)-count(prev))*100
     return 0
 
 
