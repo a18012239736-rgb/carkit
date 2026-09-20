@@ -116,6 +116,14 @@ function seatSubLabel(sub){
   const m=String(sub).match(/^(主驾|副驾|二排)(通风|加热|按摩|头枕音响)$/);
   return m?`座椅${m[2]} · ${m[1]}`:sub;
 }
+function mirrorParts(value){
+  const s=String(value||'');
+  return ['电调','折叠','加热'].map(x=>s.includes(x));
+}
+function mirrorEditorCell(value, attrs){
+  const parts=mirrorParts(value);
+  return ['电调','折叠','加热'].map((name,i)=>`<label class="compact-choice">${name}<select data-mirror="${attrs}" data-mirror-part="${i}"><option value="✕" ${!parts[i]?'selected':''}>无</option><option value="●" ${parts[i]?'selected':''}>有</option></select></label>`).join('');
+}
 function addScreenEditor(field,no,isInput){
   const current=isInput?field.value:field.textContent.trim();
   const container=isInput?field.parentElement:field;
@@ -474,6 +482,11 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
       html+=`</tr>`;
       continue;
     }
+    if(it.no===20){
+      html += `<tr><td class="no">20</td><td>${it.name}</td>`;
+      html += it.values.map((v,i)=>`<td data-no="20" data-i="${i}" data-mirror-cell>${mirrorEditorCell(v,`${i}`)}</td>`).join('');
+      html += '</tr>'; continue;
+    }
     html += `<tr><td class="no">${it.no}</td><td>${it.name}${it.unmapped ? ' <span class="tag warn">待映射</span>' : ""}</td>`;
     html += it.values.map((v, i) =>
       it.no===1 || it.no===37
@@ -503,6 +516,8 @@ function collectLadderEdits(target="#ladder-table-wrap", ladder=ST.ladder) {
     } else if (td.querySelector('input[data-step]')) {
       const raw=td.querySelector('input[data-step]').value;
       it.values[i]=raw+(no===1?'km':'扬声器');
+    } else if (td.dataset.mirrorCell) {
+      it.values[i] = ['电调','折叠','加热'].filter((_,p)=>td.querySelector(`select[data-mirror-part="${p}"]`)?.value==='●').join('+') || '✕';
     } else if (td.dataset.sub) {
       const sr = (it.subs || []).find((s) => s.sub === td.dataset.sub);
       if (sr) sr.values[i] = configurationCellValue(td);
@@ -999,6 +1014,11 @@ $('#diff-edit-self').onclick=async()=>{
       });
       return;
     }
+    if(c.no===20){
+      html+=`<tr><td class="no">20</td><td>${esc(names[c.no]||'外后视镜')}</td>`;
+      html+=comparisonSelf.trims.map((t,j)=>`<td data-mirror-cell data-cell="${i}" data-trim="${j}">${mirrorEditorCell(c.values[t.name],`${i},${j}`)}</td>`).join('');
+      html+='</tr>'; return;
+    }
     const subs=[...new Set(Object.values(c.values).flatMap(v=>v&&typeof v==='object'?Object.keys(v):[]))];
     (subs.length?subs:[null]).forEach(sub=>{
         html+=`<tr><td class="no">${c.no}</td><td>${esc(names[c.no]||String(c.no))}${sub?' · '+esc(seatSubLabel(sub)):''}</td>`;
@@ -1032,6 +1052,10 @@ $('#diff-save-self').onclick=async()=>{
   $$('#diff-self-table select[data-seat]').forEach(el=>{
     const c=comparisonSelf.cells[+el.dataset.cell], name=comparisonSelf.trims[+el.dataset.trim].name;
     c.values[name][el.dataset.seat]=el.value;
+  });
+  $$('#diff-self-table td[data-mirror-cell]').forEach(td=>{
+    const c=comparisonSelf.cells[+td.dataset.cell], name=comparisonSelf.trims[+td.dataset.trim].name;
+    c.values[name]=['电调','折叠','加热'].filter((_,p)=>td.querySelector(`select[data-mirror-part="${p}"]`)?.value==='●').join('+') || '✕';
   });
   for(const el of $$('#diff-self-table input[data-price]')){
     const v=el.value===''?null:Number(el.value);
