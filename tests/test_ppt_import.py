@@ -105,3 +105,17 @@ def test_xml_run_fragments_and_presentation_page_order(tmp_path):
     assert d['columns'][1]['base']=='基础型'
     assert d['price_kind']=='TP价格'
     with pytest.raises(ValueError,match='页码'):parse_page(path,20)
+
+def test_side_by_side_trim_cards_are_not_treated_as_label_column():
+    from engine.ppt_import import _parse_table_page
+    def block(x,y,text,w=1_500_000,h=300_000):
+        return {'x':x,'y':y,'w':w,'h':h,'lines':text.split('\n')}
+    blocks=[block(1_000_000,1_000_000,'500km 基础型'),block(4_000_000,1_000_000,'500km 舒适型'),
+            block(1_000_000,2_000_000,'7.58'),block(4_000_000,2_000_000,'8.28'),
+            block(1_000_000,3_000_000,'4气囊\n6扬声器',1_800_000,1_200_000),
+            block(4_000_000,3_000_000,'6气囊\n8扬声器',1_800_000,1_200_000)]
+    draft=_parse_table_page('T13T产品策略.pptx',1,blocks)
+    assert [c['name'] for c in draft['columns']]==['500km 基础型','500km 舒适型']
+    assert [c['price'] for c in draft['columns']]==[7.58,8.28]
+    assert draft['columns'][1]['base']=='500km 基础型'
+    assert draft['columns'][1]['text']=='6气囊\n8扬声器'

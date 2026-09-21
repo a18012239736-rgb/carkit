@@ -239,10 +239,28 @@ def _parse_table_page(path, page, blocks):
     rows=_table_rows(blocks)
     if len(rows)<2:
         raise ValueError('未识别到配置阶梯文本或表格，请选择配置阶梯页；图片式页面暂不支持自动识别。')
-    header_idx=next((i for i,row in enumerate(rows) if len(row)>=3 and sum(_is_trim_name(c['lines'][0]) for c in row)>=2), None)
+    header_idx=next((i for i,row in enumerate(rows) if len(row)>=2 and sum(_is_trim_name(c['lines'][0]) for c in row)>=2), None)
     if header_idx is None:
         raise ValueError('未识别到版型列，请确保表格首行包含版型名称（如标准版、Pro、Max）。')
     header=rows[header_idx]
+    trim_headers=[c for c in header if len(c['lines'])==1 and _is_trim_name(c['lines'][0])]
+    if trim_headers and trim_headers[0] is header[0]:
+        trim_headers.sort(key=lambda c:c['x'])
+        names=[c['lines'][0].strip() for c in trim_headers]
+        columns=[]
+        for i,h in enumerate(trim_headers):
+            center=h['x']+h['w']/2
+            below=[b for b in blocks if b['y']>h['y'] and abs(b['x']+b['w']/2-center)<max(h['w'],600000)]
+            prices=[b for b in below if len(b['lines'])==1 and re.fullmatch(r'\d+(?:\.\d+)?(?:万元|万)?',b['lines'][0])]
+            body=next((b for b in below if b not in prices and not _is_trim_name(b['lines'][0])),None)
+            columns.append({'name':names[i],
+                            'base':names[0] if i and re.search(r'基础|入门|标准',names[0]) else None,
+                            'price':float(re.sub(r'万元|万','',prices[0]['lines'][0])) if prices else None,
+                            'text':'\n'.join(body['lines']) if body else ''})
+        return {'model':Path(path).stem.split('产品')[0], 'page':page, 'source':Path(path).name,
+                'price_kind':'未确定', 'columns':columns,
+                'source_text':'\n'.join(' '.join(b['lines']) for b in blocks),
+                'warnings':['已按并排版型卡片识别，请核对版型、价格和继承关系。']}
     names=[c['lines'][0].strip() for c in header[1:] if _is_trim_name(c['lines'][0])]
     if len(names)<2:
         raise ValueError('表格中的版型数量不足，请至少保留两个版型列。')
