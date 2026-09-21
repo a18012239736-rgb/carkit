@@ -225,7 +225,7 @@ def test_backup_rows_match(rules, self_ladder, comp_ladder, diff_cells):
         if actual_more != expected_more:
             errors.append(f"组{i+1} 多栏:\n  mine  ={actual_more}\n  golden={expected_more}")
         new_less = {c['backup_less'] for c in diff_cells if c['pair']==i and c['no']>41}
-        historical_less = [v for v in g['less'] if not v.startswith(('本品少：','本品多：')) and v not in new_less]
+        historical_less = [v for v in g['less'] if '座椅' not in v and v not in new_less]
         expected_less = [v for v in gl if '座椅' not in v]
         if historical_less != expected_less:
             errors.append(f"组{i+1} 少栏:\n  mine  ={historical_less}\n  golden={expected_less}")

@@ -57,6 +57,25 @@ console.log(JSON.stringify({first,final:snap}));
     assert '舒适' not in final['links']
 
 
+def test_competitor_ladder_edit_cascades_only_through_inherited_values():
+    script="""
+const fs=require('fs'), vm=require('vm');
+const source=fs.readFileSync('ui/app.js','utf8'), context={};vm.createContext(context);
+vm.runInContext(source.slice(source.indexOf('function cascadeLadderValues('),source.indexOf('function mirrorParts(')),context);
+console.log(JSON.stringify(context.cascadeLadderValues(['A','A','A','B'],['C','A','D','B'])));
+"""
+    result=json.loads(subprocess.run(['node','-e',script],text=True,encoding='utf-8',capture_output=True,
+                                    cwd=Path(__file__).resolve().parents[1],check=True).stdout)
+    assert result == ['C','C','D','B']
+
+
+def test_seat_summary_has_no_redundant_prefix_or_price():
+    from engine.differ import cmp_seat36
+    verdict, _, backup = cmp_seat36({'主驾通风':'●','副驾通风':'●'}, {})
+    assert verdict == '多'
+    assert backup == '前排座椅通风'
+
+
 def test_zero_tier_differences_are_priced_both_ways():
     from engine.differ import diff
     from engine.models import Ladder, LadderItem, ValuationItem, ValuationTable

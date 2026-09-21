@@ -238,7 +238,15 @@ def cmp_seat36(sv, cv, comp_sub_vals=None, **kw):
         '待核对：'+'、'.join(unknown) if unknown else '',
     ) if part) or '配置相同'
     display = f'{verdict} {detail}'
-    backup = f'{detail}（差价{abs(amount)}元）' if amount else ''
+    def summary(keys):
+        labels=[]
+        for feature in PRICES:
+            seats=[seat for seat in ('主驾','副驾','二排') if seat+feature in keys]
+            if seats[:2] == ['主驾','副驾']:
+                labels.append('前排座椅'+feature); seats=seats[2:]
+            labels.extend(seat+'座椅'+feature for seat in seats)
+        return '、'.join(labels)
+    backup = summary(more if verdict == MORE else less) if amount else ''
     return verdict, display, backup
 
 

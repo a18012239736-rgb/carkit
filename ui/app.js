@@ -116,6 +116,18 @@ function seatSubLabel(sub){
   const m=String(sub).match(/^(主驾|副驾|二排)(通风|加热|按摩|头枕音响)$/);
   return m?`座椅${m[2]} · ${m[1]}`:sub;
 }
+function configurationDisplayOrder(items){
+  return [...items].sort((a,b)=>(a.no===45?36.5:a.no)-(b.no===45?36.5:b.no));
+}
+function cascadeLadderValues(original,edited){
+  const explicit=edited.map((value,i)=>value!==original[i]), result=[...original];
+  explicit.forEach((changed,i)=>{
+    if(!changed)return;
+    result[i]=edited[i];
+    for(let j=i+1;j<original.length&&original[j]===original[i];j++)if(!explicit[j])result[j]=edited[i];
+  });
+  return result;
+}
 function mirrorParts(value){
   const s=String(value||'');
   return ['电调','折叠','加热'].map(x=>s.includes(x));
@@ -469,14 +481,14 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
   let html = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
   html += lad.trims.map((t) => `<th>${t.name}<br><span class="dim">${t.price_guide ?? ""}万</span></th>`).join("");
   html += "</tr></thead><tbody>";
-  for (const it of lad.items) {
+  for (const it of configurationDisplayOrder(lad.items)) {
     if(it.no===36){
       const bySub=Object.fromEntries((it.subs||[]).map(sr=>[sr.sub,sr.values]));
       ['通风','加热','按摩','头枕音响'].forEach(feature=>{
         html+=`</tr><tr><td class="no">36</td><td>座椅${feature}</td>`;
         html+=it.values.map((_,i)=>{
           const main=(bySub['主驾'+feature]||[])[i]||'✕',副=(bySub['副驾'+feature]||[])[i]||'✕';
-          return `<td><label>主驾<select data-seat="主驾${feature}" data-no="36" data-i="${i}"><option value="✕" ${main==='✕'?'selected':''}>无</option><option value="●" ${main==='●'?'selected':''}>有</option></select></label><label>副驾<select data-seat="副驾${feature}" data-no="36" data-i="${i}"><option value="✕" ${副==='✕'?'selected':''}>无</option><option value="●" ${副==='●'?'selected':''}>有</option></select></label></td>`;
+          return `<td data-no="36" data-i="${i}" data-seat-cell><label>主驾<select data-seat="主驾${feature}"><option value="✕" ${main==='✕'?'selected':''}>无</option><option value="●" ${main==='●'?'selected':''}>有</option></select></label><label>副驾<select data-seat="副驾${feature}"><option value="✕" ${副==='✕'?'selected':''}>无</option><option value="●" ${副==='●'?'selected':''}>有</option></select></label></td>`;
         }).join('');
       });
       html+=`</tr>`;
@@ -503,16 +515,29 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
   html += "</tbody></table>";
   wrap.innerHTML = html;
   addConfigurationChoices(wrap);
+  wrap.onchange=event=>{
+    if(event.target.value==='__custom__')return;
+    collectLadderEdits(target,lad); renderLadderTable(target,lad);
+  };
+  wrap.onfocusout=event=>{
+    const cell=event.target.closest('td[data-no]');
+    if(cell&&(cell.contentEditable==='true'||event.target.dataset.configValue)){
+      collectLadderEdits(target,lad); renderLadderTable(target,lad);
+    }
+  };
 }
 
 function collectLadderEdits(target="#ladder-table-wrap", ladder=ST.ladder) {
   if (!ladder) return;
+  const originals=new Map(ladder.items.map(it=>[it.no,{values:[...it.values],subs:Object.fromEntries((it.subs||[]).map(sr=>[sr.sub,[...sr.values]]))}]));
   $$(target+" td[data-no]").forEach((td) => {
     const no = +td.dataset.no, i = +td.dataset.i;
     const it = ladder.items.find((x) => x.no === no);
     if (!it) return;
-    if (td.dataset.seat) {
-      const sr=(it.subs||[]).find(s=>s.sub===td.dataset.seat); if(sr)sr.values[i]=td.querySelector('select')?.value||'✕';
+    if (td.dataset.seatCell) {
+      td.querySelectorAll('select[data-seat]').forEach(select=>{
+        const sr=(it.subs||[]).find(s=>s.sub===select.dataset.seat); if(sr)sr.values[i]=select.value||'✕';
+      });
     } else if (td.querySelector('input[data-step]')) {
       const raw=td.querySelector('input[data-step]').value;
       it.values[i]=raw+(no===1?'km':'扬声器');
@@ -524,6 +549,11 @@ function collectLadderEdits(target="#ladder-table-wrap", ladder=ST.ladder) {
     } else {
       it.values[i] = configurationCellValue(td);
     }
+  });
+  ladder.items.forEach(it=>{
+    const old=originals.get(it.no); if(!old)return;
+    it.values=cascadeLadderValues(old.values,it.values);
+    (it.subs||[]).forEach(sr=>{if(old.subs[sr.sub])sr.values=cascadeLadderValues(old.subs[sr.sub],sr.values);});
   });
 }
 
@@ -624,7 +654,7 @@ async function renderSnapshot() {
   let html = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
   html += snap.trims.map((t) => `<th>${esc(t.name)}</th>`).join("");
   html += "<th>依据</th></tr></thead><tbody>";
-  for (const it of items) {
+  for (const it of configurationDisplayOrder(items)) {
     const c = cellByNo[it.no];
     if(it.no===36 && c){
       ['通风','加热','按摩','头枕音响'].forEach(feature=>{
@@ -1003,7 +1033,8 @@ $('#diff-edit-self').onclick=async()=>{
   const names=Object.fromEntries(checklist.items.map(x=>[x.no,x.name]));
   let html='<table class="grid"><thead><tr><th>#</th><th>配置项</th>'+comparisonSelf.trims.map(t=>`<th>${esc(t.name)}<br><span class="dim">${t.price_guide??''}万</span></th>`).join('')+'</tr></thead><tbody>';
   html+='<tr><td class="no">—</td><td>指导价（万元）</td>'+comparisonSelf.trims.map((t,i)=>`<td><input data-price="${i}" type="number" step="0.01" value="${t.price_guide??''}"></td>`).join('')+'</tr>';
-  comparisonSelf.cells.forEach((c,i)=>{
+  configurationDisplayOrder(comparisonSelf.cells).forEach(c=>{
+    const i=comparisonSelf.cells.indexOf(c);
     if(c.no===36){
       ['通风','加热','按摩','头枕音响'].forEach(feature=>{
         html+=`<tr><td class="no">36</td><td>座椅${feature}</td>`;
