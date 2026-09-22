@@ -15,7 +15,7 @@
     {"no": 9, "name": "辅助驾驶", "fill_rule": "只看有无高速NOA/城市NOA；连高速NOA都没有→写基础L2", "value_type": "adas_enum", "normalize": "adas", "source_rows": ["辅助驾驶路段", "辅助驾驶系统", "辅助驾驶等级", "巡航系统"], "enum_order": ["定速巡航", "基础L2", "高速NOA", "城市NOA"]},
     {"no": 10, "name": "轮圈材质", "fill_rule": "合并进 #4 轮胎规格", "value_type": "merged", "merged_into": 4, "source_rows": []},
     {"no": 11, "name": "电动吸合门", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["电动吸合门", "吸合门"], "car_kb_gap": true},
-    {"no": 12, "name": "电动前备箱", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["电动前备箱", "前备箱"], "car_kb_gap": true},
+    {"no": 12, "name": "前备箱", "fill_rule": "手动500元、电动1000元；未说明开启方式需确认", "value_type": "bool", "normalize": "bool", "source_rows": ["电动前备箱", "电动前备厢", "前备箱", "前备厢"], "car_kb_gap": true},
     {"no": 13, "name": "电动后备箱", "fill_rule": null, "value_type": "bool_memo", "normalize": "trunk", "source_rows": ["电动后备厢", "电动后备厢位置记忆", "电动后备箱"], "merge": true},
     {"no": 14, "name": "车顶行李架", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["车顶行李架", "行李架"], "car_kb_gap": true},
     {"no": 15, "name": "主动闭合式进气格栅", "md_name": "主动进气格栅", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["主动闭合式进气格栅"]},

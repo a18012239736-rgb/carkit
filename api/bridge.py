@@ -322,7 +322,7 @@ class Bridge:
                 return data
             if kind == 'diff' and not data.get('groups'):
                 raise ValueError('请先运行对比')
-            name = '配置阶梯.xlsx' if kind == 'ladder' else '竞争力对比.xlsx'
+            name = '配置阶梯.xlsx' if kind == 'ladder' else re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', f"竞争力对比-{data.get('self_model') or '本品'}vs{data.get('comp_model') or '竞品'}") + '.xlsx'
             path = self.save_file_dialog(name, ['Excel (*.xlsx)'])
             if isinstance(path, dict):
                 return {'ok': False, 'error': path.get('error', '无法选择保存位置')}
@@ -494,10 +494,46 @@ class Bridge:
 
     # ---------- ④ 赋值表 ----------
 
+    def _current_valuation_path(self):
+        return os.path.join(self.workdir, "赋值", "当前赋值规则.json")
+
+    def current_valuation(self):
+        try:
+            path = self._current_valuation_path()
+            data = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else valuer.default_valuation(self.rules)
+            return {"ok": True, "valuation": valuer.normalize_valuation(data, self.rules),
+                    "path": path, "customized": os.path.exists(path),
+                    "editor_schema": valuer.editor_schema()}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def save_current_valuation(self, val_dict: dict):
+        try:
+            data = valuer.normalize_valuation(val_dict, self.rules)
+            data["source"] = "用户在程序内修改的当前赋值规则"
+            path = self._current_valuation_path()
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=1)
+            return {"ok": True, "valuation": data, "path": path}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def reset_current_valuation(self):
+        try:
+            path = self._current_valuation_path()
+            if os.path.exists(path):
+                os.remove(path)
+            return {"ok": True, "valuation": valuer.default_valuation(self.rules),
+                    "path": path, "editor_schema": valuer.editor_schema()}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def make_valuation_template(self):
         out = os.path.join(self.workdir, "赋值", f"赋值表模板-{_today()}.xlsx")
-        built_in = valuer.default_valuation(self.rules)
-        valuer.make_template_xlsx(out, self.rules, {it["no"]: it for it in built_in["items"]})
+        path = self._current_valuation_path()
+        saved = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
+        current = valuer.normalize_valuation(saved, self.rules)
+        valuer.make_template_xlsx(out, self.rules, {it["no"]: it for it in current["items"]})
         return {"ok": True, "path": out}
 
     def load_valuation(self, path: str):
@@ -506,15 +542,17 @@ class Bridge:
                 d = valuer.load_xlsx(path)
             else:
                 d = json.load(open(path, encoding="utf-8"))
-            return {"ok": True, "valuation": d}
+            return {"ok": True, "valuation": valuer.normalize_valuation(d, self.rules),
+                    "editor_schema": valuer.editor_schema()}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
     def save_valuation(self, path: str, val_dict: dict):
         try:
+            val_dict = valuer.normalize_valuation(val_dict, self.rules)
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(val_dict, f, ensure_ascii=False, indent=1)
-            return {"ok": True}
+            return {"ok": True, "valuation": val_dict}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -555,13 +593,14 @@ class Bridge:
             if valuation_path:
                 vd = valuer.load_xlsx(valuation_path) if valuation_path.endswith(".xlsx") \
                     else json.load(open(valuation_path, encoding="utf-8"))
+                vd = valuer.normalize_valuation(vd, self.rules)
                 valuation = ValuationTable(version=vd.get("version", ""),
                                            source=vd.get("source", ""),
                                            items=[ValuationItem(**it) for it in vd["items"]])
             else:
-                # The supplied reference workbook is now the default; the UI
-                # can still load a user-edited table to override it.
-                vd = valuer.default_valuation(self.rules)
+                path = self._current_valuation_path()
+                saved = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
+                vd = valuer.normalize_valuation(saved, self.rules)
                 valuation = ValuationTable(version=vd["version"], source=vd["source"],
                                            items=[ValuationItem(**it) for it in vd["items"]])
             excluded = {it.no for it in valuation.items if it.rule == 'excluded'}

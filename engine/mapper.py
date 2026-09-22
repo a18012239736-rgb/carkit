@@ -555,7 +555,18 @@ def map_raw_to_ladder(raw: RawTable, rules) -> dict:
         airbag_comps = []
         subs_rows = []
         for i in range(n_trims):
-            if vt == "airbag_count":
+            if no == 12:
+                c = _cell(raw, ['电动前备箱','电动前备厢'], i)
+                generic = _cell(raw, ['前备箱','前备厢'], i)
+                if _solid(c):
+                    value = '手动前备箱' if '手动' in _txt(c) else '电动前备箱'
+                elif _solid(generic):
+                    text = _txt(generic)
+                    value = '电动前备箱' if '电动' in text else '手动前备箱' if '手动' in text else '[待定]前备箱开启方式未说明'
+                else:
+                    value = _bool_val(c or generic)
+                values.append(value)
+            elif vt == "airbag_count":
                 cnt, comps = fn(raw, i, item)
                 values.append(cnt)
                 airbag_comps.append(comps)

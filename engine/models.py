@@ -328,6 +328,7 @@ class ValuationItem:
     unit_val: Optional[float] = None    # per_unit
     note: str = ""
     rule: str = ""                      # 内置用户规则标识（可选）
+    params: dict = field(default_factory=dict)  # 动态规则的可编辑金额/阈值
 
 
 @dataclass

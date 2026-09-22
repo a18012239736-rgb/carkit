@@ -20,7 +20,7 @@ function configurationChoices(no) {
     3:['400V','800V'],
     4:Array.from({length:8},(_,i)=>i+16).flatMap(n=>[`R${n}钢轮毂`,`R${n}铝轮毂`]),
     7:['360影像','540影像'],9:['定速巡航','基础L2','高速NOA','城市NOA'],
-    11:['●'],12:['●'],13:['●'],14:['●'],15:['●'],16:['●'],
+    11:['●'],12:['手动前备箱','电动前备箱'],13:['●'],14:['●'],15:['●'],16:['●'],
     17:['卤素大灯','LED大灯'],18:['电动天窗','不可开启全景天窗','可开启全景天窗'],19:['●'],
     20:['电调','折叠','加热','电调+折叠','电调+加热','折叠+加热','电调+折叠+加热'],
     24:['●'],25:['塑料','仿皮','真皮','翻毛皮','NAPPA'],26:['手调','电调'],27:['●'],28:['●'],
@@ -714,9 +714,37 @@ function collectSnapshotEdits() {
 }
 
 /* ---------- ④ 赋值表 ---------- */
+let valuationEditorSchema = {};
+
+$("#diff-toggle-valuation").addEventListener("click", async () => {
+  showPage('valuation');
+  await loadCurrentValuation();
+});
+$("#diff-close-valuation").addEventListener("click", async () => {
+  showPage('diff');
+  await refreshDiffSelects();
+});
+
+async function loadCurrentValuation(force=false) {
+  if (ST.valuation && !force) return renderValuation();
+  const res = await api("current_valuation");
+  if (!res.ok) return;
+  ST.valuation = res.valuation;
+  ST.valuationPath = res.path;
+  valuationEditorSchema = res.editor_schema || {};
+  $("#valuation-info").textContent = res.customized ? "当前使用：已保存的自定义规则" : "当前使用：内置默认规则";
+  await renderValuation();
+}
+
 $("#btn-make-template").addEventListener("click", async () => {
+  if (ST.valuation) {
+    if (!collectValuationEdits()) return;
+    const saved = await api("save_current_valuation", ST.valuation);
+    if (!saved.ok) return;
+    ST.valuation = saved.valuation;
+  }
   const res = await api("make_valuation_template");
-  if (res.ok) toast("模板已生成：\n" + res.path, "ok");
+  if (res.ok) toast("当前规则 Excel 已生成：\n" + res.path, "ok");
 });
 
 $("#btn-load-valuation").addEventListener("click", async () => {
@@ -725,17 +753,33 @@ $("#btn-load-valuation").addEventListener("click", async () => {
   const res = await api("load_valuation", path);
   if (res.ok) {
     ST.valuation = res.valuation;
-    ST.valuationPath = path.endsWith(".json") ? path : path.replace(/\.xlsx$/, "") + ".json";
-    $("#valuation-info").textContent = path;
+    valuationEditorSchema = res.editor_schema || valuationEditorSchema;
+    $("#valuation-info").textContent = "已导入，点击“保存并立即应用”后生效：" + path;
     renderValuation();
   }
 });
 
 $("#btn-save-valuation").addEventListener("click", async () => {
-  if (!ST.valuation) return toast("先载入或生成赋值表", "err");
-  collectValuationEdits();
-  await api("save_valuation", ST.valuationPath, ST.valuation);
-  toast("赋值表已保存: " + ST.valuationPath, "ok");
+  if (!ST.valuation) return toast("赋值规则尚未载入", "err");
+  if (!collectValuationEdits()) return;
+  const res = await api("save_current_valuation", ST.valuation);
+  if (!res.ok) return;
+  ST.valuation = res.valuation;
+  ST.valuationPath = res.path;
+  $("#valuation-info").textContent = "已保存；后续对比默认使用此规则";
+  await refreshDiffSelects();
+  toast("赋值规则已保存并立即生效", "ok");
+});
+
+$("#btn-reset-valuation").addEventListener("click", async () => {
+  if (!window.confirm("恢复所有内置默认赋值？已保存的自定义规则将被移除。")) return;
+  const res = await api("reset_current_valuation");
+  if (!res.ok) return;
+  ST.valuation = res.valuation;
+  valuationEditorSchema = res.editor_schema || {};
+  $("#valuation-info").textContent = "已恢复内置默认规则";
+  await renderValuation();
+  toast("已恢复内置默认赋值", "ok");
 });
 
 async function renderValuation() {
@@ -746,31 +790,43 @@ async function renderValuation() {
   for (const it of cl.items) nameByNo[it.no] = it.md_name || it.name;
   const byNo = {};
   for (const it of v.items) byNo[it.no] = it;
-  let html = '<table class="grid"><thead><tr><th>#</th><th>配置项</th><th>计价方式</th><th>金额/单价(元)</th><th>分段JSON</th><th>备注</th></tr></thead><tbody>';
+  let html = '<table class="grid valuation-grid"><thead><tr><th>#</th><th>配置项</th><th>计价方式</th><th>可修改的金额与阈值</th><th>备注</th></tr></thead><tbody>';
   for (const no of Object.keys(nameByNo).map(Number)) {
-    const it = byNo[no] || {};
-    html += `<tr><td class="no">${no}</td><td>${nameByNo[no]}</td>
-      <td contenteditable data-no="${no}" data-k="pricing">${esc(it.pricing || "flat")}</td>
-      <td contenteditable data-no="${no}" data-k="val" class="${it.val == null || it.val === "" ? "pending" : ""}">${it.val ?? ""}</td>
-      <td contenteditable data-no="${no}" data-k="bands" style="max-width:260px">${esc(it.bands ? JSON.stringify(it.bands) : "")}</td>
-      <td contenteditable data-no="${no}" data-k="note">${esc(it.note || "")}</td></tr>`;
+    const it = byNo[no];
+    if (!it) continue; // 轮圈材质、中央气囊等已合并项不单独赋值
+    if (it.rule === 'excluded') {
+      html += `<tr class="valuation-excluded"><td class="no">${no}</td><td>${nameByNo[no]}</td><td>不参与赋值</td><td class="dim">仅保留配置展示</td><td>${esc(it.note || '')}</td></tr>`;
+      continue;
+    }
+    const specs = valuationEditorSchema[String(no)] || [];
+    const controls = it.rule === 'dynamic'
+      ? specs.map(spec=>`<label class="valuation-field"><span>${esc(spec.label)}</span><input type="number" min="0" step="any" data-param="${esc(spec.key)}" data-no="${no}" value="${esc((it.params||{})[spec.key] ?? '')}"><em>${esc(spec.unit||'')}</em></label>`).join('')
+      : `<label class="valuation-field"><span>固定金额</span><input type="number" min="0" step="any" data-val data-no="${no}" value="${esc(it.val ?? '')}"><em>元</em></label>`;
+    html += `<tr><td class="no">${no}</td><td>${nameByNo[no]}</td><td>${it.rule === 'dynamic' ? '动态分档' : '固定金额'}</td><td><div class="valuation-fields">${controls}</div></td><td>${esc(it.note || '')}</td></tr>`;
   }
   html += "</tbody></table>";
   $("#valuation-table-wrap").innerHTML = html;
 }
 
 function collectValuationEdits() {
-  if (!ST.valuation) return;
+  if (!ST.valuation) return false;
   const byNo = {};
   for (const it of ST.valuation.items) byNo[it.no] = it;
-  $$("#valuation-table-wrap td[contenteditable]").forEach((td) => {
-    const no = +td.dataset.no, k = td.dataset.k;
-    if (!byNo[no]) byNo[no] = { no, name: "", pricing: "flat", val: null, bands: [], note: "" }, ST.valuation.items.push(byNo[no]);
-    const raw = td.textContent.trim();
-    if (k === "val") byNo[no].val = raw === "" ? null : parseFloat(raw);
-    else if (k === "bands") { try { byNo[no].bands = raw ? JSON.parse(raw) : []; } catch { toast(`#${no} 分段JSON 解析失败`, "err"); } }
-    else byNo[no][k] = raw;
-  });
+  for (const input of $$("#valuation-table-wrap input[type=number]")) {
+    const no = +input.dataset.no;
+    if (input.value === '' || !input.checkValidity() || !Number.isFinite(Number(input.value))) {
+      toast(`#${no} 请填写大于等于0的有效数字`, "err");
+      input.focus();
+      return false;
+    }
+    const value = Number(input.value);
+    if (input.hasAttribute('data-val')) byNo[no].val = value;
+    else {
+      byNo[no].params ||= {};
+      byNo[no].params[input.dataset.param] = value;
+    }
+  }
+  return true;
 }
 
 /* ---------- ⑤ 对比 ---------- */
@@ -779,7 +835,7 @@ async function refreshDiffSelects() {
     api("list_files", "快照"), api("list_files", "阶梯"), api("list_files", "赋值"),
   ]);
   fillSelect("#diff-snapshot", snaps.filter(f=>f.endsWith('.json')));
-  fillSelect("#diff-valuation", vals.filter(f=>f.endsWith('.json') || f.endsWith('.xlsx')), "内置用户赋值规则（默认）");
+  fillSelect("#diff-valuation", vals.filter(f=>(f.endsWith('.json') || f.endsWith('.xlsx')) && f !== '当前赋值规则.json'), "当前已保存赋值规则（默认）");
   const history = await api('vehicle_history');
   const sel = $('#diff-vehicle'); const previous = sel.value;
   sel.innerHTML = '<option value="">请选择已抓取的竞品</option>'+history.map(r=>`<option value="${esc(r.file)}">${esc(r.label)}</option>`).join('');
@@ -926,7 +982,8 @@ const fmtP = (p) => (p == null ? "?" : p);
 
 $("#btn-export-result").addEventListener("click", async () => {
   if (!ST.diff) return toast("先运行对比", "err");
-  const dest = await api("save_file_dialog", "赋值对比结果.md", ["Markdown (*.md)"]);
+  const filename = `竞争力对比-${ST.diff.self_model||'本品'}vs${ST.diff.comp_model||'竞品'}`.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.md';
+  const dest = await api("save_file_dialog", filename, ["Markdown (*.md)"]);
   if (!dest || dest.error) return;
   await api("write_text_file", dest, ST.diff.md);
   toast("已导出: " + dest, "ok");
@@ -961,7 +1018,8 @@ setTimeout(() => {
 
 function showPage(name) {
   $$('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));
-  $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===name));
+  const navName=name==='valuation'?'diff':name;
+  $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===navName));
 }
 async function selectCompetitor() {
   $('#diff-ladder').innerHTML='';
@@ -1121,7 +1179,7 @@ $('#btn-export-ladder-md').hidden=true;
 $('#page-settings ol').closest('.card').innerHTML='<h2>使用顺序</h2><p>配置阶梯：抓取或选择历史车型 → 检查版型 → 指定基准 → 导出MD。</p><p>竞争力对比：准备本品配置和赋值规则 → 选择历史竞品 → 配对版型 → 检查结果。</p><p class="dim">原始配置自动保留；可在竞争力对比中修正计算用的竞品配置。修正不会覆盖原始抓取记录。</p>';
 
 // Secondary tools are reached from the workflow, with an explicit return.
-for(const name of ['snapshot','valuation']){
+for(const name of ['snapshot']){
   const button=document.createElement('button');
   button.textContent='返回竞争力对比';
   button.onclick=async()=>{showPage('diff');await refreshDiffSelects();};
@@ -1258,7 +1316,10 @@ const ruleRow=document.createElement('div'); ruleRow.className='compare-rules';
 ruleRow.hidden=true;
 ruleRow.innerHTML='<label>赋值规则</label>'; ruleRow.append($('#diff-valuation'));
 compareCard.prepend(modeRow,sides,ruleRow); oldRow.remove();
-modeRow.append($('#page-diff [data-goto="snapshot"]'));
+const valuationShortcut=$('#diff-toggle-valuation');
+const shortcutRow=valuationShortcut.closest('.row');
+modeRow.append(valuationShortcut,$('#page-diff [data-goto="snapshot"]'));
+if(!shortcutRow.children.length)shortcutRow.remove();
 $('#btn-run-diff').closest('.row').classList.add('compare-actions');
 $('#btn-run-diff').textContent='开始对比';
 $('#btn-export-result').textContent='导出 Markdown';
@@ -1284,7 +1345,6 @@ for(const [anchor,kind] of [['btn-stage-export','ladder'],['btn-export-result','
     } finally {button.disabled=false;}
   };
 }
-$$('[data-goto="valuation"]').forEach(button=>button.hidden=true);
 $('#page-diff .notice').hidden=true;
 $('#page-diff .steps').textContent='01 选择车型　→　02 指定版型配对　→　03 查看并导出结果';
 $('#pairs-editor strong').textContent='版型配对';

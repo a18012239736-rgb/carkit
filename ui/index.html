@@ -109,21 +109,6 @@
       </div>
     </section>
 
-    <!-- ④ 赋值表 -->
-    <section id="page-valuation" class="page">
-      <h1>赋值规则</h1>
-      <div class="card">
-        <div class="row">
-          <button id="btn-make-template">生成 xlsx 模板（发给自己填）</button>
-          <button id="btn-load-valuation">载入赋值表 xlsx / JSON…</button>
-          <button id="btn-save-valuation" class="primary">保存 JSON</button>
-          <span id="valuation-info" class="dim"></span>
-        </div>
-        <p class="dim">程序已内置《竞争力对比配置清单参考(1).xlsx》及已确认补充规则；生成模板可查看或覆盖规则。留空 = <span class="tag warn">待赋值</span>。</p>
-      </div>
-      <div class="card table-wrap" id="valuation-table-wrap"></div>
-    </section>
-
     <!-- ⑤ 对比 -->
     <section id="page-diff" class="page">
       <h1>竞争力对比</h1><p class="intro">选择本品与历史竞品，指定版型配对，检查差配并导出结果。</p><div class="steps">01 准备本品与规则　→　02 选择竞品与配对　→　03 检查并导出</div><p class="notice">当前可检查配置差异；金额规则仍需按你的业务口径完成校准。</p>
@@ -134,7 +119,7 @@
           <label>历史竞品</label><select id="diff-vehicle" style="flex:1"></select><select id="diff-ladder" hidden></select><button id="review-competitor">检查竞品配置</button>
           <label>赋值表(可选)</label><select id="diff-valuation" style="flex:1"></select>
         </div>
-        <div class="row"><button data-goto="snapshot">导入本品PPT</button><button id="diff-edit-self">修改当前本品配置</button><button data-goto="valuation">设置赋值规则</button></div>
+        <div class="row"><button data-goto="snapshot">导入本品PPT</button><button id="diff-edit-self">修改当前本品配置</button><button id="diff-toggle-valuation">调整赋值规则</button></div>
         <div id="diff-self-editor" class="card" hidden><h3>修改本品配置</h3><p>修改会同步到继承该项的版型，保存后重新对比。</p><div id="diff-self-table" class="table-wrap"></div><button id="diff-save-self">保存本品修正</button></div>
         <div id="pairs-editor" class="pairs-editor">
           <div class="row"><strong>版型配对（必须人工指定，程序绝不自动配对）</strong>
@@ -152,6 +137,23 @@
         <h2>配置项判定明细</h2>
         <div class="table-wrap" id="detail-table"></div>
       </div>
+    </section>
+
+    <section id="page-valuation" class="page">
+      <div class="valuation-page-nav"><button id="diff-close-valuation">← 返回竞争力对比</button></div>
+      <section class="card valuation-panel">
+        <div class="valuation-heading">
+          <div><h1>赋值规则</h1><p class="dim">管理竞争力对比使用的金额、档位和阈值，保存后下次对比立即生效。</p></div>
+        </div>
+        <div class="valuation-toolbar">
+          <button id="btn-make-template">导出当前规则 Excel</button>
+          <button id="btn-load-valuation">从 Excel / JSON 导入…</button>
+          <button id="btn-reset-valuation">恢复内置默认值</button>
+          <button id="btn-save-valuation" class="primary">保存并立即应用</button>
+          <span id="valuation-info" class="dim"></span>
+        </div>
+        <div class="table-wrap" id="valuation-table-wrap"></div>
+      </section>
     </section>
 
     <!-- ⑥ 设置 -->

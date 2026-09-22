@@ -1,6 +1,6 @@
 """Export the current report results as formatted Excel tables."""
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
@@ -35,12 +35,46 @@ def export_report(path, kind, data):
              '\n'.join(c['items']), '\n'.join(c['options'])] for c in data['columns']])
     elif kind == 'diff':
         groups = data['groups']
-        sheet('对比汇总', [['左侧车型', '左侧版型', '右侧车型', '右侧版型', '左侧指导价（万元）', '右侧指导价（万元）', '多配置', '少配置', '配置优势（元）', '拉平指导价优势（元）', '综合竞争力', '待赋值项目编号']] + [
-            [data.get('self_model'), g['pair']['self_trim'], data.get('comp_model'), g['pair']['comp_trim'],
-             g.get('self_price'), g.get('comp_price'), '\n'.join(g['more']), '\n'.join(g['less']),
-             g.get('valuation', {}).get('config_adv'), g.get('valuation', {}).get('flat_adv'),
-             g.get('valuation', {}).get('overall') if g.get('valuation', {}).get('overall') is not None else '未计算',
-             '、'.join(map(str, g.get('valuation', {}).get('missing', [])))] for g in groups])
+        left, right = data.get('self_model') or '本品', data.get('comp_model') or '竞品'
+        def header(g):
+            def price(p): return '待核' if p is None else f'{p:g}万'
+            return f"{g['pair']['self_trim']} {price(g.get('self_price'))}\nVS\n{g['pair']['comp_trim']} {price(g.get('comp_price'))}"
+        rows = [[f'{left} vs {right} · 竞争力对比'], ['版型配对'] + [header(g) for g in groups],
+                [left+'多'] + ['\n'.join(g['more']) or '—' for g in groups],
+                [left+'少'] + ['\n'.join(g['less']) or '—' for g in groups]]
+        for key, label in [('config_adv','配置优势（元）'), ('flat_adv','拉平指导价优势（元）'), ('overall','综合竞争力')]:
+            rows.append([label] + [g.get('valuation', {}).get(key) if g.get('valuation', {}).get(key) is not None else
+                                  ('公式未设置' if key == 'overall' else '缺少价格或赋值数据') for g in groups])
+        sheet('对比汇总', rows)
+        ws = book['对比汇总']
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(groups)+1)
+        ws.auto_filter.ref = None
+        ws.freeze_panes = 'B3'
+        ws.sheet_view.showGridLines = False
+        ws.column_dimensions['A'].width = 26
+        for col in range(2, len(groups)+2):
+            ws.column_dimensions[get_column_letter(col)].width = 46
+        for row in ws:
+            for cell in row:
+                cell.border = Border(*( [Side(style='thin', color='DDE7EB')]*4 ))
+                if cell.row > 1:
+                    bg, fg = ('EDF4F5','245E6B') if cell.column == 1 or cell.row == 2 else ('EFF8F1','28744B') if cell.row == 3 else ('FFF2F1','B64D43') if cell.row == 4 else ('FFFFFF','243444')
+                    cell.fill = PatternFill('solid', fgColor=bg)
+                    cell.font = Font(name='Calibri', size=11, bold=cell.column==1 or cell.row==2, color=fg)
+                cell.alignment = Alignment(vertical='center' if cell.row<=2 or cell.column==1 else 'top', horizontal='center' if cell.row<=2 else 'left', wrap_text=True)
+        ws.row_dimensions[1].height = 32
+        ws.row_dimensions[2].height = 72
+        for index in (3,4):
+            lines = max((sum(max(1,(len(line)+24)//25) for line in str(c.value).split('\n')) for c in ws[index]), default=1)
+            ws.row_dimensions[index].height = min(409, max(60, lines*17+16))
+        for index in (5,6,7): ws.row_dimensions[index].height = 30
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.orientation = 'landscape'
+        ws.page_setup.paperSize = ws.PAPERSIZE_A3
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.print_options.horizontalCentered = True
+        ws.print_area = ws.dimensions
         sheet('赋值明细', [['左侧版型', '右侧版型', '多或少', '配置差异', '计价依据', '金额（元）']] + [
             [g['pair']['self_trim'], g['pair']['comp_trim'], d['side'], d.get('display'), d.get('rule'), d.get('amount')]
             for g in groups for d in g.get('valuation', {}).get('detail', [])])

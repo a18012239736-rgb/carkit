@@ -239,13 +239,14 @@ def cmp_seat36(sv, cv, comp_sub_vals=None, **kw):
     ) if part) or '配置相同'
     display = f'{verdict} {detail}'
     def summary(keys):
-        labels=[]
+        grouped={seat:[] for seat in ('前排','主驾','副驾','二排')}
         for feature in PRICES:
             seats=[seat for seat in ('主驾','副驾','二排') if seat+feature in keys]
             if seats[:2] == ['主驾','副驾']:
-                labels.append('前排座椅'+feature); seats=seats[2:]
-            labels.extend(seat+'座椅'+feature for seat in seats)
-        return '、'.join(labels)
+                grouped['前排'].append(feature); seats=seats[2:]
+            for seat in seats:
+                grouped[seat].append(feature)
+        return '、'.join(seat+'座椅'+''.join(features) for seat,features in grouped.items() if features)
     backup = summary(more if verdict == MORE else less) if amount else ''
     return verdict, display, backup
 
@@ -367,6 +368,23 @@ def diff(self_ladder, comp_ladder, pairs, rules):
                     continue
 
             # ---- #36 座椅功能 ----
+            if no == 12:
+                def front(value):
+                    if not _has(value): return 0, '✕'
+                    if '手动' in str(value): return 500, '手动前备箱'
+                    if '电动' in str(value) or str(value) == '●': return 1000, '电动前备箱'
+                    return None, '[待定]前备箱开启方式'
+                s_cost, ss = front(sv)
+                c_cost, cs = front(cv)
+                if s_cost is None or c_cost is None:
+                    cells.append(_cell(no, pi, NA, '不计(请确认前备箱开启方式)', sv, cv, 'pending', '', ''))
+                    continue
+                verdict = MORE if s_cost > c_cost else LESS if s_cost < c_cost else SAME
+                label = f'{ss}({cs})' if s_cost and c_cost else ss if s_cost else cs
+                cells.append(_cell(no, pi, verdict, f'{verdict} {label}', sv, cv, '',
+                                   label if verdict == MORE else '', label if verdict == LESS else ''))
+                continue
+
             if no == 36:
                 verdict, disp, backup = cmp_seat36(sv, cv, comp_subs)
                 backup_more, backup_less = (backup, "") if verdict == MORE else (("", backup) if verdict == LESS else ("", ""))
@@ -522,6 +540,9 @@ def _cmp_generic(no, item, sv, cv):
             return SAME, ss, cs
         return (MORE if s_n > c_n else LESS), ss, cs
     if no == 16:
+        # An omitted power rating is not evidence of a lower specification.
+        if _has(sv) and _has(cv) and (_num(sv) is None or _num(cv) is None):
+            return SAME, ss, cs
         s_n = 0 if not _has(sv) else (_num(sv, 0) or 1)
         c_n = 0 if not _has(cv) else (_num(cv, 0) or 1)
         if s_n == c_n:
@@ -697,6 +718,31 @@ def _backup_display(no, verdict, sv, cv, ss, cs, name=''):
     return (out, "") if verdict == MORE else ("", out)
 
 
+def _merge_seat_labels(labels):
+    """Combine display labels only; valuation keeps the original item mapping."""
+    grouped = {}
+    pattern = r'(前排|主驾|副驾|二排)座椅((?:通风|加热|记忆|按摩|头枕音响)+)'
+    for label in labels:
+        for part in label.split('、'):
+            match = re.fullmatch(pattern, part)
+            if match:
+                grouped.setdefault(match[1], set()).update(re.findall(r'通风|加热|记忆|按摩|头枕音响', match[2]))
+    result, emitted = [], set()
+    for label in labels:
+        parts = []
+        for part in label.split('、'):
+            match = re.fullmatch(pattern, part)
+            if not match:
+                parts.append(part)
+            elif match[1] not in emitted:
+                seat = match[1]
+                parts.append(seat+'座椅'+''.join(f for f in ('通风','加热','记忆','按摩','头枕音响') if f in grouped[seat]))
+                emitted.add(seat)
+        if parts:
+            result.append('、'.join(parts))
+    return result
+
+
 def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_prices,
                     valuation=None):
     """按 BACKUP_MORE/LESS_ORDER 汇总每组的多/少栏；valuation 为 None 时金额行占位"""
@@ -717,7 +763,7 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
         for no in BACKUP_LESS_ORDER + [n for n in sorted(less_map) if n not in BACKUP_LESS_ORDER]:
             if no in less_map:
                 less.append(less_map[no])
-        g = {"pair": pair, "more": more, "less": less,
+        g = {"pair": pair, "more": _merge_seat_labels(more), "less": _merge_seat_labels(less),
              "more_items": [n for n in more_map], "less_items": [n for n in less_map]}
         sp, cp = self_prices.get(pair["self_trim"]), comp_prices.get(pair["comp_trim"])
         g["self_price"], g["comp_price"] = sp, cp

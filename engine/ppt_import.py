@@ -313,7 +313,7 @@ def _apply(text, values, evidence, leftovers):
         m=re.search(r'(\d+)\s*V(?:架构|平台|高压)',t,re.I)
         if m:setv(3,m[1]+'V')
         if '热泵' in t:setv(40,'●')
-        m=re.search(r'(?:R)?(\d+)寸?(钢|铝(?:合金)?)轮毂',t)
+        m=re.search(r'(?:R\s*)?(\d+)\s*寸?\s*(钢|铝(?:合金)?)轮(?:毂)?',t,re.I)
         if m:setv(4,'R'+m[1]+('钢' if m[2]=='钢' else '铝')+'轮毂')
         m=re.search(r'(\d+)气囊',t)
         previous_evidence=list(evidence.get(5,[]))
@@ -329,8 +329,9 @@ def _apply(text, values, evidence, leftovers):
                 setv(5,'[待定]'+component+'已配置，气囊基础数量未明确')
         if '540' in t and ('影像' in t or '全景' in t):setv(7,'540影像')
         elif '360' in t and '影像' in t:setv(7,'360影像')
-        for value in ['城市NOA','高速NOA','基础L2']:
-            if value in t:setv(9,value);break
+        for value, pattern in [('城市NOA',r'城市\s*NOA'),('高速NOA',r'高速\s*NOA'),
+                               ('基础L2',r'基础\s*L2|L2\s*(?:驾驶辅助|辅助驾驶)'),('定速巡航',r'定速巡航')]:
+            if re.search(pattern,t,re.I):setv(9,value);break
         if '激光雷达' in t:
             m=re.search(r'(\d+)[颗个]激光雷达',t)
             setv(8,m[1]+'颗激光雷达' if m else '[待定]有激光雷达，数量未写')
@@ -346,13 +347,25 @@ def _apply(text, values, evidence, leftovers):
         m=re.search(r'[45]G',t)
         if m:setv(23,m[0])
         if '皮质方向盘' in t:setv(25,'仿皮')
+        m=re.search(r'(仿皮|真皮|织物)方向盘',t)
+        if m:
+            setv(25,m[1])
+            if re.search(r'方向盘\s*[+＋、和及]\s*座椅',t):setv(34,m[1])
         if '方向盘加热' in t:setv(27,'●')
         if 'HUD' in t.upper():setv(30,'P-HUD' if 'P-HUD' in t.upper() else 'AR-HUD' if 'AR-HUD' in t.upper() else 'HUD')
         if '无线充电' in t:setv(33,'●'+t)
         if '仿皮座椅' in t:setv(34,'仿皮')
         elif '真皮座椅' in t:setv(34,'真皮')
         elif '织物座椅' in t:setv(34,'织物')
-        if '座椅电调' in t or re.search(r'[主副]驾\d+向',t):
+        adjustments=list(re.finditer(r'(主驾|副驾)(?:座椅)?\s*(?:(手动|电动|手调|电调)\s*(\d+)\s*向|(\d+)\s*向\s*(手动|电动|手调|电调))',t))
+        if adjustments:
+            seats={seat:(count,mode) for seat,count,mode in re.findall(r'(主驾|副驾)(\d*)向?(手调|电调)',str(values.get(35,'')))}
+            for m in adjustments:
+                mode=m[2] or m[5]
+                seats[m[1]]=(m[3] or m[4], '电调' if mode.startswith('电') else '手调')
+            setv(35,'+'.join(seat+seats[seat][0]+('向' if seats[seat][0] else '')+seats[seat][1]
+                            if seat in seats else seat+'手调' for seat in ('主驾','副驾')))
+        elif '座椅电调' in t or re.search(r'[主副]驾\d+向',t):
             # A known power adjustment without a direction count is still unresolved for valuation.
             setv(35,'[待定]'+t+'（请确认主副驾方向数）')
         from .seat_functions import from_text
@@ -367,6 +380,8 @@ def _apply(text, values, evidence, leftovers):
         if '车外扬声器' in t:setv(38,'[待定]有车外扬声器，数量未写')
         m=re.search(r'(\d+)色氛围灯',t)
         if m:setv(39,m[1]+'色氛围灯')
+        elif '多色氛围灯' in t:setv(39,'多色氛围灯')
+        elif '单色氛围灯' in t:setv(39,'单色氛围灯')
         if '后排出风口' in t:setv(41,'●')
         if '冰箱' in t:setv(43,'●')
         if '感应雨刮' in t or '感应雨刷' in t:setv(44,'●')
@@ -374,11 +389,15 @@ def _apply(text, values, evidence, leftovers):
             setv(45,'前排座椅记忆' if '前排' in t or ('主驾' in t and '副驾' in t)
                  else '主驾座椅记忆' if '主驾' in t else '副驾座椅记忆' if '副驾' in t
                  else '[待定]座椅记忆位置未说明')
-        if '电动后备箱' in t or '电动后备厢' in t:setv(13,'●')
+        if any(word in t for word in ('电动后备箱','电动后备厢','电动尾门')):setv(13,'●')
         for no, aliases in {6:['悬架软硬','可变阻尼','FSD','悬架高低'],11:['电吸门','电动吸合门'],12:['电动前备箱','电动前备厢'],14:['车顶行李架'],15:['主动进气格栅','主动闭合式进气格栅'],16:['对外放电'],18:['全景天窗','全景天幕','电动天窗'],22:['副驾娱乐屏','副驾屏'],24:['KTV'],26:['方向盘调节','方向盘手动'],28:['方向盘记忆'],31:['内后视镜'],32:['USB','Type-C']}.items():
             if no != 22 and any(a.lower() in t.lower() for a in aliases):setv(no,t)
-        # Always preserve mixed phrases; unhandled non-checklist details stay visible for review.
-        if not matched or re.search(r'APA|芯片|钥匙|怀挡|Carmind|自动空调',t):leftovers.append(line)
+        if re.search(r'前备[箱厢]',t):
+            setv(12,'电动前备箱' if '电动' in t else '手动前备箱' if '手动' in t else '[待定]前备箱开启方式未说明')
+        # Ignore only the explicitly excluded phrases; preserve the source in the draft.
+        ignored = r'(?:\d+(?:\.\d+)?\s*kW电机|软质包[覆袱](?:\([^)]*\))?|(?:主驾)?一键升降|防夹|EPB|AUTO\s*HOLD|(?:主驾)?无钥匙进入|电动空调|行车记录仪(?:\([^)]*\))?|胎压监测|APA)'
+        excluded=all(re.fullmatch(ignored,p.strip(),re.I) for p in re.split(r'[+＋、；;]',t))
+        if (not matched and not excluded) or re.search(r'芯片|怀挡|Carmind|自动空调',t):leftovers.append(line)
 
 def make_snapshot(draft):
     columns=draft.get('columns',[])
