@@ -6,6 +6,11 @@ import os
 RULES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules")
 
 
+def display_order_key(no):
+    """Business display order: seat memory follows the expanded seat features."""
+    return 36.5 if int(no) == 45 else int(no)
+
+
 def _load(name):
     with open(os.path.join(RULES_DIR, name), encoding="utf-8") as f:
         return json.load(f)

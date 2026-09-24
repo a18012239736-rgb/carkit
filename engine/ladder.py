@@ -4,6 +4,7 @@ import datetime
 from .models import Ladder, LadderItem
 from .mapper import map_raw_to_ladder
 from .powertrain import energy_types, not_applicable
+from .rules import display_order_key
 
 
 def _fmt(v) -> str:
@@ -77,7 +78,7 @@ def render_md(ladder: Ladder, title: str = "") -> str:
     lines.append("")
     lines.append("| # | 配置项 | " + " | ".join(names) + " |")
     lines.append("|---" * (len(names) + 2) + "|")
-    for it in ladder.items:
+    for serial, it in enumerate(sorted(ladder.items, key=lambda item: display_order_key(item.no)), 1):
         display = it.values
         cells, prev = [], None
         for idx, v in enumerate(display):
@@ -88,7 +89,7 @@ def render_md(ladder: Ladder, title: str = "") -> str:
                 v = "同"
             cells.append(v)
             prev = str(display[idx])
-        lines.append(f"| {it.no} | {it.name} | " + " | ".join(cells) + " |")
+        lines.append(f"| {serial} | {it.name} | " + " | ".join(cells) + " |")
         for sr in (it.subs or []):
             sub_cells, prev = [], None
             for idx, v in enumerate(sr["values"]):

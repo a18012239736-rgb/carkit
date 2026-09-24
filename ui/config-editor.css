@@ -1,0 +1,38 @@
+/* Component styles: explicit sizes override the legacy page-wide form rules. */
+.vue-config-editor .ce-table td { overflow: visible; max-width: none; }
+.vue-config-editor .ce-table td:nth-child(2) { min-width: 140px; }
+/* 横向查看版型时保留序号和配置名称，避免失去当前行上下文。 */
+.vue-config-editor .ce-table th:first-child,
+.vue-config-editor .ce-table td:first-child { position:sticky; left:0; z-index:3; min-width:44px; background:#fff; box-shadow:1px 0 0 #e3e7ee; }
+.vue-config-editor .ce-table th:nth-child(2),
+.vue-config-editor .ce-table td:nth-child(2) { position:sticky; left:44px; z-index:3; background:#fff; box-shadow:2px 0 0 #e3e7ee; }
+.vue-config-editor .ce-table thead th:first-child,
+.vue-config-editor .ce-table thead th:nth-child(2) { z-index:5; background:#f0f2f7; }
+.vue-config-editor .ce-table tbody tr:hover td:first-child,
+.vue-config-editor .ce-table tbody tr:hover td:nth-child(2) { background:#f7fbfb; }
+.vue-config-editor .ce-cell,
+.vue-config-editor .ce-seat-functions,
+.vue-config-editor .ce-seat-adjust { display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px; }
+.vue-config-editor .ce-cell { min-width:190px; }
+.vue-config-editor .ce-seat-functions .ce-cell { min-width:0; }
+.vue-config-editor .ce-rear-functions { flex-wrap:nowrap; }
+.vue-config-editor label { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; font-size:12px; }
+.vue-config-editor .ce-cell > small { flex-basis:100%; color:#9a641d; white-space:normal; }
+.vue-config-editor .ce-seat-adjust { flex-basis:100%; }
+#main .vue-config-editor select,
+#main .vue-config-editor input {
+  box-sizing:border-box; min-height:32px !important; height:32px;
+  width:auto !important; min-width:0 !important; margin:0;
+  padding:5px 9px !important; font-size:12px; line-height:20px;
+  border:1px solid #d5e1df; border-radius:8px; background-color:#fff;
+}
+#main .vue-config-editor select { padding-right:25px !important; background-position:right 7px center; background-size:11px; }
+#main .vue-config-editor .ce-binary { min-width:66px !important; max-width:260px; }
+#main .vue-config-editor .ce-main-choice { max-width:360px; }
+#main .vue-config-editor input[type=number] { width:85px !important; }
+#main .vue-config-editor input[type=text] { width:220px !important; }
+#main .vue-config-editor .ce-seat-adjust select { width:74px !important; }
+#main .vue-config-editor .ce-seat-adjust input { width:60px !important; }
+#main .vue-config-editor input[type=checkbox] { flex:0 0 17px; width:17px !important; height:17px; min-height:0 !important; padding:0 !important; }
+#main .vue-config-editor input:focus,
+#main .vue-config-editor select:focus { outline:none; border-color:#5e9e9b; box-shadow:0 0 0 3px #8fd9d43b; }

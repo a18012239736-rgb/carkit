@@ -1,0 +1,18 @@
+.vue-valuation-editor { overflow:auto; border:1px solid #dce8e9; border-radius:14px; background:#fbfdfd; box-shadow:0 8px 24px #244e5b0d; }
+.vue-valuation-editor .vue-valuation-table { min-width:100%; border-collapse:separate; border-spacing:0; }
+.vue-valuation-editor .vue-valuation-table th { position:sticky; top:0; z-index:2; padding:13px 14px; background:#edf6f6; color:#315b64; border-bottom:1px solid #d5e5e6; font-size:12px; letter-spacing:.02em; }
+.vue-valuation-editor .vue-valuation-table td { padding:12px 14px; border-bottom:1px solid #e5eeee; vertical-align:middle; }
+.vue-valuation-editor .vue-valuation-table tbody tr:last-child td { border-bottom:0; }
+.vue-valuation-editor .vue-valuation-table tbody tr:hover td { background:#f5fbfb; }
+.vue-valuation-editor .vue-valuation-table td.no { width:44px; color:#84979c; font-variant-numeric:tabular-nums; }
+.vue-valuation-editor .vue-valuation-table td:nth-child(2) { min-width:150px; color:#284b53; font-weight:600; }
+.vue-valuation-editor .vue-valuation-table td:nth-child(3) { color:#71868b; white-space:nowrap; }
+.vue-valuation-editor .valuation-fields { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.vue-valuation-editor .valuation-field { display:inline-flex; align-items:center; gap:7px; min-height:38px; padding:5px 8px 5px 10px; border:1px solid #d6e4e5; border-radius:9px; background:#f5fafa; color:#547177; white-space:nowrap; }
+.vue-valuation-editor .valuation-field span { font-size:12px; }
+.vue-valuation-editor .valuation-field input { width:78px; min-height:29px; padding:4px 7px; border:1px solid #c8dadd; border-radius:6px; background:#fff; color:#24434a; text-align:right; font-variant-numeric:tabular-nums; }
+.vue-valuation-editor .valuation-field input:focus { outline:none; border-color:#5e9e9b; box-shadow:0 0 0 3px #8fd9d43b; }
+.vue-valuation-editor .valuation-field em { min-width:18px; color:#80969b; font-size:11px; font-style:normal; }
+.vue-valuation-editor .valuation-excluded td { background:#f7f8f8; color:#8a9a9e; }
+.vue-valuation-editor .valuation-excluded td:nth-child(2) { color:#71858a; }
+.vue-valuation-editor small { display:block; margin-top:4px; color:#9aaeb1; font-size:11px; }

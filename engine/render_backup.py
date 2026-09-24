@@ -1,6 +1,7 @@
 """render_backup — DiffResult → deck BACKUP 页表格式 md（对齐 golden 输出）"""
 from __future__ import annotations
 import datetime
+from .rules import display_order_key
 
 VERDICT_MARK = {"多": "**多**", "少": "**少**", "同": "同", "豁免": "豁免", "不计": "不计"}
 
@@ -54,9 +55,9 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
     lines.append("| # | 配置项 | " + " | ".join(plabels) + " |")
     lines.append("|---" * (len(plabels) + 2) + "|")
     # 按项号分组渲染
-    nos = sorted({c["no"] for c in cells})
+    nos = sorted({c["no"] for c in cells}, key=display_order_key)
     item_names = {c["no"]: c.get("name", "") for c in cells}
-    for no in nos:
+    for serial, no in enumerate(nos, 1):
         row_cells = [c for c in cells if c["no"] == no]
         row_cells.sort(key=lambda c: c["pair"])
         name = item_names.get(no) or str(no)
@@ -69,7 +70,7 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
                     d = f"**{v}** " + d[len(v) + 1:]
                     break
             disp_cells.append(d)
-        lines.append(f"| {no} | {name} | " + " | ".join(disp_cells) + " |")
+        lines.append(f"| {serial} | {name} | " + " | ".join(disp_cells) + " |")
     lines.append("")
     lines.append("> 由 carkit engine 生成；判定词：多/少/同/豁免/不计；豁免规则见 rules/exemptions.json。")
     return "\n".join(lines) + "\n"

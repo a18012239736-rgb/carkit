@@ -40,6 +40,7 @@
     {"no": 34, "name": "座椅材质", "fill_rule": "织物、仿皮、真皮、翻毛皮", "value_type": "material", "normalize": "material", "source_rows": ["座椅材质"]},
     {"no": 35, "name": "座椅调节", "fill_rule": "分主副驾；看手调/电调和多少向", "value_type": "seat_adjust", "normalize": "seat_adjust", "source_rows": ["主座椅调节方式", "副座椅调节方式", "主/副驾驶座电动调节"], "merge": true},
     {"no": 36, "name": "座椅功能", "fill_rule": "主驾、副驾、二排分别记录通风、加热、按摩、头枕音响", "value_type": "seat_func", "normalize": "seat_func", "source_rows": ["前排座椅功能", "第二排座椅功能", "后排座椅功能", "前排座椅头枕扬声器", "头枕音响"], "merge": true, "sub_items": ["主驾通风", "主驾加热", "主驾按摩", "主驾头枕音响", "副驾通风", "副驾加热", "副驾按摩", "副驾头枕音响", "二排通风", "二排加热", "二排按摩", "二排头枕音响"]},
+    {"no": 45, "name": "座椅记忆", "fill_rule": "主驾、副驾每座100元", "value_type": "seat_memory", "normalize": "seat_memory", "source_rows": ["电动座椅记忆", "座椅记忆功能"]},
     {"no": 37, "name": "扬声器数量", "fill_rule": "不含头枕音响、不含车外扬声器，分开计数", "value_type": "speaker_count", "normalize": "speaker_count", "source_rows": ["扬声器数量"]},
     {"no": 38, "name": "车外扬声器", "fill_rule": "与#37分开写", "value_type": "speaker_count", "normalize": "speaker_count", "source_rows": ["车外扬声器数量"]},
     {"no": 39, "name": "氛围灯", "md_name": "车内氛围灯", "fill_rule": "看有无、单色还是多色（多色=256色/1680色等只是叫法不同，统一写256色）", "value_type": "ambient", "normalize": "ambient", "source_rows": ["车内环境氛围灯", "主动式环境氛围灯"], "merge": true},
@@ -47,8 +48,7 @@
     {"no": 41, "name": "后排出风口", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["后座出风口", "后排出风口"]},
     {"no": 42, "name": "中央安全气囊", "value_type": "merged", "merged_into": 5, "source_rows": []},
     {"no": 43, "name": "车载冰箱", "fill_rule": "有车载冷暖冰箱按有配置", "value_type": "bool", "normalize": "bool", "source_rows": ["车载冰箱", "车内冰箱", "车载冷暖冰箱", "车载冷热冰箱"]},
-    {"no": 44, "name": "感应雨刮", "fill_rule": "雨量感应雨刮", "value_type": "bool", "normalize": "bool", "source_rows": ["感应雨刷功能", "感应雨刮", "雨量感应雨刷", "雨量感应雨刮"]},
-    {"no": 45, "name": "座椅记忆", "fill_rule": "主驾、副驾每座100元", "value_type": "seat_memory", "normalize": "seat_memory", "source_rows": ["电动座椅记忆", "座椅记忆功能"]}
+    {"no": 44, "name": "感应雨刮", "fill_rule": "雨量感应雨刮", "value_type": "bool", "normalize": "bool", "source_rows": ["感应雨刷功能", "感应雨刮", "雨量感应雨刷", "雨量感应雨刮"]}
   ],
   "car_kb_gaps": [11, 12, 14, 22, 30],
   "gap_rule": "缺口项现抓汽车之家时「无该行=没有」规则直接覆盖，无需特判"

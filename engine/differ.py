@@ -736,7 +736,7 @@ def _merge_seat_labels(labels):
                 parts.append(part)
             elif match[1] not in emitted:
                 seat = match[1]
-                parts.append(seat+'座椅'+''.join(f for f in ('通风','加热','记忆','按摩','头枕音响') if f in grouped[seat]))
+                parts.append(seat+'座椅'+''.join(f for f in ('通风','加热','按摩','头枕音响','记忆') if f in grouped[seat]))
                 emitted.add(seat)
         if parts:
             result.append('、'.join(parts))

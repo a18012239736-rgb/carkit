@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from engine.rules import Rules
+from engine.rules import Rules, display_order_key
 from engine import rawschema, ladder as ladder_mod, differ, render_backup, valuer
 from engine.models import Snapshot, Ladder, ValuationTable, ValuationItem
 from engine.snapshot import resolve
@@ -183,7 +183,7 @@ class Bridge:
                     fresh = ladder_mod.build_ladder(raw, self.rules, model=raw.model,
                                                     series_id=raw.series_id, date=_today())
                     lad.items.extend(it for it in fresh.items if it.no in missing)
-                    lad.items.sort(key=lambda it: it.no)
+                    lad.items.sort(key=lambda it: display_order_key(it.no))
                 # Refresh applicability without discarding manual configuration edits.
                 from engine.powertrain import energy_types, not_applicable
                 energies = energy_types(raw)

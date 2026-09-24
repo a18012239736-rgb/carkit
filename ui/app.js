@@ -116,8 +116,11 @@ function seatSubLabel(sub){
   const m=String(sub).match(/^(主驾|副驾|二排)(通风|加热|按摩|头枕音响)$/);
   return m?`座椅${m[2]} · ${m[1]}`:sub;
 }
+function configurationOrderKey(no){
+  return Number(no)===45?36.5:Number(no);
+}
 function configurationDisplayOrder(items){
-  return [...items].sort((a,b)=>(a.no===45?36.5:a.no)-(b.no===45?36.5:b.no));
+  return [...items].sort((a,b)=>configurationOrderKey(a.no)-configurationOrderKey(b.no));
 }
 function cascadeLadderValues(original,edited){
   const explicit=edited.map((value,i)=>value!==original[i]), result=[...original];
@@ -144,6 +147,7 @@ function addScreenEditor(field,no,isInput){
   stored.hidden=true;stored.value=current;
   if(!isInput){stored.dataset.configValue='true';container.append(stored);}
   const editor=document.createElement('div');
+  editor.className='screen-editor';
   editor.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap';
   editor.innerHTML='<select aria-label="屏幕状态"><option value="present">有</option><option value="absent">无配置</option><option value="pending">待定</option><option value="optional">选装</option></select><input aria-label="屏幕尺寸（英寸）" type="number" min="0.1" max="100" step="0.01" placeholder="尺寸" style="width:85px"><span>英寸</span>'+(no===29?'<label><input type="checkbox">全液晶</label>':'');
   const state=editor.querySelector('select'), size=editor.querySelector('input[type=number]'), lcd=editor.querySelector('input[type=checkbox]');
@@ -194,33 +198,8 @@ function updateSnapshotValue(snap,no,name,value,sub=''){
   return changed;
 }
 
-function bindSnapshotEditor(root,snap,isInput=false){
-  const commit=td=>{
-    const stored=isInput?td.querySelector('input[data-cell]'):null;
-    if(isInput&&!stored || !isInput&&!td.dataset.no)return;
-    const no=isInput?snap.cells[+stored.dataset.cell].no:+td.dataset.no;
-    const name=isInput?snap.trims[+stored.dataset.trim].name:td.dataset.t;
-    const sub=isInput?stored.dataset.sub||'':td.dataset.sub||'';
-    const value=isInput?stored.value.trim():configurationCellValue(td);
-    const changed=updateSnapshotValue(snap,no,name,value,sub);
-    if(!changed.length)return;
-    ST.diff=null;$('#diff-result').hidden=true;
-    const fields=isInput?root.querySelectorAll('input[data-cell]'):root.querySelectorAll('td[data-no]');
-    fields.forEach(field=>{
-      const childNo=isInput?snap.cells[+field.dataset.cell].no:+field.dataset.no;
-      const child=isInput?snap.trims[+field.dataset.trim].name:field.dataset.t;
-      if(childNo!==no||child===name||!changed.includes(child)||(field.dataset.sub||'')!==sub)return;
-      const container=isInput?field.parentElement:field;
-      container.replaceChildren();
-      if(isInput){field.value=value;field.hidden=false;container.append(field);}
-      else {container.textContent=value;container.contentEditable='true';}
-      container.className=cellCls(value);
-      addConfigurationChoices(container,isInput?snap.cells:null);
-    });
-  };
-  root.onchange=e=>{const td=e.target.closest('td');if(td)commit(td);};
-  root.onfocusout=e=>{const td=e.target.closest('td[contenteditable="true"][data-no]');if(td)commit(td);};
-}
+// Compatibility boundary for older integrations that extract the linkage helper.
+function bindSnapshotEditor() {}
 
 function toast(msg, cls = "") {
   const el = document.createElement("div");
@@ -253,6 +232,16 @@ async function api(method, ...args) {
 }
 
 /* ---------- 导航 ---------- */
+const layout = $('#layout');
+const sidebarCollapsed = localStorage.getItem('carkit.sidebarHidden') === '1';
+if (sidebarCollapsed) layout.classList.add('sidebar-collapsed');
+function setSidebarHidden(hidden) {
+  layout.classList.toggle('sidebar-collapsed', hidden);
+  localStorage.setItem('carkit.sidebarHidden', hidden ? '1' : '0');
+  $('#sidebar-hide').setAttribute('aria-label', hidden ? '显示侧边栏' : '隐藏侧边栏');
+}
+$('#sidebar-hide').addEventListener('click', () => setSidebarHidden(true));
+$('#sidebar-show').addEventListener('click', () => setSidebarHidden(false));
 $$(".nav-item").forEach((btn) =>
   btn.addEventListener("click", () => {
     $$(".nav-item").forEach((b) => b.classList.remove("active"));
@@ -349,7 +338,11 @@ function renderStageTrimEditor() {
   document.querySelector('#ladder-visual')?.remove();
   $("#stage-trims").hidden = false;
   const trims = ST.stage.trims;
-  const price = t => t.price_guide == null || !Number.isFinite(Number(t.price_guide)) ? Infinity : Number(t.price_guide);
+  if(window.StageEditor) { StageEditor.mount($('#stage-trim-editor'), trims); return; }
+  const price = t => {
+    const m=String(t.price_guide ?? '').replace(/,/g,'').match(/\d+(?:\.\d+)?/);
+    return m ? Number(m[0]) : Infinity;
+  };
   const order = trims.map((_,i)=>i).sort((a,b)=>price(trims[a])-price(trims[b]) || a-b);
   $("#stage-trim-editor").innerHTML = order.map(i => `<div class="stage-trim-row"><label><input type="checkbox" class="stage-use" data-i="${i}" checked> ${esc(trims[i].name)}（${trims[i].price_guide ?? '待核'}万）</label><select class="stage-base" data-i="${i}"><option value="">基本配置</option></select></div>`).join("");
   $$(".stage-use").forEach(cb => cb.addEventListener('change', updateStageBases));
@@ -369,6 +362,7 @@ function updateStageBases(reset=false) {
 }
 
 function stagePlan() {
+  if(window.StageEditor && $('#stage-trim-editor').__stagePlan) return StageEditor.plan($('#stage-trim-editor'));
   const plan=[]; const selected=new Set($$(".stage-use:checked").map(x=>+x.dataset.i));
   $$(".stage-use").forEach(cb=>{const i=+cb.dataset.i;if(selected.has(i)){const sel=document.querySelector(`.stage-base[data-i="${i}"]`);plan.push({target:i,base:sel&&sel.value!==''?+sel.value:null});}});
   return plan;
@@ -478,14 +472,19 @@ $("#btn-export-ladder-md").addEventListener("click", async () => {
 function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
   if (!lad) return;
   const wrap = $(target);
+  if(window.ConfigEditor) {
+    mountConfigurationEditor(wrap,lad,'ladder');
+    return;
+  }
   let html = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
   html += lad.trims.map((t) => `<th>${t.name}<br><span class="dim">${t.price_guide ?? ""}万</span></th>`).join("");
   html += "</tr></thead><tbody>";
-  for (const it of configurationDisplayOrder(lad.items)) {
+  for (const [rowIndex,it] of configurationDisplayOrder(lad.items).entries()) {
+    const serial=rowIndex+1;
     if(it.no===36){
       const bySub=Object.fromEntries((it.subs||[]).map(sr=>[sr.sub,sr.values]));
       ['通风','加热','按摩','头枕音响'].forEach(feature=>{
-        html+=`</tr><tr><td class="no">36</td><td>座椅${feature}</td>`;
+        html+=`</tr><tr><td class="no">${serial}</td><td>座椅${feature}</td>`;
         html+=it.values.map((_,i)=>{
           const main=(bySub['主驾'+feature]||[])[i]||'✕',副=(bySub['副驾'+feature]||[])[i]||'✕';
           return `<td data-no="36" data-i="${i}" data-seat-cell><label>主驾<select data-seat="主驾${feature}"><option value="✕" ${main==='✕'?'selected':''}>无</option><option value="●" ${main==='●'?'selected':''}>有</option></select></label><label>副驾<select data-seat="副驾${feature}"><option value="✕" ${副==='✕'?'selected':''}>无</option><option value="●" ${副==='●'?'selected':''}>有</option></select></label></td>`;
@@ -495,11 +494,11 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
       continue;
     }
     if(it.no===20){
-      html += `<tr><td class="no">20</td><td>${it.name}</td>`;
+      html += `<tr><td class="no">${serial}</td><td>${it.name}</td>`;
       html += it.values.map((v,i)=>`<td data-no="20" data-i="${i}" data-mirror-cell>${mirrorEditorCell(v,`${i}`)}</td>`).join('');
       html += '</tr>'; continue;
     }
-    html += `<tr><td class="no">${it.no}</td><td>${it.name}${it.unmapped ? ' <span class="tag warn">待映射</span>' : ""}</td>`;
+    html += `<tr><td class="no">${serial}</td><td>${it.name}${it.unmapped ? ' <span class="tag warn">待映射</span>' : ""}</td>`;
     html += it.values.map((v, i) =>
       it.no===1 || it.no===37
         ? `<td data-no="${it.no}" data-i="${i}" class="${cellCls(v)}"><input data-step type="number" min="0" step="1" value="${(String(v).match(/\d+(?:\.\d+)?/)||[''])[0]}"></td>`
@@ -529,6 +528,7 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
 
 function collectLadderEdits(target="#ladder-table-wrap", ladder=ST.ladder) {
   if (!ladder) return;
+  if(ConfigEditor.isMounted($(target))) return;
   const originals=new Map(ladder.items.map(it=>[it.no,{values:[...it.values],subs:Object.fromEntries((it.subs||[]).map(sr=>[sr.sub,[...sr.values]]))}]));
   $$(target+" td[data-no]").forEach((td) => {
     const no = +td.dataset.no, i = +td.dataset.i;
@@ -600,7 +600,7 @@ $("#btn-load-snapshot").addEventListener("click", async () => {
 $("#btn-save-snapshot").addEventListener("click", async () => {
   if (ST.snapshot && ST.snapshot.status === "待确认") return toast("请在PPT导入区核对并确认保存", "err");
   if (!ST.snapshot || !ST.snapshotPath) return toast("无快照数据", "err");
-  collectSnapshotEdits();
+  if(!collectSnapshotEdits())return;
   await api("save_snapshot", ST.snapshotPath, ST.snapshot);
   toast("快照已保存", "ok");
 });
@@ -610,107 +610,16 @@ async function renderSnapshot() {
   if (!snap) return;
   const cl = await loadChecklist();
   const items = cl.items.filter((it) => !it.merged_into);
-  // 版型编辑区
-  $("#snapshot-trims").innerHTML = snap.trims.map((t, i) => `
-    <div class="trim-row">
-      <input type="text" data-ti="${i}" data-k="name" value="${esc(t.name)}">
-      <input type="text" data-ti="${i}" data-k="price_guide" value="${t.price_guide ?? ""}" style="width:80px" title="指导价(万)" placeholder="指导价">
-      <input type="text" data-ti="${i}" data-k="mix" value="${esc(t.mix || "")}" style="width:60px" title="占比">
-      <input type="text" data-ti="${i}" data-k="range" value="${esc(t.range || "")}" style="width:70px" title="续航">
-      <span class="dim">${t.price_source ? esc(t.price_source)+"："+(t.price_reference??"未写")+"万；指导价请另填" : "万元"}</span>
-    </div>`).join("");
-  $$("#snapshot-trims input").forEach((inp) =>
-    inp.addEventListener("change", () => {
-      const t = snap.trims[+inp.dataset.ti];
-      if(inp.dataset.k==='name') {
-        const old=t.name, name=inp.value.trim();
-        if(!name || snap.trims.some(other=>other!==t && other.name===name)){inp.value=old;toast('版型名称不能为空或重复','err');return;}
-        collectSnapshotEdits();
-        for(const c of snap.cells){
-          c.values[name]=c.values[old];delete c.values[old];
-          if(c.links){
-            if(old in c.links){c.links[name]=c.links[old];delete c.links[old];}
-            for(const [child,link] of Object.entries(c.links)){
-              if(link===old)c.links[child]=name;
-              else if(link&&typeof link==='object')for(const sub of Object.keys(link))if(link[sub]===old)link[sub]=name;
-            }
-          }
-        }
-        for(const other of snap.trims)if(other.base===old)other.base=name;
-        t.name=name; renderSnapshot(); return;
-      }
-      t[inp.dataset.k] = inp.dataset.k === "price_guide" ? (parseFloat(inp.value) || null) : inp.value;
-    })
-  );
-  // 41项表
-  const cellByNo = {};
-  for (const c of snap.cells) cellByNo[c.no] = c;
-  const pendingCount = snap.cells.reduce((n, c) => n + Object.values(c.values || {}).filter(v => {
-    if (v && typeof v === 'object') return Object.values(v).some(x => String(x ?? '').includes('[待定]'));
-    return String(v ?? '').includes('[待定]') || String(v ?? '').trim() === '?';
-  }).length, 0);
-  const info = document.querySelector('#snapshot-info');
-  if (info && pendingCount) info.textContent = `${snap.model || '本品'} · 还有 ${pendingCount} 个版型配置单元格待确认；可直接点击下方单元格修改`;
-  let html = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
-  html += snap.trims.map((t) => `<th>${esc(t.name)}</th>`).join("");
-  html += "<th>依据</th></tr></thead><tbody>";
-  for (const it of configurationDisplayOrder(items)) {
-    const c = cellByNo[it.no];
-    if(it.no===36 && c){
-      ['通风','加热','按摩','头枕音响'].forEach(feature=>{
-        html+=`<tr><td class="no">36</td><td>座椅${feature}</td>`;
-        html+=snap.trims.map(t=>{const v=c.values[t.name]||{};return `<td><label>主驾<select data-seat="主驾${feature}" data-no="36" data-t="${esc(t.name)}"><option value="✕" ${v['主驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['主驾'+feature]==='●'?'selected':''}>有</option></select></label><label>副驾<select data-seat="副驾${feature}" data-no="36" data-t="${esc(t.name)}"><option value="✕" ${v['副驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['副驾'+feature]==='●'?'selected':''}>有</option></select></label></td>`;}).join('');
-        html+=`<td class="dim">${esc(c.basis||'')}</td></tr>`;
-      });
-      continue;
-    }
-    const isSub = c && typeof Object.values(c.values)[0] === "object";
-    if (isSub) {
-      const subNames = Object.keys(Object.values(c.values)[0]);
-      for (const sn of subNames) {
-        html += `<tr><td class="no">${it.no}</td><td>${it.name}·${sn}</td>`;
-        html += snap.trims.map((t, i) =>
-          `<td contenteditable="true" spellcheck="false" title="点击修改；填写 X 表示无配置，填写 [待定] 表示暂未确定" data-no="${it.no}" data-sub="${sn}" data-t="${esc(t.name)}" class="${cellCls(c.values[t.name][sn])}">${esc(c.values[t.name][sn])}</td>`).join("");
-        html += `<td class="dim">${esc(c.basis || "")}</td></tr>`;
-      }
-    } else {
-      html += `<tr><td class="no">${it.no}</td><td>${it.name}</td>`;
-      html += snap.trims.map((t) => {
-        const v = c ? (c.values[t.name] ?? "?") : "?";
-          return `<td contenteditable="true" spellcheck="false" title="点击修改；填写 X 表示无配置，填写 [待定] 表示暂未确定" data-no="${it.no}" data-t="${esc(t.name)}" class="${cellCls(v)}">${esc(v)}</td>`;
-      }).join("");
-      html += `<td class="dim" contenteditable data-basis="${it.no}">${esc(c ? c.basis || "" : "")}</td></tr>`;
-    }
+  // Fill missing checklist entries so imported drafts remain fully reviewable.
+  for(const item of items) if(!snap.cells.some(c=>c.no===item.no)) {
+    snap.cells.push({no:item.no,values:Object.fromEntries(snap.trims.map(t=>[t.name,'[待定]'])),basis:''});
   }
-  html += "</tbody></table>";
-  $("#snapshot-table-wrap").innerHTML = html;
-  $("#snapshot-table-wrap").querySelectorAll('select[data-seat]').forEach(el=>el.onchange=()=>{
-    const c=cellByNo[36]; c.values[el.dataset.t][el.dataset.seat]=el.value; ST.diff=null; $('#diff-result').hidden=true;
-  });
-  addConfigurationChoices($('#snapshot-table-wrap'));
-  bindSnapshotEditor($('#snapshot-table-wrap'),snap);
+  $('#snapshot-trims').replaceChildren();
+  mountConfigurationEditor($('#snapshot-table-wrap'),snap,'snapshot',Object.fromEntries(items.map(it=>[it.no,it.name])),true);
 }
 
 function collectSnapshotEdits() {
-  if (!ST.snapshot) return;
-  const cellByNo = {};
-  for (const c of ST.snapshot.cells) cellByNo[c.no] = c;
-  $$("#snapshot-table-wrap td[contenteditable]").forEach((td) => {
-    const no = +td.dataset.no || +td.dataset.basis;
-    const c = cellByNo[no];
-    if (!c) return;
-    if (td.dataset.basis) { c.basis = td.textContent.trim(); return; }
-    const v = configurationCellValue(td);
-    if (td.dataset.sub) {
-      if (typeof c.values[td.dataset.t] !== "object") c.values[td.dataset.t] = {};
-      c.values[td.dataset.t][td.dataset.sub] = v;
-    } else {
-      c.values[td.dataset.t] = v;
-    }
-  });
-  $$("#snapshot-table-wrap select[data-seat]").forEach(el=>{
-    const c=cellByNo[36]; if(c) c.values[el.dataset.t][el.dataset.seat]=el.value;
-  });
+  return ConfigEditor.validate($('#snapshot-table-wrap'));
 }
 
 /* ---------- ④ 赋值表 ---------- */
@@ -790,41 +699,14 @@ async function renderValuation() {
   for (const it of cl.items) nameByNo[it.no] = it.md_name || it.name;
   const byNo = {};
   for (const it of v.items) byNo[it.no] = it;
-  let html = '<table class="grid valuation-grid"><thead><tr><th>#</th><th>配置项</th><th>计价方式</th><th>可修改的金额与阈值</th><th>备注</th></tr></thead><tbody>';
-  for (const no of Object.keys(nameByNo).map(Number)) {
-    const it = byNo[no];
-    if (!it) continue; // 轮圈材质、中央气囊等已合并项不单独赋值
-    if (it.rule === 'excluded') {
-      html += `<tr class="valuation-excluded"><td class="no">${no}</td><td>${nameByNo[no]}</td><td>不参与赋值</td><td class="dim">仅保留配置展示</td><td>${esc(it.note || '')}</td></tr>`;
-      continue;
-    }
-    const specs = valuationEditorSchema[String(no)] || [];
-    const controls = it.rule === 'dynamic'
-      ? specs.map(spec=>`<label class="valuation-field"><span>${esc(spec.label)}</span><input type="number" min="0" step="any" data-param="${esc(spec.key)}" data-no="${no}" value="${esc((it.params||{})[spec.key] ?? '')}"><em>${esc(spec.unit||'')}</em></label>`).join('')
-      : `<label class="valuation-field"><span>固定金额</span><input type="number" min="0" step="any" data-val data-no="${no}" value="${esc(it.val ?? '')}"><em>元</em></label>`;
-    html += `<tr><td class="no">${no}</td><td>${nameByNo[no]}</td><td>${it.rule === 'dynamic' ? '动态分档' : '固定金额'}</td><td><div class="valuation-fields">${controls}</div></td><td>${esc(it.note || '')}</td></tr>`;
-  }
-  html += "</tbody></table>";
-  $("#valuation-table-wrap").innerHTML = html;
+  ValuationEditor.mount($("#valuation-table-wrap"), v, valuationEditorSchema, nameByNo);
 }
 
 function collectValuationEdits() {
   if (!ST.valuation) return false;
-  const byNo = {};
-  for (const it of ST.valuation.items) byNo[it.no] = it;
-  for (const input of $$("#valuation-table-wrap input[type=number]")) {
-    const no = +input.dataset.no;
-    if (input.value === '' || !input.checkValidity() || !Number.isFinite(Number(input.value))) {
-      toast(`#${no} 请填写大于等于0的有效数字`, "err");
-      input.focus();
-      return false;
-    }
-    const value = Number(input.value);
-    if (input.hasAttribute('data-val')) byNo[no].val = value;
-    else {
-      byNo[no].params ||= {};
-      byNo[no].params[input.dataset.param] = value;
-    }
+  if(!ValuationEditor.validate($("#valuation-table-wrap"))) {
+    toast('请填写大于等于0的有效数字', 'err');
+    return false;
   }
   return true;
 }
@@ -959,13 +841,13 @@ function renderDiff(res) {
     return `<details open><summary>赋值计算明细：${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</summary><p>配置优势＝多配置合计 ${v.total_more??'?'} − 少配置合计 ${v.total_less??'?'} ＝ ${v.config_adv??'?'} 元</p><p>拉平指导价优势＝配置优势＋（竞品指导价−本品指导价）×10000</p><table class="grid"><tr><th>配置差异</th><th>计价依据</th><th>金额（元）</th></tr>${(v.detail||[]).map(x=>`<tr><td>${esc(x.side)}：${esc(x.display||String(x.no))}</td><td>${esc(x.rule||'')}</td><td>${x.amount>0?'+':''}${x.amount}</td></tr>`).join('')}</table></details>`;
   }).join('');
   // 判定明细
-  const nos = [...new Set(res.cells.map((c) => c.no))].sort((a, b) => a - b);
+  const nos = [...new Set(res.cells.map((c) => c.no))].sort((a, b) => configurationOrderKey(a) - configurationOrderKey(b));
   const nameByNo = {};
   res.cells.forEach((c) => (nameByNo[c.no] = c.name));
   let d = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
   d += groups.map((g) => `<th>${g.pair.self_trim}vs${g.pair.comp_trim}</th>`).join("") + "</tr></thead><tbody>";
-  for (const no of nos) {
-    d += `<tr><td class="no">${no}</td><td>${nameByNo[no]}</td>`;
+  for (const [rowIndex,no] of nos.entries()) {
+    d += `<tr><td class="no">${rowIndex+1}</td><td>${nameByNo[no]}</td>`;
     for (let pi = 0; pi < groups.length; pi++) {
       const c = res.cells.find((x) => x.no === no && x.pair === pi);
       if (!c) { d += "<td></td>"; continue; }
@@ -1034,6 +916,7 @@ async function selectCompetitor() {
   await rebuildPairs();
 }
 $('#diff-vehicle').addEventListener('change',()=>{
+  ConfigEditor.unmount($('#diff-ladder-table-wrap'));
   $('#diff-competitor-editor').hidden=true;
   $('#diff-ladder-table-wrap').innerHTML='';
   selectCompetitor();
@@ -1043,7 +926,14 @@ $('#pairs-editor').before($('#diff-competitor-editor'));
 $('#review-competitor').textContent='修改当前竞品配置';
 $('#diff-competitor-editor h3').textContent='修改竞品配置';
 let comparisonSelf=null, comparisonSelfPath='';
+function mountConfigurationEditor(root,model,kind,names={},review=false) {
+  ConfigEditor.mount(root,{model,kind,names,review,choices:configurationChoices,
+    updateSnapshot:updateSnapshotValue,cascade:cascadeLadderValues,
+    onChange:()=>{ST.diff=null;$('#diff-result').hidden=true;}});
+}
 function hideComparisonEditors() {
+  ConfigEditor.unmount($('#diff-self-table'));
+  ConfigEditor.unmount($('#diff-ladder-table-wrap'));
   $('#diff-self-editor').hidden = true;
   $('#diff-competitor-editor').hidden = true;
   $('#diff-self-table').innerHTML = '';
@@ -1056,6 +946,7 @@ $('#delete-self-file').onclick=async()=>{
   await api('remove_imported_snapshot',file);
   comparisonSelf=null;comparisonSelfPath='';
   ST.snapshot=null;ST.snapshotPath='';ST.diff=null;
+  ConfigEditor.unmount($('#snapshot-table-wrap'));
   $('#diff-self-editor').hidden=true;$('#diff-result').hidden=true;
   $('#snapshot-table-wrap').innerHTML='';$('#snapshot-trims').innerHTML='';$('#snapshot-info').textContent='';
   $('#diff-status').textContent='已移入回收站';
@@ -1063,6 +954,7 @@ $('#delete-self-file').onclick=async()=>{
   toast('已删除；可在工作目录的回收站找回','ok');
 };
 $('#diff-snapshot').addEventListener('change',()=>{
+  ConfigEditor.unmount($('#diff-self-table'));
   $('#diff-self-editor').hidden=true; comparisonSelf=null;
 });
 $('#diff-edit-self').onclick=async()=>{
@@ -1088,41 +980,11 @@ $('#diff-edit-self').onclick=async()=>{
   $('#diff-self-editor h3').textContent='修改本品配置';
   $('#diff-self-editor p').textContent='修改会同步到继承该项的版型，保存后重新对比。';
   const checklist=await loadChecklist();
-  const names=Object.fromEntries(checklist.items.map(x=>[x.no,x.name]));
-  let html='<table class="grid"><thead><tr><th>#</th><th>配置项</th>'+comparisonSelf.trims.map(t=>`<th>${esc(t.name)}<br><span class="dim">${t.price_guide??''}万</span></th>`).join('')+'</tr></thead><tbody>';
-  html+='<tr><td class="no">—</td><td>指导价（万元）</td>'+comparisonSelf.trims.map((t,i)=>`<td><input data-price="${i}" type="number" step="0.01" value="${t.price_guide??''}"></td>`).join('')+'</tr>';
-  configurationDisplayOrder(comparisonSelf.cells).forEach(c=>{
-    const i=comparisonSelf.cells.indexOf(c);
-    if(c.no===36){
-      ['通风','加热','按摩','头枕音响'].forEach(feature=>{
-        html+=`<tr><td class="no">36</td><td>座椅${feature}</td>`;
-        html+=comparisonSelf.trims.map((t,j)=>{
-          const v=c.values[t.name]||{};
-          return `<td><label>主驾<select data-cell="${i}" data-trim="${j}" data-seat="主驾${feature}"><option value="✕" ${v['主驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['主驾'+feature]==='●'?'selected':''}>有</option></select></label><label>副驾<select data-cell="${i}" data-trim="${j}" data-seat="副驾${feature}"><option value="✕" ${v['副驾'+feature]==='✕'?'selected':''}>无</option><option value="●" ${v['副驾'+feature]==='●'?'selected':''}>有</option></select></label></td>`;
-        }).join('')+'</tr>';
-      });
-      return;
-    }
-    if(c.no===20){
-      html+=`<tr><td class="no">20</td><td>${esc(names[c.no]||'外后视镜')}</td>`;
-      html+=comparisonSelf.trims.map((t,j)=>`<td data-mirror-cell data-cell="${i}" data-trim="${j}">${mirrorEditorCell(c.values[t.name],`${i},${j}`)}</td>`).join('');
-      html+='</tr>'; return;
-    }
-    const subs=[...new Set(Object.values(c.values).flatMap(v=>v&&typeof v==='object'?Object.keys(v):[]))];
-    (subs.length?subs:[null]).forEach(sub=>{
-        html+=`<tr><td class="no">${c.no}</td><td>${esc(names[c.no]||String(c.no))}${sub?' · '+esc(seatSubLabel(sub)):''}</td>`;
-      html+=comparisonSelf.trims.map((t,j)=>{
-        const v=sub?(c.values[t.name]||{})[sub]:c.values[t.name];
-        return `<td><input style="min-width:180px;width:95%" data-cell="${i}" data-trim="${j}" data-sub="${esc(sub||'')}" value="${esc(v??'✕')}"></td>`;
-      }).join('')+'</tr>';
-    });
-  });
-  $('#diff-self-table').innerHTML=html+'</tbody></table>';
-  addConfigurationChoices($('#diff-self-table'),comparisonSelf.cells);
-  bindSnapshotEditor($('#diff-self-table'),comparisonSelf,true);
+  mountConfigurationEditor($('#diff-self-table'),comparisonSelf,'snapshot',Object.fromEntries(checklist.items.map(x=>[x.no,x.name])));
   $('#diff-self-editor').hidden=false;
 };
 $('#diff-save-self').onclick=async()=>{
+  if(!ConfigEditor.validate($('#diff-self-table'))) return;
   if($('#diff-mode').value==='competitor'){
     if(!ST.leftLadder||!ST.leftLadderPath)return toast('请先选择左侧竞品','err');
     collectLadderEdits('#diff-self-table',ST.leftLadder);
@@ -1131,38 +993,20 @@ $('#diff-save-self').onclick=async()=>{
     return;
   }
   if(!comparisonSelf)return;
-  $$('#diff-self-table input[data-cell]').forEach(el=>{
-    const c=comparisonSelf.cells[+el.dataset.cell], name=comparisonSelf.trims[+el.dataset.trim].name;
-    if(el.dataset.sub){
-      if(!c.values[name]||typeof c.values[name]!=='object')c.values[name]={};
-      c.values[name][el.dataset.sub]=el.value.trim()||'✕';
-    }else c.values[name]=el.value.trim()||'✕';
-  });
-  $$('#diff-self-table select[data-seat]').forEach(el=>{
-    const c=comparisonSelf.cells[+el.dataset.cell], name=comparisonSelf.trims[+el.dataset.trim].name;
-    c.values[name][el.dataset.seat]=el.value;
-  });
-  $$('#diff-self-table td[data-mirror-cell]').forEach(td=>{
-    const c=comparisonSelf.cells[+td.dataset.cell], name=comparisonSelf.trims[+td.dataset.trim].name;
-    c.values[name]=['电调','折叠','加热'].filter((_,p)=>td.querySelector(`select[data-mirror-part="${p}"]`)?.value==='●').join('+') || '✕';
-  });
-  for(const el of $$('#diff-self-table input[data-price]')){
-    const v=el.value===''?null:Number(el.value);
-    if(v!==null&&(!Number.isFinite(v)||v<=0))return toast('指导价应为正数，单位万元','err');
-    comparisonSelf.trims[+el.dataset.price].price_guide=v;
-  }
   await api('save_snapshot',comparisonSelfPath,comparisonSelf);
   $('#diff-result').hidden=true; ST.diff=null;
   toast('本品修正已保存，请运行对比','ok');
 };
 $('#review-competitor').onclick=()=>{
   if(!ST.ladder || !$('#diff-ladder').value) return toast('请先选择竞品');
+  ConfigEditor.unmount($('#diff-self-table'));
   $('#diff-self-editor').hidden=true;
   $('#diff-self-table').innerHTML='';
   const panel=$('#diff-competitor-editor'); panel.hidden=!panel.hidden;
   if(!panel.hidden) renderLadderTable('#diff-ladder-table-wrap');
 };
 $('#diff-save-competitor').onclick=async()=>{
+  if(!ConfigEditor.validate($('#diff-ladder-table-wrap'))) return;
   if(!ST.ladderPath) return;
   collectLadderEdits('#diff-ladder-table-wrap');
   const r=await api('save_ladder_edit',ST.ladderPath,ST.ladder);
@@ -1199,15 +1043,10 @@ $('#inspect-raw').onclick=async()=>{
 // PPT import is local, draft-first, and requires explicit review before persistence.
 ST.pptPath=''; ST.pptDraft=null;
 function renderDraftColumns(draft) {
-  $('#ppt-columns').innerHTML=draft.columns.map((c,i)=>`<div class="ppt-column" data-col="${i}"><label>版型名称<input class="ppt-name" value="${esc(c.name)}"></label><label>比较基准<select class="ppt-base"><option value="">独立基础配置</option>${draft.columns.filter((v,j)=>j!==i).map(v=>`<option ${v.name===c.base?'selected':''} value="${esc(v.name)}">${esc(v.name)}</option>`).join('')}</select></label><label>价格（万元）<input class="ppt-price" type="number" step="0.01" value="${esc(c.price??'')}"></label><label>配置内容（每行一项，也可稍后在完整表格填写）<textarea class="ppt-text">${esc(c.text)}</textarea></label><button type="button" data-remove-trim="${i}">删除版型</button></div>`).join('');
+  PptDraftEditor.mount($('#ppt-columns'),draft,{onInvalidate:invalidateDraftPreview});
 }
 function collectDraftColumns() {
-  const previous=ST.pptDraft.columns.map(c=>c.name);
-  const rows=$$('#ppt-columns .ppt-column');
-  const names=rows.map(r=>r.querySelector('.ppt-name').value.trim());
-  const rename=Object.fromEntries(previous.map((n,i)=>[n,names[i]]));
-  ST.pptDraft.columns=rows.map((r,i)=>({name:names[i],base:rename[r.querySelector('.ppt-base').value]||null,
-    price:r.querySelector('.ppt-price').value||null,text:r.querySelector('.ppt-text').value}));
+  return ST.pptDraft;
 }
 function invalidateDraftPreview() {
   $('#ppt-review').hidden=true; $('#ppt-confirm').checked=false;
@@ -1227,22 +1066,8 @@ $('#ppt-add-trim').onclick=()=>{
   ST.pptDraft.columns.push({name:'',base:null,price:null,text:''});
   renderDraftColumns(ST.pptDraft); invalidateDraftPreview();
 };
-$('#ppt-columns').addEventListener('click', e=>{
-  const button=e.target.closest('[data-remove-trim]'); if(!button)return;
-  collectDraftColumns();
-  if(ST.pptDraft.columns.length===1)return toast('至少保留一个版型','err');
-  const removed=ST.pptDraft.columns.splice(Number(button.dataset.removeTrim),1)[0];
-  ST.pptDraft.columns.forEach(c=>{if(c.base===removed.name)c.base=null;});
-  renderDraftColumns(ST.pptDraft); invalidateDraftPreview();
-});
-$('#ppt-columns').addEventListener('change',()=>{
-  collectDraftColumns();
-  $$('#ppt-columns .ppt-base').forEach((select,i)=>{
-    const current=ST.pptDraft.columns[i].base;
-    select.innerHTML='<option value="">独立基础配置</option>'+ST.pptDraft.columns.filter((c,j)=>j!==i&&c.name).map(c=>`<option value="${esc(c.name)}" ${c.name===current?'selected':''}>${esc(c.name)}</option>`).join('');
-  });
-  invalidateDraftPreview();
-});
+$('#ppt-add-trim').hidden=true;
+// Vue owns the draft column cards and keeps the draft model current.
 $('#ppt-model').addEventListener('input',invalidateDraftPreview);
 $('#ppt-price-kind').addEventListener('change',invalidateDraftPreview);
 $('#btn-import-ppt').onclick=async()=>{
@@ -1292,9 +1117,10 @@ $('#ppt-expand').onclick=async()=>{
 $('#ppt-save').onclick=async()=>{
   if(!$('#ppt-confirm').checked)return toast('请先核对并勾选确认','err');
   if(!ST.snapshot || ST.snapshot.status!=='待确认')return toast('请先展开PPT配置','err');
-  collectSnapshotEdits();
+  if(!collectSnapshotEdits())return;
   const res=await api('save_ppt_snapshot',ST.snapshot,true);
   ST.snapshot=res.snapshot;ST.snapshotPath=res.path;
+  await renderSnapshot();
   $('#snapshot-info').textContent=res.path;
   $('#ppt-status').textContent='已保存，可到竞争力对比选择本品。';
   $('#ppt-review').hidden=true;

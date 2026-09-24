@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>Vue 配置编辑回归预览</title>
+<style>body{margin:0}iframe{width:100%;height:90vh;border:0}#result{padding:8px;font:14px sans-serif}</style>
+<nav><a href="?kind=snapshot">本品测试</a> · <a href="?kind=ladder">竞品测试</a></nav><div id="result">正在加载测试数据</div><iframe src="../ui/index.html"></iframe>
+<script>
+const frame=document.querySelector('iframe');
+frame.onload=()=>{
+  const w=frame.contentWindow, d=w.document;
+  const model={trims:[{name:'基础型',price_guide:8},{name:'舒适型',price_guide:9}],cells:[
+    {no:3,values:{'基础型':'400V','舒适型':'400V'},links:{'舒适型':'基础型'}},
+    {no:20,values:{'基础型':'电调','舒适型':'电调'},links:{'舒适型':'基础型'}},
+    {no:29,values:{'基础型':'8.8寸全液晶仪表','舒适型':'8.8寸全液晶仪表'},links:{'舒适型':'基础型'}},
+    {no:35,values:{'基础型':'主驾6向手调+副驾4向手调','舒适型':'主驾6向电调+副驾4向手调'}},
+    {no:36,values:{'基础型':{'主驾通风':'✕','副驾通风':'✕','主驾头枕音响':'[待定]请确认座位','二排加热':'●'},'舒适型':{'主驾通风':'✕','副驾通风':'✕'}},links:{'舒适型':{'主驾通风':'基础型'}}}
+  ]};
+  w.showPage('diff');
+  const root=d.querySelector('#diff-self-table');
+  d.querySelector('#diff-self-editor').hidden=false;
+  const kind=new URLSearchParams(location.search).get('kind') || 'snapshot';
+  const names={3:'高压平台',20:'外后视镜',29:'仪表盘',35:'座椅调节'};
+  if(kind==='ladder') model.items=model.cells.map(c=>({no:c.no,name:names[c.no],values:model.trims.map(t=>c.no===36?'●':c.values[t.name]),subs:c.no===36?[...new Set(Object.values(c.values).flatMap(v=>Object.keys(v)))].map(sub=>({sub,values:model.trims.map(t=>c.values[t.name][sub]||'✕')})):[]}));
+  w.mountConfigurationEditor(root,model,kind,names,kind==='snapshot');
+  const report=()=>document.querySelector('#result').textContent=JSON.stringify(kind==='snapshot'?model.cells.map(c=>({no:c.no,values:c.values})):model.items);
+  root.addEventListener('change',()=>setTimeout(report,0));
+  root.addEventListener('input',()=>setTimeout(report,0));report();
+};
+</script>

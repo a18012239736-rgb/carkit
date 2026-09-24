@@ -3,6 +3,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+from .rules import display_order_key
 
 
 def export_report(path, kind, data):
@@ -77,11 +78,13 @@ def export_report(path, kind, data):
         ws.print_area = ws.dimensions
         sheet('赋值明细', [['左侧版型', '右侧版型', '多或少', '配置差异', '计价依据', '金额（元）']] + [
             [g['pair']['self_trim'], g['pair']['comp_trim'], d['side'], d.get('display'), d.get('rule'), d.get('amount')]
-            for g in groups for d in g.get('valuation', {}).get('detail', [])])
-        sheet('配置判定', [['左侧版型', '右侧版型', '项目编号', '配置名称', '左侧配置', '右侧配置', '判定', '差异说明']] + [
-            [groups[c['pair']]['pair']['self_trim'], groups[c['pair']]['pair']['comp_trim'], c['no'],
+            for g in groups for d in sorted(g.get('valuation', {}).get('detail', []), key=lambda item: display_order_key(item['no']))])
+        ordered_nos = sorted({c['no'] for c in data['cells']}, key=display_order_key)
+        serial_by_no = {no: index for index, no in enumerate(ordered_nos, 1)}
+        sheet('配置判定', [['左侧版型', '右侧版型', '序号', '配置名称', '左侧配置', '右侧配置', '判定', '差异说明']] + [
+            [groups[c['pair']]['pair']['self_trim'], groups[c['pair']]['pair']['comp_trim'], serial_by_no[c['no']],
              c.get('name'), c.get('self_val'), c.get('comp_val'), c.get('verdict'), c.get('display')]
-            for c in data['cells']])
+            for c in sorted(data['cells'], key=lambda item: (item['pair'], display_order_key(item['no'])))])
     else:
         raise ValueError('不支持的导出类型')
     book.save(path)
