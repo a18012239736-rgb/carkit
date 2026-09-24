@@ -27,10 +27,10 @@
           else if(!base || !used.value[base] || !prev.includes(base)) bases.value[j]=prev[prev.length-1];
         });
       }
-      function getPlan() { return plan.value; }
-      return {trims,order,used,bases,options,toggle,getPlan};
-    },template:`<div class="stage-editor-grid"><div v-for="i in order" :key="i" class="stage-trim-row"><label><input type="checkbox" v-model="used[i]" @change="toggle(i)"> {{trims[i].name}}（{{trims[i].price_guide ?? '待核'}}万）</label><select v-model="bases[i]" :disabled="!used[i] || !options(i).length"><option value="">基本配置</option><option v-for="j in options(i)" :value="j">{{trims[j].name}}</option></select></div></div>`});
-    root.replaceChildren(); app.mount(root); current=app; root.__stagePlan=()=>app._instance.proxy.getPlan();
+      return {trims,order,used,bases,options,toggle};
+    },template:`<div class="stage-editor-grid"><div v-for="i in order" :key="i" class="stage-trim-row"><label><input class="stage-use" :data-i="i" type="checkbox" v-model="used[i]" @change="toggle(i)"> {{trims[i].name}}（{{trims[i].price_guide ?? '待核'}}万）</label><select class="stage-base" :data-i="i" v-model="bases[i]" :disabled="!used[i] || !options(i).length"><option value="">基本配置</option><option v-for="j in options(i)" :value="j">{{trims[j].name}}</option></select></div></div>`});
+    root.replaceChildren(); app.mount(root); current=app;
+    root.__stagePlan=()=>[...root.querySelectorAll('.stage-use:checked')].map(cb=>({target:+cb.dataset.i,base:(root.querySelector(`.stage-base[data-i="${cb.dataset.i}"]`)?.value||'')===''?null:+root.querySelector(`.stage-base[data-i="${cb.dataset.i}"]`).value}));
   }
   window.StageEditor={mount,plan:root=>root?.__stagePlan?.()||[]};
 })();

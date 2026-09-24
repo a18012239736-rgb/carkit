@@ -322,7 +322,14 @@ class Bridge:
                 return data
             if kind == 'diff' and not data.get('groups'):
                 raise ValueError('请先运行对比')
-            name = '配置阶梯.xlsx' if kind == 'ladder' else re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', f"竞争力对比-{data.get('self_model') or '本品'}vs{data.get('comp_model') or '竞品'}") + '.xlsx'
+            if kind == 'ladder':
+                # stage_preview carries the parsed vehicle model; keep it in the
+                # suggested filename so exported files remain identifiable.
+                model = data.get('model') or getattr(self.stage_raw, 'model', None) or '车型'
+                safe_model = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', str(model)).strip(' ._') or '车型'
+                name = f'配置阶梯-{safe_model}.xlsx'
+            else:
+                name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', f"竞争力对比-{data.get('self_model') or '本品'}vs{data.get('comp_model') or '竞品'}") + '.xlsx'
             path = self.save_file_dialog(name, ['Excel (*.xlsx)'])
             if isinstance(path, dict):
                 return {'ok': False, 'error': path.get('error', '无法选择保存位置')}
