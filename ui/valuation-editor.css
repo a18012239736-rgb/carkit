@@ -1,18 +1,32 @@
-.vue-valuation-editor { overflow:auto; border:1px solid #dce8e9; border-radius:14px; background:#fbfdfd; box-shadow:0 8px 24px #244e5b0d; }
+.vue-valuation-editor { overflow:auto; border:1px solid var(--line); border-radius:12px; background:var(--card); }
 .vue-valuation-editor .vue-valuation-table { min-width:100%; border-collapse:separate; border-spacing:0; }
-.vue-valuation-editor .vue-valuation-table th { position:sticky; top:0; z-index:2; padding:13px 14px; background:#edf6f6; color:#315b64; border-bottom:1px solid #d5e5e6; font-size:12px; letter-spacing:.02em; }
-.vue-valuation-editor .vue-valuation-table td { padding:12px 14px; border-bottom:1px solid #e5eeee; vertical-align:middle; }
+.vue-valuation-editor .vue-valuation-table th { position:sticky; top:0; z-index:2; padding:8px 10px; background:#f0f2f7; color:#536874; border-bottom:1px solid var(--line); font-size:12.5px; letter-spacing:0; }
+.vue-valuation-editor .vue-valuation-table td { padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
 .vue-valuation-editor .vue-valuation-table tbody tr:last-child td { border-bottom:0; }
-.vue-valuation-editor .vue-valuation-table tbody tr:hover td { background:#f5fbfb; }
-.vue-valuation-editor .vue-valuation-table td.no { width:44px; color:#84979c; font-variant-numeric:tabular-nums; }
-.vue-valuation-editor .vue-valuation-table td:nth-child(2) { min-width:150px; color:#284b53; font-weight:600; }
-.vue-valuation-editor .vue-valuation-table td:nth-child(3) { color:#71868b; white-space:nowrap; }
-.vue-valuation-editor .valuation-fields { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
-.vue-valuation-editor .valuation-field { display:inline-flex; align-items:center; gap:7px; min-height:38px; padding:5px 8px 5px 10px; border:1px solid #d6e4e5; border-radius:9px; background:#f5fafa; color:#547177; white-space:nowrap; }
-.vue-valuation-editor .valuation-field span { font-size:12px; }
-.vue-valuation-editor .valuation-field input { width:78px; min-height:29px; padding:4px 7px; border:1px solid #c8dadd; border-radius:6px; background:#fff; color:#24434a; text-align:right; font-variant-numeric:tabular-nums; }
+.vue-valuation-editor .vue-valuation-table tbody tr:hover td { background:#f7faf9; }
+.vue-valuation-editor .vue-valuation-table td.no { width:44px; color:var(--dim); font-variant-numeric:tabular-nums; }
+.vue-valuation-editor .vue-valuation-table td:nth-child(2) { min-width:150px; color:#284b53; font-weight:700; }
+.vue-valuation-editor .vue-valuation-table td:nth-child(3) { white-space:nowrap; }
+.vue-valuation-editor .valuation-fields { display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px; }
+.vue-valuation-editor .valuation-field {
+  display:inline-flex; align-items:center; gap:6px; min-height:0; margin:0;
+  padding:0; border:0; border-radius:0; background:transparent;
+  color:#667a7f; white-space:nowrap;
+}
+.vue-valuation-editor .valuation-field > span:first-child { font-size:12px; font-weight:600; }
+.vue-valuation-editor .valuation-input { display:inline-flex; align-items:center; gap:6px; }
+.vue-valuation-editor .valuation-field input {
+  box-sizing:border-box; width:85px; min-width:0; height:32px; min-height:32px;
+  margin:0; padding:5px 9px; border:1px solid #d5e1df; border-radius:8px;
+  background:#fff; color:var(--ink); text-align:left; font:inherit;
+  font-size:12px; line-height:20px; font-variant-numeric:tabular-nums;
+}
 .vue-valuation-editor .valuation-field input:focus { outline:none; border-color:#5e9e9b; box-shadow:0 0 0 3px #8fd9d43b; }
-.vue-valuation-editor .valuation-field em { min-width:18px; color:#80969b; font-size:11px; font-style:normal; }
-.vue-valuation-editor .valuation-excluded td { background:#f7f8f8; color:#8a9a9e; }
+.vue-valuation-editor .valuation-field em { min-width:18px; padding:0; color:var(--dim); font-size:11px; font-style:normal; text-align:left; }
+.vue-valuation-editor .valuation-rule { display:inline-flex; align-items:center; min-height:26px; padding:3px 8px; border-radius:7px; font-size:11px; font-weight:750; }
+.vue-valuation-editor .valuation-rule-fixed { background:var(--green-bg); color:var(--green); }
+.vue-valuation-editor .valuation-rule-dynamic { background:var(--lime); color:var(--navy); }
+.vue-valuation-editor .valuation-rule-excluded { background:var(--gray-bg); color:var(--dim); }
+.vue-valuation-editor .valuation-note { color:var(--dim); line-height:1.65; }
+.vue-valuation-editor .valuation-excluded td { background:#f5f7f6; color:#879598; }
 .vue-valuation-editor .valuation-excluded td:nth-child(2) { color:#71858a; }
-.vue-valuation-editor small { display:block; margin-top:4px; color:#9aaeb1; font-size:11px; }

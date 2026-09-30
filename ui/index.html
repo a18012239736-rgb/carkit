@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>产品小工具 — 车型配置对比</title>
-<link rel="stylesheet" href="style.css?v=20260924-5">
+<link rel="stylesheet" href="style.css?v=20260930-1">
 <link rel="stylesheet" href="config-editor.css?v=sticky-columns">
-<link rel="stylesheet" href="valuation-editor.css?v=vue-stage9">
+<link rel="stylesheet" href="valuation-editor.css?v=config-controls-2">
 <link rel="stylesheet" href="ppt-draft-editor.css?v=vue-stage4">
 <script src="vendor/vue/vue.global.prod.js"></script>
 <script src="stage-editor.js?v=vue-stage8"></script>
@@ -36,7 +36,7 @@
           <label>车型名称或汽车之家配置页网址</label>
           <input id="scrape-series" type="text" placeholder="如 比亚迪元UP、启源Q05 或配置页网址" style="flex:1">
           <button id="btn-scrape-open" class="primary">搜索车型</button>
-          <button id="btn-scrape-capture">验证后继续读取</button>
+          <button id="btn-scrape-capture" hidden>验证后继续读取</button>
         </div>
         <div id="scrape-status" class="status"></div>
       </div>
@@ -152,16 +152,19 @@
 
     <section id="page-valuation" class="page">
       <div class="valuation-page-nav"><button id="diff-close-valuation">← 返回竞争力对比</button></div>
+      <h1>调整赋值规则</h1>
+      <p class="intro">管理竞争力对比使用的金额、档位和阈值，保存后立即用于后续对比。</p>
+      <div class="steps">01 检查规则　→　02 调整金额与阈值　→　03 保存并返回对比</div>
       <section class="card valuation-panel">
         <div class="valuation-heading">
-          <div><h1>赋值规则</h1><p class="dim">管理竞争力对比使用的金额、档位和阈值，保存后下次对比立即生效。</p></div>
+          <div><h2>当前赋值规则</h2><p class="dim">固定金额和动态分档均可直接修改；灰色项目只展示配置，不参与金额计算。</p></div>
+          <span id="valuation-info" class="dim"></span>
         </div>
         <div class="valuation-toolbar">
           <button id="btn-make-template">导出当前规则 Excel</button>
           <button id="btn-load-valuation">从 Excel / JSON 导入…</button>
           <button id="btn-reset-valuation">恢复内置默认值</button>
           <button id="btn-save-valuation" class="primary">保存并立即应用</button>
-          <span id="valuation-info" class="dim"></span>
         </div>
         <div class="table-wrap" id="valuation-table-wrap"></div>
       </section>
@@ -193,8 +196,8 @@
 </div>
 <div id="toast"></div>
 <script src="config-editor.js?v=vue-stage5"></script>
-<script src="valuation-editor.js?v=vue-stage3"></script>
+<script src="valuation-editor.js?v=main-ui-2"></script>
 <script src="ppt-draft-editor.js?v=vue-stage4"></script>
-<script src="app.js?v=vue-stage8"></script>
+<script src="app.js?v=verification-button"></script>
 </body>
 </html>

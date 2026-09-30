@@ -57,12 +57,30 @@ def validate(data, live=False):
         raise ValueError('配置表没有读到任何有效指导价，请先核对网页，不能以0元代替。')
 
 
+def filter_years(data, years):
+    """Keep the requested model-year columns even when a site popup blocks its filters."""
+    years = sorted({str(y).strip() for y in years if re.fullmatch(r'20\d{2}', str(y).strip())})
+    if not years:
+        return data
+    indexes = [i for i, header in enumerate(data.get('headers', []))
+               if any(re.search(rf'{re.escape(year)}\s*款', header) for year in years)]
+    if not indexes:
+        available = sorted(set(re.findall(r'20\d{2}(?=\s*款)', ' '.join(data.get('headers', [])))))
+        raise ValueError(f'抓取结果中没有找到所选年款：{"、".join(years)}；当前读取到：{"、".join(available) or "未识别"}')
+    data['headers'] = [data['headers'][i] for i in indexes]
+    for row in data.get('rows', []):
+        row['v'] = [row.get('v', [])[i] for i in indexes]
+    data['expectedCount'] = len(indexes)
+    return data
+
+
 class Acquirer:
     def __init__(self):
         self.pw = self.browser = self.page = None
         self.sid = ''
         self.mode = ''
         self.year = ''
+        self.selected_years = []
 
     def close(self):
         if self.browser:
@@ -92,6 +110,7 @@ class Acquirer:
         self.start()
         self.mode = 'search'
         self.year = str(year or '').strip()
+        self.selected_years = []
         sid = series_id(query)
         if sid:
                 return self.fetch(sid, year=year)
@@ -128,12 +147,16 @@ class Acquirer:
 
     def apply_filters(self, selected=None):
         selected = selected or {}
+        self.selected_years = sorted({match.group(0) for label, values in selected.items() if '年' in str(label)
+                                      for value in values if (match := re.search(r'20\d{2}', str(value)))})
+        try: self.page.keyboard.press('Escape')
+        except Exception: pass
         for label, values in selected.items():
             for value in values:
                 box = self.page.locator(f'input[type="checkbox"][value="{value}"]').first
                 if box.count() and not box.is_checked():
                     try:
-                        box.check()
+                        box.check(force=True)
                     except Exception:
                         # Autohome rerenders the filter group after a selection;
                         # the requested value may already be selected in the new DOM.
@@ -179,6 +202,8 @@ class Acquirer:
             if signature==previous and len(data['rows'])>=60: break
             previous=signature
         validate(data, live=True)
+        filter_years(data, [year] if year else self.selected_years)
+        validate(data)
         self.page.evaluate('window.scrollTo(0,0)')
         raw = rawschema.from_compact(data, series_id=self.sid, scraped_at=datetime.datetime.now().astimezone().isoformat(timespec='seconds'))
         raw.source=data['url']

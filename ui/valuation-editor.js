@@ -20,10 +20,10 @@
       template: `<table class="grid valuation-grid vue-valuation-table"><thead><tr><th>#</th><th>配置项</th><th>计价方式</th><th>可修改的金额与阈值</th><th>备注</th></tr></thead><tbody>
         <tr v-for="(item,index) in rows" :key="item.no" :class="{'valuation-excluded':item.rule==='excluded'}">
           <td class="no">{{index+1}}</td><td>{{label(item.no)}}</td>
-          <td>{{item.rule==='excluded'?'不参与赋值':item.rule==='dynamic'?'动态分档':'固定金额'}}</td>
+          <td><span class="valuation-rule" :class="'valuation-rule-'+item.rule">{{item.rule==='excluded'?'不参与赋值':item.rule==='dynamic'?'动态分档':'固定金额'}}</span></td>
           <td v-if="item.rule==='excluded'" class="dim">仅保留配置展示</td>
-          <td v-else><div class="valuation-fields"><label v-if="item.rule!=='dynamic'" class="valuation-field"><span>固定金额</span><input type="number" min="0" step="any" :value="item.val ?? ''" @input="setFixed(item,$event.target.value)"><em>元</em></label><label v-for="spec in specs(item.no)" :key="spec.key" class="valuation-field"><span>{{spec.label}}</span><input type="number" min="0" step="any" :value="item.params?.[spec.key] ?? ''" @input="setParam(item,spec.key,$event.target.value)"><em>{{spec.unit||''}}</em></label></div></td>
-          <td>{{item.note || ''}}</td>
+          <td v-else><div class="valuation-fields"><label v-if="item.rule!=='dynamic'" class="valuation-field"><span>固定金额</span><span class="valuation-input"><input type="number" min="0" step="any" :value="item.val ?? ''" @input="setFixed(item,$event.target.value)"><em>元</em></span></label><label v-for="spec in specs(item.no)" :key="spec.key" class="valuation-field"><span>{{spec.label}}</span><span class="valuation-input"><input type="number" min="0" step="any" :value="item.params?.[spec.key] ?? ''" @input="setParam(item,spec.key,$event.target.value)"><em>{{spec.unit||''}}</em></span></label></div></td>
+          <td class="valuation-note">{{item.note || ''}}</td>
         </tr></tbody></table>`
     });
     root.classList.add('vue-valuation-editor');

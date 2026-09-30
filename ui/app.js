@@ -282,6 +282,7 @@ async function refreshRawList() {
 $("#btn-scrape-open").addEventListener("click", async () => {
   const sid = $("#scrape-series").value.trim();
   if (!sid) return toast("请填写 seriesId 或 URL", "err");
+  $("#btn-scrape-capture").hidden = true;
   $("#scrape-status").textContent = "搜索和读取中…";
   $("#scrape-status").className = "status";
   const res = await api("stage_search", sid, "");
@@ -289,11 +290,13 @@ $("#btn-scrape-open").addEventListener("click", async () => {
 });
 
 $("#btn-scrape-capture").addEventListener("click", async () => {
+  $("#btn-scrape-capture").hidden = true;
   const res = await api("stage_continue");
   handleStageResult(res);
 });
 
 function handleStageResult(res) {
+  $("#btn-scrape-capture").hidden = !res.needs_browser;
   if (res.filters) { renderCaptureFilters(res.filters); return; }
   if (res.candidates) {
     $("#stage-candidates").hidden = false;
