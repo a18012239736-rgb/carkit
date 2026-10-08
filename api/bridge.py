@@ -19,6 +19,7 @@ from engine import rawschema, ladder as ladder_mod, differ, render_backup, value
 from engine.models import Snapshot, Ladder, ValuationTable, ValuationItem
 from engine.snapshot import resolve
 from engine import acquire, stage_one
+from engine.storage import atomic_write_text, unique_filename
 
 
 def _today():
@@ -78,6 +79,9 @@ class Bridge:
 
     def workdir_path(self, *parts):
         return os.path.join(self.workdir, *parts)
+
+    def _new_output_path(self, sub, stem, suffix):
+        return os.path.join(self.workdir, sub, unique_filename(stem, suffix))
 
     def checklist(self):
         return self.rules.checklist
@@ -141,8 +145,8 @@ class Bridge:
             try:
                 raw = rawschema.detect_and_load(os.path.join(self.workdir, 'raw', filename))
                 years = sorted(set(re.findall(r'(20\d{2})款', ' '.join(t.full for t in raw.trims))))
-                date = raw.scraped_at[:10] if raw.scraped_at else '日期未记录'
-                label = f"{raw.model or '未命名车型'} · {' / '.join(years)+'款' if years else '年款未记录'} · {date}"
+                date = raw.scraped_at[:19].replace('T', ' ') if raw.scraped_at else '日期未记录'
+                label = f"{raw.model or '未命名车型'} · {' / '.join(years)+'款' if years else '年款未记录'} · {len(raw.trims)}个版型 · {date}"
                 records.append({'file': filename, 'label': label, 'count': len(raw.trims)})
             except Exception:
                 records.append({'file': filename, 'label': filename+'（数据无法读取）', 'count': 0})
@@ -260,9 +264,11 @@ class Bridge:
     def _stage_store(self, raw_dict):
         raw = rawschema.RawTable.from_dict(raw_dict)
         stage_one.validate_raw(raw)
-        self.stage_raw = raw
-        raw_path = os.path.join(self.workdir, "raw", f"raw-{raw.series_id or raw.model}-{_today()}.json")
+        if not raw.scraped_at:
+            raw.scraped_at = datetime.datetime.now().isoformat(timespec='seconds')
+        raw_path = self._new_output_path('raw', f'raw-{raw.series_id or raw.model}', '.json')
         raw.save(raw_path)
+        self.stage_raw = raw
         return {"ok": True, "model": raw.model, "series_id": raw.series_id,
                 "trims": [{"idx": t.idx, "name": t.short, "full": t.full,
                            "price_guide": t.price_guide} for t in raw.trims],
@@ -349,7 +355,7 @@ class Bridge:
             stage_one.validate_plan(self.stage_raw, plan)
             md = stage_one.render(self.stage_raw, plan)
             safe = re.sub(r'[^\w\-一-龥]+', '_', filename or self.stage_raw.model or '车型配置阶梯').strip('_')
-            path = os.path.join(self.workdir, '阶梯', safe + '-' + _today() + '.md')
+            path = self._new_output_path('阶梯', safe, '.md')
             if choose_path:
                 selected = self.save_file_dialog(os.path.basename(path), ['Markdown (*.md)'])
                 if isinstance(selected, dict):
@@ -357,7 +363,7 @@ class Bridge:
                 if not selected:
                     return {'ok': True, 'cancelled': True}
                 path = selected if selected.lower().endswith('.md') else selected + '.md'
-            with open(path, 'w', encoding='utf-8') as f: f.write(md)
+            atomic_write_text(path, md)
             return {"ok": True, "path": path, "md": md}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -368,9 +374,8 @@ class Bridge:
             from engine import scrape
             raw = scrape.scrape_capture(model)
             sid = raw.series_id or "import"
-            out = os.path.join(self.workdir, "raw", f"raw-{sid}-{_today()}.json")
-            with open(out, "w", encoding="utf-8") as f:
-                f.write(raw.to_json(indent=1))
+            out = self._new_output_path('raw', f'raw-{sid}', '.json')
+            raw.save(out)
             return {"ok": True, "path": out, "model": raw.model,
                     "trims": [t.short for t in raw.trims], "rows": len(raw.rows)}
         except Exception as e:
@@ -384,10 +389,8 @@ class Bridge:
                 raw = scrape.parse_saved_html(path)
             else:
                 raw = rawschema.detect_and_load(path)
-            out = os.path.join(self.workdir, "raw",
-                               f"raw-{raw.model or 'import'}-{_today()}.json")
-            with open(out, "w", encoding="utf-8") as f:
-                f.write(raw.to_json(indent=1))
+            out = self._new_output_path('raw', f"raw-{raw.model or 'import'}", '.json')
+            raw.save(out)
             return {"ok": True, "path": out, "model": raw.model,
                     "trims": [t.short for t in raw.trims], "rows": len(raw.rows),
                     "lossy": raw.lossy}
@@ -401,12 +404,11 @@ class Bridge:
             raw = rawschema.detect_and_load(raw_path, series_id=series_id)
             lad = ladder_mod.build_ladder(raw, self.rules, model=model or raw.model,
                                           series_id=series_id or raw.series_id, date=_today())
-            out = os.path.join(self.workdir, "阶梯", f"竞品阶梯-{lad.model}-{_today()}.json")
+            out = self._new_output_path('阶梯', f'竞品阶梯-{lad.model}', '.json')
             lad.save(out)
             md = ladder_mod.render_md(lad)
             md_out = out.replace(".json", ".md")
-            with open(md_out, "w", encoding="utf-8") as f:
-                f.write(md)
+            atomic_write_text(md_out, md)
             return {"ok": True, "path": out, "md_path": md_out, "ladder": lad.to_dict()}
         except Exception as e:
             return {"ok": False, "error": str(e), "trace": traceback.format_exc(limit=3)}
@@ -479,7 +481,7 @@ class Bridge:
                                 "basis": ""} for it in self.rules.items])
         from engine.snapshot import prepare_snapshot
         prepare_snapshot(snap)
-        out = os.path.join(self.workdir, "快照", f"{model}-配置阶梯快照-{_today()}.json")
+        out = self._new_output_path('快照', f'{model}-配置阶梯快照', '.json')
         snap.save(out)
         return {"ok": True, "path": out, "snapshot": json.loads(snap.to_json())}
 
@@ -519,8 +521,7 @@ class Bridge:
             data = valuer.normalize_valuation(val_dict, self.rules)
             data["source"] = "用户在程序内修改的当前赋值规则"
             path = self._current_valuation_path()
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=1)
+            atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=1))
             return {"ok": True, "valuation": data, "path": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -557,8 +558,7 @@ class Bridge:
     def save_valuation(self, path: str, val_dict: dict):
         try:
             val_dict = valuer.normalize_valuation(val_dict, self.rules)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(val_dict, f, ensure_ascii=False, indent=1)
+            atomic_write_text(path, json.dumps(val_dict, ensure_ascii=False, indent=1))
             return {"ok": True, "valuation": val_dict}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -591,11 +591,6 @@ class Bridge:
                     return {"ok": False, "error": f"自产品版型不存在: {p['self_trim']}"}
                 if p["comp_trim"] not in comp_trims and p["comp_trim"] + "版" not in comp_trims:
                     return {"ok": False, "error": f"竞品版型不存在: {p['comp_trim']}"}
-            cells = differ.diff(self_lad, comp_lad, pairs, self.rules)
-            name_by_no = {it["no"]: (it.get("md_name") or it["name"])
-                          for it in self.rules.checklist["items"]}
-            for c in cells:
-                c["name"] = name_by_no.get(c["no"], str(c["no"]))
             valuation = None
             if valuation_path:
                 vd = valuer.load_xlsx(valuation_path) if valuation_path.endswith(".xlsx") \
@@ -610,6 +605,11 @@ class Bridge:
                 vd = valuer.normalize_valuation(saved, self.rules)
                 valuation = ValuationTable(version=vd["version"], source=vd["source"],
                                            items=[ValuationItem(**it) for it in vd["items"]])
+            cells = differ.diff(self_lad, comp_lad, pairs, self.rules, valuation=valuation)
+            name_by_no = {it["no"]: (it.get("md_name") or it["name"])
+                          for it in self.rules.checklist["items"]}
+            for c in cells:
+                c["name"] = name_by_no.get(c["no"], str(c["no"]))
             excluded = {it.no for it in valuation.items if it.rule == 'excluded'}
             cells = [c for c in cells if c['no'] not in excluded]
             self_prices = {t["name"]: t.get("price_guide") for t in self_lad.trims}
@@ -621,10 +621,8 @@ class Bridge:
                                          rules_version=self.rules.version,
                                          checklist=self.rules.version, date=_today(),
                                          notes=notes)
-            out = os.path.join(self.workdir, "结果",
-                               f"赋值对比-{snap.model}vs{comp_lad.model}-{_today()}.md")
-            with open(out, "w", encoding="utf-8") as f:
-                f.write(md)
+            out = self._new_output_path('结果', f'赋值对比-{snap.model}vs{comp_lad.model}', '.md')
+            atomic_write_text(out, md)
             missing = sorted({n for g in groups for n in (g.get("valuation") or {}).get("missing", [])})
             return {"ok": True, "md_path": out, "md": md,
                     "self_model": snap.model, "comp_model": comp_lad.model,
@@ -638,8 +636,7 @@ class Bridge:
             lad = Ladder.load(ladder_path)
             md = ladder_mod.render_md(lad)
             out = ladder_path.replace(".json", ".md")
-            with open(out, "w", encoding="utf-8") as f:
-                f.write(md)
+            atomic_write_text(out, md)
             return {"ok": True, "path": out}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -647,8 +644,7 @@ class Bridge:
     def write_text_file(self, path: str, text: str):
         """GUI 导出：把文本写到使用者选的路径"""
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(text)
+            atomic_write_text(path, text)
             return {"ok": True, "path": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -659,9 +655,8 @@ class Bridge:
             from engine import render_5c
             lad = Ladder.load(ladder_path)
             md = render_5c.render_md(lad)
-            out = os.path.join(self.workdir, "结果", f"5C-看竞争-{lad.model}.md")
-            with open(out, "w", encoding="utf-8") as f:
-                f.write(md)
+            out = self._new_output_path('结果', f'5C-看竞争-{lad.model}', '.md')
+            atomic_write_text(out, md)
             return {"ok": True, "path": out}
         except Exception as e:
             return {"ok": False, "error": str(e)}

@@ -214,7 +214,7 @@ def cmp_cluster(sv, cv, **kw):
 
 # ---------- #36 座椅功能 ----------
 
-def cmp_seat36(sv, cv, comp_sub_vals=None, **kw):
+def cmp_seat36(sv, cv, comp_sub_vals=None, params=None, **kw):
     from .seat_functions import SUBS, PRICES, normalize
     s = normalize(sv)
     c = normalize(cv)
@@ -229,8 +229,8 @@ def cmp_seat36(sv, cv, comp_sub_vals=None, **kw):
             more.append(key)
         elif right == '●' and left != '●':
             less.append(key)
-    amount = sum(PRICES[next(f for f in PRICES if k.endswith(f))] for k in more) - \
-             sum(PRICES[next(f for f in PRICES if k.endswith(f))] for k in less)
+    from .valuer import dynamic_delta
+    amount = dynamic_delta(36, s, c, params)
     verdict = MORE if amount > 0 else LESS if amount < 0 else SAME
     detail = '；'.join(part for part in (
         '本品多：'+'、'.join(more) if more else '',
@@ -268,7 +268,7 @@ def _pair_values(self_ladder, comp_ladder, no, si, ci):
     return sv, cv, cit, comp_sub_vals
 
 
-def diff(self_ladder, comp_ladder, pairs, rules):
+def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
     """pairs: [{"self_trim":名,"comp_trim":名}]；返回 DiffResult 用 dict 列表"""
     self_trims = [t["name"] for t in self_ladder.trims]
     comp_trims = [t["name"] for t in comp_ladder.trims]
@@ -296,6 +296,7 @@ def diff(self_ladder, comp_ladder, pairs, rules):
         for item in rules.items:
             no = item["no"]
             sv, cv, cit, comp_subs = _pair_values(self_ladder, comp_ladder, no, si, ci)
+            vitem = valuation.item(no) if valuation is not None else None
             screen_optional = ''
             if no in (21, 22, 29):
                 from .screen_config import normalize_screen
@@ -338,7 +339,7 @@ def diff(self_ladder, comp_ladder, pairs, rules):
 
             # ---- #31 内后视镜：手动防眩目默认双方●，只比流媒体 ----
             if no == 31:
-                s_media, c_media = "流媒体" in str(sv), "流媒体" in str(cv)
+                s_media, c_media = _has(sv) and "流媒体" in str(sv), _has(cv) and "流媒体" in str(cv)
                 if s_media == c_media:
                     verdict, exempt = SAME, "rearview_manual"
                     disp = "同 手动防眩目(同)" if not s_media else "同 流媒体(流媒体)"
@@ -348,7 +349,9 @@ def diff(self_ladder, comp_ladder, pairs, rules):
                 else:
                     verdict = LESS
                     disp = "少 手动防眩目(流媒体)"
-                cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt, "", ""))
+                cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt,
+                                   '流媒体后视镜' if verdict == MORE else '',
+                                   '流媒体后视镜' if verdict == LESS else ''))
                 continue
 
             # ---- #1 续航：微差豁免（band）----
@@ -380,13 +383,21 @@ def diff(self_ladder, comp_ladder, pairs, rules):
                     cells.append(_cell(no, pi, NA, '不计(请确认前备箱开启方式)', sv, cv, 'pending', '', ''))
                     continue
                 verdict = MORE if s_cost > c_cost else LESS if s_cost < c_cost else SAME
+                if vitem:
+                    from .valuer import dynamic_delta
+                    amount = dynamic_delta(no, sv, cv, vitem.get('params'))
+                    verdict = MORE if amount > 0 else LESS if amount < 0 else SAME
                 label = f'{ss}({cs})' if s_cost and c_cost else ss if s_cost else cs
                 cells.append(_cell(no, pi, verdict, f'{verdict} {label}', sv, cv, '',
                                    label if verdict == MORE else '', label if verdict == LESS else ''))
                 continue
 
             if no == 36:
-                verdict, disp, backup = cmp_seat36(sv, cv, comp_subs)
+                from .seat_functions import SUBS, normalize
+                sv, cv = dict(normalize(sv)), dict(normalize(cv))
+                if any(key in comp_subs for key in SUBS):
+                    cv.update(normalize(comp_subs))
+                verdict, disp, backup = cmp_seat36(sv, cv, params=vitem.get('params') if vitem else None)
                 backup_more, backup_less = (backup, "") if verdict == MORE else (("", backup) if verdict == LESS else ("", ""))
                 cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less))
                 continue
@@ -455,6 +466,11 @@ def diff(self_ladder, comp_ladder, pairs, rules):
                 v, ss, cs = cmp_bool(sv, cv)
 
             verdict = v
+            if vitem and vitem.get('rule') == 'dynamic':
+                from .valuer import dynamic_delta
+                amount = dynamic_delta(no, sv, cv, vitem.get('params'))
+                if amount:
+                    verdict = MORE if amount > 0 else LESS
             # ○选装注记：对方仅○ → 按无比较但显示注记
             disp = f"{verdict} {ss}({cs})"
             if screen_optional:
@@ -470,6 +486,7 @@ def _cell(no, pi, verdict, disp, sv, cv, exempt, bm, bl):
     return {"no": no, "pair": pi, "verdict": verdict, "display": disp,
             "self_val": sv if isinstance(sv, str) else str(sv),
             "comp_val": cv if isinstance(cv, str) else str(cv),
+            "self_config": sv, "comp_config": cv,
             "exempt_id": exempt, "backup_more": bm, "backup_less": bl}
 
 
@@ -515,6 +532,11 @@ def _cmp_generic(no, item, sv, cv):
         s, c = ambient_level(sv), ambient_level(cv)
         labels = ['✕', '单色', '多色']
         return (MORE if s > c else LESS if s < c else SAME), labels[s], labels[c]
+    if no == 35:
+        from .valuer import dynamic_delta
+        amount = dynamic_delta(no, sv, cv)
+        if amount:
+            return (MORE if amount > 0 else LESS), _short_generic(no, sv), _short_generic(no, cv)
     order = _RANKS.get(no)
     ss, cs = _short_generic(no, sv), _short_generic(no, cv)
     if order:
@@ -699,7 +721,8 @@ def _backup_display(no, verdict, sv, cv, ss, cs, name=''):
         c_full = ("全液晶" in c) and not re.search(r"○\s*全液晶", str(cv))
         c_size = _num(cv)
         cdisp = (f"全液晶{c_size:g}" if c_full else f"{c_size:g}") if c_size else c
-        out = f"{number(sv)}仪表({cdisp})"
+        s_full = "全液晶" in s and not re.search(r"○\s*全液晶", str(sv))
+        out = f"{'全液晶' if s_full else ''}{number(sv)}仪表({cdisp})"
     elif no == 1:
         out = f"{number(sv)}km({number(cv)})" if _num(cv) is not None else f"{number(sv)}km"
     else:
@@ -769,7 +792,8 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
         g["self_price"], g["comp_price"] = sp, cp
         if valuation is not None:
             from .valuer import value_pair
-            g["valuation"] = value_pair(more_map, less_map, sp, cp, valuation)
+            g["valuation"] = value_pair(more_map, less_map, sp, cp, valuation,
+                                         cells=[c for c in cells if c['pair'] == pi])
         else:
             g["valuation"] = {"config_adv": None, "flat_adv": None, "overall": None,
                               "missing": sorted(set(list(more_map) + list(less_map)))}

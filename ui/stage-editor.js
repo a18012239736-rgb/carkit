@@ -17,14 +17,16 @@
       const options = i => earlier(i);
       const plan = computed(() => order.filter(i=>used.value[i]).map(i=>({target:i,base:bases.value[i]===''||bases.value[i]==null?null:Number(bases.value[i])})));
       function toggle(i) {
-        if(!used.value[i]) { bases.value[i]=''; return; }
-        const previous = earlier(i);
-        if(previous.length && !bases.value[i]) bases.value[i]=previous[previous.length-1];
+        if(!used.value[i]) bases.value[i]='';
+        else {
+          const previous = earlier(i);
+          if(previous.length && (bases.value[i]==='' || bases.value[i]==null)) bases.value[i]=previous[previous.length-1];
+        }
         order.forEach(j=>{
           if(!used.value[j]) return;
           const prev=earlier(j), base=bases.value[j];
           if(!prev.length) bases.value[j]='';
-          else if(!base || !used.value[base] || !prev.includes(base)) bases.value[j]=prev[prev.length-1];
+          else if(base==='' || base==null || !used.value[base] || !prev.includes(Number(base))) bases.value[j]=prev[prev.length-1];
         });
       }
       return {trims,order,used,bases,options,toggle};

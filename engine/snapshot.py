@@ -28,6 +28,7 @@ def prepare_snapshot(snap):
         if cell is None:
             cell = {'no': no, 'values': {}, 'basis': '基础配置默认档位'}
             snap.cells.append(cell)
+            by_no[no] = cell
         for trim in snap.trims:
             if cell['values'].get(trim['name']) in (None, '', '✕', '×', 'X', '-', '无'):
                 cell['values'][trim['name']] = default

@@ -8,6 +8,7 @@ import copy
 import re
 from dataclasses import dataclass, field, asdict
 from typing import Optional
+from .storage import atomic_write_text
 
 
 def _merge_central_airbag(total, central):
@@ -116,8 +117,7 @@ class RawTable:
             return cls.from_dict(json.load(f))
 
     def save(self, path):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(self.to_json(indent=1))
+        atomic_write_text(path, self.to_json(indent=1))
 
 
 # ---------- Ladder（41项阶梯，竞品或自产品通用容器） ----------
@@ -191,8 +191,7 @@ class Ladder:
             return cls.from_dict(json.load(f))
 
     def save(self, path):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(self.to_json(indent=1))
+        atomic_write_text(path, self.to_json(indent=1))
 
 
 # ---------- Snapshot（自产品快照，Ladder 的自产品特化：side=self） ----------
@@ -265,8 +264,7 @@ class Snapshot:
             return cls.from_dict(json.load(f))
 
     def save(self, path):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(self.to_json(indent=1))
+        atomic_write_text(path, self.to_json(indent=1))
 
 
 # ---------- DiffResult ----------
@@ -312,8 +310,7 @@ class DiffResult:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
     def save(self, path):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(self.to_json(indent=1))
+        atomic_write_text(path, self.to_json(indent=1))
 
 
 # ---------- ValuationTable（pjy 规定的赋值表） ----------
@@ -356,5 +353,4 @@ class ValuationTable:
         return cls(version=d.get("version", ""), source=d.get("source", "pjy 规定"), items=items)
 
     def save(self, path):
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(self.to_json(indent=1))
+        atomic_write_text(path, self.to_json(indent=1))

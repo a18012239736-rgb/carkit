@@ -14,33 +14,34 @@ EVALUATE_JS 为 2026-09-11 启源Q05 实战验证版：
 from __future__ import annotations
 import json
 import re
+from copy import deepcopy
 
 CONFIG_URL = "https://www.autohome.com.cn/config/series/{sid}.html"
 
 EVALUATE_JS = """
 () => {
+  const clean = s => (s || '').replace(/\\s+/g, ' ').trim();
+  const headers = Array.from(document.querySelectorAll('a[class*="style_col_spec_name"]'))
+    .map(a => clean(a.textContent));
+  const cell = c => {
+    const subs = Array.from(c.querySelectorAll('div[class*="style_col_sub"]'))
+      .filter(s => !s.querySelector('div[class*="style_col_sub"]'));
+    if (subs.length) return subs.map(cell).join(' | ');
+    const clone = c.cloneNode(true);
+    clone.querySelectorAll('i').forEach(i => i.replaceWith(
+      /outline/.test(i.className) ? '○' : /solid/.test(i.className) ? '●' : ''));
+    return clean(clone.textContent) || '-';
+  };
   const rows = Array.from(document.querySelectorAll('div[class*="style_row"]'));
   const out = [];
   for (const r of rows) {
-    const cols = Array.from(r.children).filter(c => /style_col/i.test(c.className || ''));
+    const cols = Array.from(r.children).filter(c => /(?:^|\\s)style_col(?:__|\\s|$)/i.test(c.className || ''));
     if (cols.length < 2) continue;
-    const name = cols[0].textContent.trim().replace(/[●○]/g, '').slice(0, 50);
-    const vals = cols.slice(1, 8).map(c => {
-      const subs = Array.from(c.querySelectorAll('div[class*="style_col_sub"]'));
-      if (subs.length) {
-        return subs.map(s => {
-          const sym = s.querySelector('i[class*="solid"]') ? '●' : s.querySelector('i[class*="outline"]') ? '○' : '';
-          return sym + s.textContent.trim().replace(/[●○]/g, '');
-        }).join(' | ');
-      }
-      const solid = !!c.querySelector('i[class*="solid"]');
-      const outline = !!c.querySelector('i[class*="outline"]');
-      const txt = c.textContent.trim().replace(/[●○]/g, '').replace(/\\s+/g, ' ').slice(0, 80);
-      return (solid ? '●' : outline ? '○' : '') + txt || '-';
-    });
+    const name = clean(cols[0].textContent).replace(/[●○]/g, '');
+    const vals = cols.slice(1).map(cell);
     if (name) out.push({n: name, v: vals});
   }
-  return JSON.stringify({headers: Array.from(document.querySelectorAll('div[class*="style_col"]')).slice(1,8).map(c=>c.textContent.trim().replace(/钉在左侧|对比/g,'').slice(0,30)), rowCount: out.length, rows: out});
+  return JSON.stringify({headers, rowCount: out.length, rows: out});
 }
 """
 
@@ -82,6 +83,7 @@ def scrape_open(series_id: str, channel: str = "msedge") -> dict:
 def scrape_capture(model: str = "") -> "RawTable":
     """第2步：跑 EVALUATE_JS 抓全表 → canonical RawTable，随后关闭浏览器"""
     from . import rawschema
+    from .acquire import validate
     page = _SESSION.get("page")
     if page is None:
         raise RuntimeError("未打开配置页，请先执行 scrape_open")
@@ -91,6 +93,9 @@ def scrape_capture(model: str = "") -> "RawTable":
     data = json.loads(out) if isinstance(out, str) else out
     if not data.get("rows"):
         raise RuntimeError("抓到 0 行——页面可能未加载完整或被反爬拦截；请重试或用「导入 HTML」兜底")
+    if any(not header for header in data.get('headers', [])):
+        raise ValueError('未找到完整版型表头，请等配置表加载完成后重试。')
+    validate(data)
     raw = rawschema.from_compact(data, series_id=_SESSION.get("series_id", ""))
     if model:
         raw.model = model
@@ -128,51 +133,40 @@ def parse_saved_html(path: str, series_id: str = "") -> "RawTable":
     except ImportError:
         raise RuntimeError("HTML 解析需要 lxml：pip install lxml")
     from . import rawschema
-    from .models import Cell, RawRow, RawTable, Trim
+    from .acquire import validate
     with open(path, encoding="utf-8", errors="ignore") as f:
         doc = LH.fromstring(f.read())
     rows_el = doc.xpath('//div[contains(@class,"style_row")]')
     if not rows_el:
         raise RuntimeError("HTML 中未找到 style_row——可能保存时页面未加载完整（动态页需等表格出现后再 Ctrl+S）")
-    trims, rows = [], []
+
+    def clean(text):
+        return re.sub(r"\s+", " ", text or "").strip()
+
+    def cell_text(el):
+        subs = el.xpath('.//div[contains(@class,"style_col_sub")][not(.//div[contains(@class,"style_col_sub")])]')
+        if subs:
+            return ' | '.join(cell_text(sub) for sub in subs)
+        clone = deepcopy(el)
+        for icon in clone.xpath('.//i'):
+            cls = icon.get('class') or ''
+            icon.clear(keep_tail=True)
+            icon.text = '○' if 'outline' in cls else ('●' if 'solid' in cls else '')
+        return clean(clone.text_content()) or '-'
+
+    headers = [clean(h.text_content()) for h in doc.xpath('//a[contains(@class,"style_col_spec_name")]')]
+    if not headers or any(not h for h in headers):
+        raise ValueError('HTML 中未找到完整版型表头，请等配置表加载完成后重新保存。')
+    rows = []
     for r in rows_el:
-        cols = [c for c in r if "style_col" in (c.get("class") or "")]
+        cols = [c for c in r if re.search(r'(?:^|\s)style_col(?:__|\s|$)', c.get("class") or "", re.I)]
         if len(cols) < 2:
             continue
-        name = re.sub(r"[●○]", "", (cols[0].text_content() or "")).strip()[:50]
-        cells = []
-        for c in cols[1:8]:
-            subs_el = c.xpath('.//div[contains(@class,"style_col_sub")]')
-            solid = c.xpath('.//i[contains(@class,"solid")]')
-            outline = c.xpath('.//i[contains(@class,"outline")]')
-            txt = re.sub(r"[●○]", "", c.text_content() or "").strip()
-            txt = re.sub(r"\s+", " ", txt)[:80]
-            dot = "●" if solid else ("○" if outline else "")
-            cell = Cell(dot=dot, text=txt)
-            if subs_el:
-                cell.subs = []
-                for s in subs_el:
-                    s_solid = s.xpath('.//i[contains(@class,"solid")]')
-                    s_outline = s.xpath('.//i[contains(@class,"outline")]')
-                    s_txt = re.sub(r"[●○]", "", s.text_content() or "").strip()
-                    cell.subs.append(Cell(dot="●" if s_solid else ("○" if s_outline else ""),
-                                          text=s_txt))
-                cell.text = cell.subs[0].text
-                cell.dot = cell.subs[0].dot
-            cells.append(cell)
+        name = re.sub(r"[●○]", "", clean(cols[0].text_content()))
         if name:
-            rows.append(RawRow(name=name, cells=cells))
-    # 表头（版型名）：首行 style_col 或页面 carItem
-    headers = [re.sub(r"\s+", " ", (h.text_content() or "")).strip()
-               for h in doc.xpath('//div[contains(@class,"style_col")]')[1:8]]
-    headers = [h for h in headers if h]
-    trims = [Trim(idx=i, full=h, short=rawschema._short_name(h)) for i, h in enumerate(headers)]
-    raw = RawTable(series_id=series_id, source="html",
-                   model=rawschema._model_name(headers[0]) if headers else "",
-                   trims=trims, rows=rows)
-    price_row = raw.row("厂商指导价(元)")
-    if price_row:
-        for t, c in zip(raw.trims, price_row.cells):
-            m = re.search(r"([\d.]+)\s*万", c.text or "")
-            t.price_guide = float(m.group(1)) if m else None
+            rows.append({'n': name, 'v': [cell_text(c) for c in cols[1:]]})
+    data = {'headers': headers, 'rows': rows}
+    validate(data)
+    raw = rawschema.from_compact(data, series_id=series_id)
+    raw.source = 'html'
     return raw

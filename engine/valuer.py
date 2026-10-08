@@ -215,25 +215,52 @@ def _segmented_km(vitem, km):
 
 
 def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
-               valuation, overall_formula: str | None = None) -> dict:
+               valuation, overall_formula: str | None = None, *, cells=None) -> dict:
     """一组配对的三指标。more_map/less_map: {item_no: backup显示串}"""
     missing = []
     total_more = total_less = 0.0
     detail = []
-    for no, disp in more_map.items():
-        amt = _amount_for(valuation, no, disp, side="more")
+    amounts = []
+    if cells is not None:
+        for cell in cells:
+            no, verdict = cell['no'], cell['verdict']
+            if verdict not in ('多', '少', '同'):
+                continue
+            item = valuation.item(no)
+            if item and item.get('rule') == 'excluded':
+                continue
+            if item and (item.get('rule') == 'dynamic' or no == 12):
+                amt = dynamic_delta(no, cell['self_config'], cell['comp_config'], item.get('params'))
+            elif verdict == '同':
+                continue
+            elif item and item.get('pricing') in ('band', 'segmented_per_km', 'per_unit'):
+                left, right = cell['self_config'], cell['comp_config']
+                if item['pricing'] == 'per_unit':
+                    unit = item.get('unit_val')
+                    amt = None if unit is None else ((_num(left, 0) or 0) - (_num(right, 0) or 0)) * unit
+                else:
+                    amt = item_amount(item, left, right)
+            else:
+                amt = (item or {}).get('val')
+                if amt is not None and verdict == '少':
+                    amt = -amt
+            if amt == 0 and verdict == '同':
+                continue
+            disp = cell.get('backup_more') or cell.get('backup_less') or cell['display']
+            amounts.append((no, disp, amt, verdict))
+    else:
+        for side, mapping in (('多', more_map), ('少', less_map)):
+            for no, disp in mapping.items():
+                amt = _amount_for(valuation, no, disp, side='more' if side == '多' else 'less')
+                amounts.append((no, disp, None if amt is None else abs(amt) * (1 if side == '多' else -1), side))
+    for no, disp, amt, verdict in amounts:
         if amt is None:
             missing.append(no)
         else:
-            total_more += abs(amt)
-            detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": "多", "amount": round(abs(amt), 2), "display": disp, "rule": explain_rule(valuation, no)})
-    for no, disp in less_map.items():
-        amt = _amount_for(valuation, no, disp, side="less")
-        if amt is None:
-            missing.append(no)
-        else:
-            total_less += abs(amt)
-            detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": "少", "amount": round(-abs(amt), 2), "display": disp, "rule": explain_rule(valuation, no)})
+            total_more += max(amt, 0)
+            total_less += max(-amt, 0)
+            side = '多' if amt > 0 else '少' if amt < 0 else verdict
+            detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": side, "amount": round(amt, 2), "display": disp, "rule": explain_rule(valuation, no)})
     if missing:
         return {"config_adv": None, "flat_adv": None, "overall": None,
                 "missing": sorted(set(missing)), "detail": detail}
@@ -318,11 +345,70 @@ def _amount_for(valuation, no, disp, side):
     return None
 
 
-def _default_rule_amount(no, disp, side, custom_params=None):
+def _seat_adjust_components(value):
+    text = str(value).replace('电动', '电调').replace('手动', '手调')
+    if text.strip() in ('', '✕', '-', '无') or text.startswith('○'):
+        return 0, 0
+    seats = re.findall(r'(主驾?|副驾?)(\d+)向?(电调|手调)?', text)
+    modes = {seat[0]: mode for seat, mode in re.findall(r'(主驾?|副驾?)(?:\d+向?)?(电调|手调)', text)}
+    common = re.fullmatch(r'●?主\d+向?副\d+向?(电调|手调)', text)
+    if seats:
+        positions = {seat[0] for seat in re.findall(r'主驾?|副驾?', text)}
+        directions = sum(int(n) for _, n, _ in seats) if positions == {seat[0] for seat, _, _ in seats} else None
+        if common:
+            return directions, len(seats) if common[1] == '电调' else 0
+        electric = sum(modes[pos] == '电调' for pos in positions) if positions <= modes.keys() else None
+        return directions, electric
+    if text.startswith(('主副', '前排')):
+        return None, 2 if '电调' in text else 0
+    if modes:
+        return None, sum(mode == '电调' for mode in modes.values())
+    count = 2 if '主副' in text or '前排' in text else 1
+    return None, count if '电调' in text else 0
+
+
+def dynamic_delta(no, self_value, comp_value, custom_params=None):
+    """Signed value difference from the two configurations, never their summary."""
+    params = dict(DEFAULT_DYNAMIC_PARAMS.get(no, {}))
+    params.update(custom_params or {})
+    if no == 36:
+        from .seat_functions import SUBS, normalize
+        left, right = normalize(self_value), normalize(comp_value)
+        prices = {'通风': params['ventilation'], '加热': params['heating'],
+                  '按摩': params['massage'], '头枕音响': params['headrest']}
+        return sum(((left[key] == '●') - (right[key] == '●')) * prices[next(f for f in prices if key.endswith(f))]
+                   for key in SUBS if '[待定]' not in str(left[key]) and '[待定]' not in str(right[key]))
+
+    def standard(value):
+        text = str(value or '').strip()
+        if text.startswith('○'):
+            return '✕'
+        return re.sub(r'[（(]○[^()（）]*[)）]', '', text).replace('皮质', '仿皮')
+    left, right = standard(self_value), standard(comp_value)
+    if no in (1, 21):
+        difference = (_num(left, 0) or 0) - (_num(right, 0) or 0)
+        if no == 1:
+            return 0 if abs(difference) < params['threshold_km'] else difference * params['per_km']
+        return (params['price'] if difference > 0 else -params['price']) if abs(difference) >= params['threshold_inch'] and difference else 0
+    if no == 32:
+        from .usb import usb_total
+        return ((usb_total(left) or params['base_count']) - (usb_total(right) or params['base_count'])) * params['per_port']
+    if no == 35:
+        ld, le = _seat_adjust_components(left)
+        rd, relectric = _seat_adjust_components(right)
+        # Unknown direction counts cannot establish a direction advantage.
+        directions = ld - rd if ld is not None and rd is not None else 0
+        electric = le - relectric if le is not None and relectric is not None else 0
+        return directions * params['per_direction'] + electric * params['electric_bonus']
+    return (_default_rule_amount(no, '', 'more', params, values=(left, '✕'))
+            - _default_rule_amount(no, '', 'more', params, values=(right, '✕')))
+
+
+def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
     """Calculate the built-in workbook rules from the P21 display string."""
     text = str(disp or "")
     bits = re.match(r"^(.+?)[（(](.+?)[)）]$", text)
-    cur, prev = (bits.group(1), bits.group(2)) if bits else (text, "✕")
+    cur, prev = values if values is not None else (bits.group(1), bits.group(2)) if bits else (text, "✕")
     def num(v): return _num(v, 0) or 0
     params = dict(DEFAULT_DYNAMIC_PARAMS.get(no, {}))
     params.update(custom_params or {})
@@ -382,8 +468,8 @@ def _default_rule_amount(no, disp, side, custom_params=None):
         return abs(next((v for k,v in reversed(list(rank.items())) if k in cur),0)-next((v for k,v in reversed(list(rank.items())) if k in prev),0))
     if no == 35:
         def seats(v):
-            found = re.findall(r'(?:主驾|副驾)(\d+)向(电调|手调)', v)
-            return sum(int(n)*p('per_direction')+(p('electric_bonus') if mode=='电调' else 0) for n,mode in found) if found else num(v)*p('per_direction')+(p('electric_bonus') if '电调' in v else 0)
+            directions, electric = _seat_adjust_components(v)
+            return (directions or 0)*p('per_direction') + (electric or 0)*p('electric_bonus')
         return abs(seats(cur)-seats(prev))
     if no == 36:
         difference = re.search(r'差价(\d+)元', text)

@@ -6,13 +6,22 @@ const ST = {
   ladder: null, ladderPath: "",
   snapshot: null, snapshotPath: "",
   valuation: null, valuationPath: "",
-  diff: null,
+  diff: null, diffRevision: 0, pairsRevision: 0, competitorRevision: 0, selfEditorRevision: 0,
+  competitorFile: "",
   leftLadder: null, leftLadderPath: "",
   stage: {trims: [], seriesId: "", model: ""},
 };
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+function invalidateDiff() {
+  ST.diff = null;
+  $('#diff-result').hidden = true;
+  $('#diff-status').textContent = '';
+  $('#diff-status').className = 'status';
+  return ++ST.diffRevision;
+}
 
 function configurationChoices(no) {
   const base=['✕','[待定]','不适用'];
@@ -266,10 +275,8 @@ async function refreshRawList() {
     ST.stage={trims:[],seriesId:'',model:''};
     $('#stage-trims').hidden=true;$('#md-preview').hidden=true;
     if($('#diff-vehicle').value===r.file){
-      $('#diff-vehicle').value='';$('#diff-ladder').innerHTML='';
-      ST.ladder=null;ST.ladderPath='';ST.diff=null;
-      $('#diff-result').hidden=true;$('#diff-competitor-editor').hidden=true;
-      $('#pairs-editor').querySelectorAll('.pair-row').forEach(row=>row.remove());
+      $('#diff-vehicle').value='';
+      await selectCompetitor();
       $('#diff-status').textContent='竞品历史已删除，请重新选择';
     }
     await refreshRawList();await refreshDiffSelects();
@@ -439,7 +446,7 @@ $("#btn-build-ladder").addEventListener("click", async () => {
   const m = f.match(/-(\d+)-/);
   const res = await api("build_ladder", path, $("#ladder-model").value, m ? m[1] : "");
   if (res.ok) {
-    ST.ladder = res.ladder; ST.ladderPath = res.path;
+    ST.ladder = res.ladder; ST.ladderPath = res.path; ST.competitorFile = '';
     $("#ladder-info").textContent = `${res.ladder.model} · ${res.ladder.trims.length} 版型 · ${res.path}`;
     renderLadderTable();
     toast("阶梯已生成", "ok");
@@ -451,7 +458,7 @@ $("#btn-load-ladder").addEventListener("click", async () => {
   if (!path || path.error) return;
   const res = await api("load_ladder", path);
   if (res.ok) {
-    ST.ladder = res.ladder; ST.ladderPath = path;
+    ST.ladder = res.ladder; ST.ladderPath = path; ST.competitorFile = '';
     $("#ladder-info").textContent = path;
     renderLadderTable();
   }
@@ -605,6 +612,7 @@ $("#btn-save-snapshot").addEventListener("click", async () => {
   if (!ST.snapshot || !ST.snapshotPath) return toast("无快照数据", "err");
   if(!collectSnapshotEdits())return;
   await api("save_snapshot", ST.snapshotPath, ST.snapshot);
+  if (ST.snapshotPath.split(/[\\/]/).pop() === $('#diff-snapshot').value) await rebuildPairs();
   toast("快照已保存", "ok");
 });
 
@@ -654,6 +662,7 @@ $("#btn-make-template").addEventListener("click", async () => {
     const saved = await api("save_current_valuation", ST.valuation);
     if (!saved.ok) return;
     ST.valuation = saved.valuation;
+    invalidateDiff();
   }
   const res = await api("make_valuation_template");
   if (res.ok) toast("当前规则 Excel 已生成：\n" + res.path, "ok");
@@ -678,6 +687,7 @@ $("#btn-save-valuation").addEventListener("click", async () => {
   if (!res.ok) return;
   ST.valuation = res.valuation;
   ST.valuationPath = res.path;
+  invalidateDiff();
   $("#valuation-info").textContent = "已保存；后续对比默认使用此规则";
   await refreshDiffSelects();
   toast("赋值规则已保存并立即生效", "ok");
@@ -689,6 +699,7 @@ $("#btn-reset-valuation").addEventListener("click", async () => {
   if (!res.ok) return;
   ST.valuation = res.valuation;
   valuationEditorSchema = res.editor_schema || {};
+  invalidateDiff();
   $("#valuation-info").textContent = "已恢复内置默认规则";
   await renderValuation();
   toast("已恢复内置默认赋值", "ok");
@@ -716,6 +727,9 @@ function collectValuationEdits() {
 
 /* ---------- ⑤ 对比 ---------- */
 async function refreshDiffSelects() {
+  const previousSelf = $('#diff-snapshot').value;
+  const previousLeft = $('#diff-left-vehicle').value;
+  const previousValuation = $('#diff-valuation').value;
   const [snaps, lads, vals] = await Promise.all([
     api("list_files", "快照"), api("list_files", "阶梯"), api("list_files", "赋值"),
   ]);
@@ -728,7 +742,13 @@ async function refreshDiffSelects() {
   const left=$('#diff-left-vehicle'), oldLeft=left.value;
   left.innerHTML=sel.innerHTML;
   if([...left.options].some(o=>o.value===oldLeft)) left.value=oldLeft;
-  if(sel.value) await selectCompetitor();
+  const selfChanged = $('#diff-mode').value === 'competitor' ? left.value !== previousLeft : $('#diff-snapshot').value !== previousSelf;
+  if (selfChanged) {
+    clearComparisonSelf();
+    await rebuildPairs();
+  }
+  if ($('#diff-valuation').value !== previousValuation) invalidateDiff();
+  if (sel.value !== ST.competitorFile || (sel.value && !ST.ladder)) await selectCompetitor();
 }
 function fillSelect(sel, files, placeholder) {
   const el = $(sel);
@@ -739,30 +759,33 @@ function fillSelect(sel, files, placeholder) {
 }
 
 $("#diff-snapshot").addEventListener("change", rebuildPairs);
-$('#diff-left-vehicle').addEventListener('change', async()=>{ $('#diff-result').hidden=true; ST.diff=null; await rebuildPairs(); });
+$('#diff-left-vehicle').addEventListener('change', async()=>{ clearComparisonSelf(); await rebuildPairs(); });
 $('#diff-mode').addEventListener('change', async()=>{
   const competitor=$('#diff-mode').value==='competitor';
   $('#diff-left-vehicle').hidden=!competitor; $('#diff-snapshot').hidden=competitor;
   $('#delete-self-file').hidden=competitor;
   $('#diff-edit-self').textContent=competitor?'修改左侧竞品配置':'修改当前本品配置';
   $('#diff-save-self').textContent=competitor?'保存左侧竞品修正':'保存本品修正';
-  hideComparisonEditors(); $('#diff-result').hidden=true; ST.diff=null;
+  hideComparisonEditors(); invalidateDiff();
   await rebuildPairs();
 });
 $("#diff-ladder").addEventListener("change", rebuildPairs);
-$('#diff-valuation').addEventListener('change',()=>{ST.diff=null;$('#diff-result').hidden=true;});
+$('#diff-valuation').addEventListener('change',invalidateDiff);
 
 async function rebuildPairs() {
-  ST.diff=null;
-  $('#diff-result').hidden=true;
+  const revision = ++ST.pairsRevision;
+  invalidateDiff();
   const box = $("#pairs-editor");
   box.querySelectorAll(".pair-row").forEach((r) => r.remove());
+  box.dataset.selfTrims = '[]';
+  box.dataset.compTrims = '[]';
   const competitor=$('#diff-mode').value==='competitor';
   const [sn, ld] = [competitor ? $('#diff-left-vehicle').value : $("#diff-snapshot").value, $("#diff-ladder").value];
   if (!sn || !ld) return;
   const sp = await api("workdir_path", "快照", sn);
   const lp = await api("workdir_path", "阶梯", ld);
   const [sres, lres] = [competitor ? await api('prepare_competitor',sn) : await api("load_snapshot", sp), await api("load_ladder", lp)];
+  if (revision !== ST.pairsRevision) return;
   const st = (competitor ? sres.ladder : sres.snapshot).trims.map((t) => t.name);
   const ct = lres.ladder.trims.map((t) => t.name);
   box.dataset.selfTrims = JSON.stringify(st);
@@ -771,8 +794,7 @@ async function rebuildPairs() {
 }
 
 $("#btn-add-pair").addEventListener("click", () => {
-  ST.diff=null;
-  $('#diff-result').hidden=true;
+  invalidateDiff();
   const box = $("#pairs-editor");
   addPairRow(JSON.parse(box.dataset.selfTrims || "[]"), JSON.parse(box.dataset.compTrims || "[]"));
 });
@@ -785,8 +807,8 @@ function addPairRow(st, ct) {
     <span class="dim">VS</span>
     <select class="pair-comp">${ct.map((t) => `<option>${t}</option>`).join("")}</select>
     <button class="pair-del">✕</button>`;
-  row.querySelector(".pair-del").addEventListener("click", () => {row.remove();ST.diff=null;$('#diff-result').hidden=true;});
-  row.addEventListener('change',()=>{ST.diff=null;$('#diff-result').hidden=true;});
+  row.querySelector(".pair-del").addEventListener("click", () => {row.remove();invalidateDiff();});
+  row.addEventListener('change',invalidateDiff);
   $("#pairs-editor").appendChild(row);
 }
 
@@ -799,12 +821,15 @@ $("#btn-run-diff").addEventListener("click", async () => {
     comp_trim: r.querySelector(".pair-comp").value,
   }));
   if (!pairs.length) return toast("请至少指定一组版型配对（铁律：人工指定）", "err");
+  const revision = invalidateDiff();
   const sp = competitor ? (await api('prepare_competitor',sn)).path : await api("workdir_path", "快照", sn);
   const lp = await api("workdir_path", "阶梯", ld);
   const vv = $("#diff-valuation").value;
   const vp = vv ? await api("workdir_path", "赋值", vv) : "";
+  if (revision !== ST.diffRevision) return;
   $("#diff-status").textContent = "计算中…";
   const res = await api("run_diff", sp, lp, pairs, vp, competitor);
+  if (revision !== ST.diffRevision) return;
   if (res.ok) {
     ST.diff = res;
     $("#diff-status").textContent = "✓ 结果已生成: " + res.md_path +
@@ -867,10 +892,12 @@ const fmtP = (p) => (p == null ? "?" : p);
 
 $("#btn-export-result").addEventListener("click", async () => {
   if (!ST.diff) return toast("先运行对比", "err");
-  const filename = `竞争力对比-${ST.diff.self_model||'本品'}vs${ST.diff.comp_model||'竞品'}`.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.md';
+  const result = ST.diff;
+  const filename = `竞争力对比-${result.self_model||'本品'}vs${result.comp_model||'竞品'}`.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.md';
   const dest = await api("save_file_dialog", filename, ["Markdown (*.md)"]);
   if (!dest || dest.error) return;
-  await api("write_text_file", dest, ST.diff.md);
+  if (result !== ST.diff) return toast("配置或配对已变更，请重新对比后导出", "err");
+  await api("write_text_file", dest, result.md);
   toast("已导出: " + dest, "ok");
 });
 
@@ -907,23 +934,28 @@ function showPage(name) {
   $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===navName));
 }
 async function selectCompetitor() {
+  const revision = ++ST.competitorRevision;
+  ++ST.pairsRevision;
+  invalidateDiff();
+  ConfigEditor.unmount($('#diff-ladder-table-wrap'));
+  $('#diff-competitor-editor').hidden=true;
+  $('#diff-ladder-table-wrap').innerHTML='';
+  ST.ladder=null;ST.ladderPath='';ST.competitorFile='';
   $('#diff-ladder').innerHTML='';
   $('#pairs-editor').querySelectorAll('.pair-row').forEach(r=>r.remove());
+  $('#pairs-editor').dataset.selfTrims='[]';
+  $('#pairs-editor').dataset.compTrims='[]';
   const filename=$('#diff-vehicle').value;
   if(!filename) return;
   const result=await api('prepare_competitor',filename);
-  if($('#diff-vehicle').value!==filename) return;
+  if(revision!==ST.competitorRevision || $('#diff-vehicle').value!==filename) return;
   ST.ladder=result.ladder; ST.ladderPath=result.path;
+  ST.competitorFile=filename;
   const file=result.path.split(/[\\/]/).pop();
   $('#diff-ladder').innerHTML=`<option value="${esc(file)}">${esc(result.ladder.model)}</option>`;
   await rebuildPairs();
 }
-$('#diff-vehicle').addEventListener('change',()=>{
-  ConfigEditor.unmount($('#diff-ladder-table-wrap'));
-  $('#diff-competitor-editor').hidden=true;
-  $('#diff-ladder-table-wrap').innerHTML='';
-  selectCompetitor();
-});
+$('#diff-vehicle').addEventListener('change',selectCompetitor);
 // Keep both editors inside the comparison workflow.
 $('#pairs-editor').before($('#diff-competitor-editor'));
 $('#review-competitor').textContent='修改当前竞品配置';
@@ -932,14 +964,20 @@ let comparisonSelf=null, comparisonSelfPath='';
 function mountConfigurationEditor(root,model,kind,names={},review=false) {
   ConfigEditor.mount(root,{model,kind,names,review,choices:configurationChoices,
     updateSnapshot:updateSnapshotValue,cascade:cascadeLadderValues,
-    onChange:()=>{ST.diff=null;$('#diff-result').hidden=true;}});
+    onChange:invalidateDiff});
+}
+function clearComparisonSelf() {
+  ++ST.selfEditorRevision;
+  ConfigEditor.unmount($('#diff-self-table'));
+  $('#diff-self-editor').hidden = true;
+  $('#diff-self-table').innerHTML = '';
+  comparisonSelf=null;comparisonSelfPath='';
+  ST.leftLadder=null;ST.leftLadderPath='';
 }
 function hideComparisonEditors() {
-  ConfigEditor.unmount($('#diff-self-table'));
+  clearComparisonSelf();
   ConfigEditor.unmount($('#diff-ladder-table-wrap'));
-  $('#diff-self-editor').hidden = true;
   $('#diff-competitor-editor').hidden = true;
-  $('#diff-self-table').innerHTML = '';
   $('#diff-ladder-table-wrap').innerHTML = '';
 }
 $('#delete-self-file').onclick=async()=>{
@@ -947,8 +985,8 @@ $('#delete-self-file').onclick=async()=>{
   if(!file)return toast('请先选择要删除的本品文件','err');
   if(!window.confirm(`删除本品配置「${file}」？\n文件将移入工作目录的回收站，原始PPT不受影响。`))return;
   await api('remove_imported_snapshot',file);
-  comparisonSelf=null;comparisonSelfPath='';
-  ST.snapshot=null;ST.snapshotPath='';ST.diff=null;
+  clearComparisonSelf();
+  ST.snapshot=null;ST.snapshotPath='';invalidateDiff();
   ConfigEditor.unmount($('#snapshot-table-wrap'));
   $('#diff-self-editor').hidden=true;$('#diff-result').hidden=true;
   $('#snapshot-table-wrap').innerHTML='';$('#snapshot-trims').innerHTML='';$('#snapshot-info').textContent='';
@@ -956,18 +994,17 @@ $('#delete-self-file').onclick=async()=>{
   await refreshDiffSelects();await rebuildPairs();
   toast('已删除；可在工作目录的回收站找回','ok');
 };
-$('#diff-snapshot').addEventListener('change',()=>{
-  ConfigEditor.unmount($('#diff-self-table'));
-  $('#diff-self-editor').hidden=true; comparisonSelf=null;
-});
+$('#diff-snapshot').addEventListener('change',clearComparisonSelf);
 $('#diff-edit-self').onclick=async()=>{
   const competitor=$('#diff-mode').value==='competitor';
   hideComparisonEditors();
+  const revision=ST.selfEditorRevision;
+  const file=$(competitor?'#diff-left-vehicle':'#diff-snapshot').value;
+  if(!file)return toast(competitor?'请先选择左侧竞品':'请先选择本品配置','err');
+  const isCurrent=()=>revision===ST.selfEditorRevision && competitor===($('#diff-mode').value==='competitor') && $(competitor?'#diff-left-vehicle':'#diff-snapshot').value===file;
   if(competitor){
-    const file=$('#diff-left-vehicle').value;
-    if(!file)return toast('请先选择左侧竞品','err');
     const r=await api('prepare_competitor',file);
-    if(!r || r.error)return toast(r?.error||'竞品配置读取失败','err');
+    if(!isCurrent())return;
     ST.leftLadder=r.ladder; ST.leftLadderPath=r.path;
     $('#diff-self-editor h3').textContent='修改左侧竞品配置';
     $('#diff-self-editor p').textContent='仅修改本次对比使用的竞品配置，不影响原始抓取记录。';
@@ -975,14 +1012,16 @@ $('#diff-edit-self').onclick=async()=>{
     $('#diff-self-editor').hidden=false;
     return;
   }
-  const file=$('#diff-snapshot').value;
-  if(!file)return toast('请先选择本品配置','err');
-  comparisonSelfPath=await api('workdir_path','快照',file);
-  const r=await api('load_snapshot',comparisonSelfPath);
+  const path=await api('workdir_path','快照',file);
+  if(!isCurrent())return;
+  const r=await api('load_snapshot',path);
+  if(!isCurrent())return;
+  const checklist=await loadChecklist();
+  if(!isCurrent())return;
+  comparisonSelfPath=path;
   comparisonSelf=r.snapshot;
   $('#diff-self-editor h3').textContent='修改本品配置';
   $('#diff-self-editor p').textContent='修改会同步到继承该项的版型，保存后重新对比。';
-  const checklist=await loadChecklist();
   mountConfigurationEditor($('#diff-self-table'),comparisonSelf,'snapshot',Object.fromEntries(checklist.items.map(x=>[x.no,x.name])));
   $('#diff-self-editor').hidden=false;
 };
@@ -992,19 +1031,17 @@ $('#diff-save-self').onclick=async()=>{
     if(!ST.leftLadder||!ST.leftLadderPath)return toast('请先选择左侧竞品','err');
     collectLadderEdits('#diff-self-table',ST.leftLadder);
     const r=await api('save_ladder_edit',ST.leftLadderPath,ST.leftLadder);
-    if(r&&r.ok){$('#diff-result').hidden=true;ST.diff=null;await rebuildPairs();toast('左侧竞品修正已保存，请运行对比','ok');}
+    if(r&&r.ok){invalidateDiff();await rebuildPairs();toast('左侧竞品修正已保存，请运行对比','ok');}
     return;
   }
   if(!comparisonSelf)return;
   await api('save_snapshot',comparisonSelfPath,comparisonSelf);
-  $('#diff-result').hidden=true; ST.diff=null;
+  invalidateDiff();
   toast('本品修正已保存，请运行对比','ok');
 };
 $('#review-competitor').onclick=()=>{
   if(!ST.ladder || !$('#diff-ladder').value) return toast('请先选择竞品');
-  ConfigEditor.unmount($('#diff-self-table'));
-  $('#diff-self-editor').hidden=true;
-  $('#diff-self-table').innerHTML='';
+  clearComparisonSelf();
   const panel=$('#diff-competitor-editor'); panel.hidden=!panel.hidden;
   if(!panel.hidden) renderLadderTable('#diff-ladder-table-wrap');
 };
@@ -1013,7 +1050,7 @@ $('#diff-save-competitor').onclick=async()=>{
   if(!ST.ladderPath) return;
   collectLadderEdits('#diff-ladder-table-wrap');
   const r=await api('save_ladder_edit',ST.ladderPath,ST.ladder);
-  if(r && r.ok){ $('#diff-result').hidden=true; ST.diff=null; toast('竞品修正已保存，请运行对比','ok'); }
+  if(r && r.ok){ invalidateDiff(); toast('竞品修正已保存，请运行对比','ok'); }
 };
 $('#back-to-diff').onclick=async()=>{
   collectLadderEdits();

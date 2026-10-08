@@ -420,6 +420,29 @@ def n_seat_adjust(raw, i, cfg):
     main_c = _cell(raw, ["主座椅调节方式"], i)
     pas_c = _cell(raw, ["副座椅调节方式"], i)
 
+    # Keep explicit totals and each seat's mode. Older descriptions without a
+    # stated total retain their existing summary instead of inventing counts.
+    from .stage_one import clean, parts
+    electric_text = ' '.join(parts(elec))
+    explicit = []
+    for seat, cell, short in (('主驾', main_c, '主'), ('副驾', pas_c, '副')):
+        text = clean(''.join(parts(cell)))
+        match = re.fullmatch(r'(?:主驾|副驾|座椅)?(\d+)向((?:电动|手动|电调|手调|调节)*)', text)
+        if match:
+            mode = match[2]
+            if '电' in mode:
+                mode = '电调'
+            elif '手' in mode:
+                mode = '手调'
+            else:
+                electric = _solid(elec) and (not electric_text or bool(re.search(short+r'(?:驾|驾驶位)?(?:●|(?=/|$))', electric_text)))
+                mode = '电调' if electric else '手调'
+            explicit.append(f'{seat}{match[1]}向{mode}')
+        else:
+            explicit.append(None)
+    if all(explicit):
+        return '+'.join(explicit)
+
     def extras(cell):
         if cell is None:
             return []
