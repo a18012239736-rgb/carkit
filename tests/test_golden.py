@@ -28,6 +28,23 @@ PAIRS = [{"self_trim": "基础型", "comp_trim": "405Max"},
 
 VERDICTS = ("多", "少", "同", "豁免", "不计")
 
+# Historical Markdown discarded seat direction totals. The original raw fixture
+# explicitly has driver 6 directions, passenger 4 (6 with standard leg rest).
+# Keep that historical document unchanged; assert the corrected row exactly.
+SEAT_VALUES = [
+    '主驾6向手调+副驾4向手调',
+    '主驾6向电调+副驾4向电调(主含腰撑4向)',
+    '主驾6向电调+副驾4向电调(主含腰撑4向)',
+    '主驾6向电调+副驾6向电调(主腰撑4向/副腿托+腰撑4向)',
+    '主驾6向电调+副驾6向电调(主腰撑4向/副腿托+腰撑4向)',
+    '主驾6向电调+副驾4向电调(主含腰撑4向)',
+    '主驾6向电调+副驾6向电调(主腰撑4向/副腿托+腰撑4向)',
+]
+SEAT_VERDICTS = ['同', '少', '少']
+SEAT_DISPLAYS = [f'{verdict} 主6副4电调({SEAT_VALUES[i]})'
+                 for verdict, i in zip(SEAT_VERDICTS, (1, 3, 6))]
+SEAT_LESS = ['', SEAT_DISPLAYS[1][2:], SEAT_DISPLAYS[2][2:]]
+
 
 # ---------- golden md 解析 ----------
 
@@ -138,7 +155,7 @@ def test_ladder_matches_golden(rules, comp_ladder):
     golden = parse_golden_ladder(os.path.join(GOLDEN, "竞品阶梯-启源Q05-2026-09-11.md"))
     mismatches = []
     for it in comp_ladder.items:
-        g = golden.get(it.no)
+        g = SEAT_VALUES if it.no == 35 else golden.get(it.no)
         if g is None:
             continue
         mine = it.values
@@ -156,6 +173,8 @@ def test_verdicts_100_percent(rules, diff_cells):
     mine = {(c["no"], c["pair"]): c["verdict"] for c in diff_cells}
     errors = []
     for key, (gv, gdisp) in golden.items():
+        if key[0] == 35:
+            gv, gdisp = SEAT_VERDICTS[key[1]], SEAT_DISPLAYS[key[1]]
         mv = mine.get(key)
         if mv != gv:
             errors.append(f"#{key[0]} 组{key[1]+1}: golden={gv} mine={mv} (golden显示: {gdisp})")
@@ -169,9 +188,6 @@ DISPLAY_TOLERANCE = {
     (22, 0): ("同 ✕", "同 ✕(✕)"), (22, 1): ("同 ✕", "同 ✕(✕)"), (22, 2): ("同 ✕", "同 ✕(✕)"),
     (28, 0): ("同 ✕", "同 ✕(✕)"), (28, 1): ("同 ✕", "同 ✕(✕)"), (28, 2): ("同 ✕", "同 ✕(✕)"),
     (32, 1): ("不计", "不计(待定)"), (32, 2): ("不计", "不计(待定)"),
-    (35, 0): ("同 主6副4电调(主副电调)", "同 主6副4电调(副电调)"),
-    (35, 1): ("同 主6副4电调(主副电调)", "同(副腿托备注)"),
-    (35, 2): ("同 主6副4电调(主副电调)", "同(副腿托备注)"),
     (4, 1): ("同 R18铝(R18铝)", "同 R18铝"),
     (4, 2): ("同 R18铝(R18铝)", "同 R18铝"),
     (20, 0): ("同 电调折叠加热(同)", "同 电调折叠加热(同+锁车折叠)"),
@@ -196,6 +212,8 @@ def test_displays_match(diff_cells):
         if key not in golden:
             continue
         gv, gdisp = golden[key]
+        if c['no'] == 35:
+            gv, gdisp = SEAT_VERDICTS[key[1]], SEAT_DISPLAYS[key[1]]
         if gdisp == gv:
             continue    # golden 裸判定词（人工压缩），判定词已单独校验
         md, gd = _norm_display(c["display"]), _norm_display(gdisp)
@@ -205,12 +223,15 @@ def test_displays_match(diff_cells):
 
 
 def test_backup_rows_match(rules, self_ladder, comp_ladder, diff_cells):
+    from engine.models import ValuationItem, ValuationTable
+    from engine.valuer import default_valuation
     golden = parse_golden_backup(os.path.join(GOLDEN, "赋值对比-T19NGvs启源Q05-2026-09-11.md"))
     snap = resolve(Snapshot.load(os.path.join(GOLDEN, "T19NG-snapshot.json")))
     self_prices = {t["name"]: t.get("price_guide") for t in snap.trims}
     comp_prices = {t["name"]: t.get("price_guide") for t in comp_ladder.trims}
+    valuation = ValuationTable(items=[ValuationItem(**item) for item in default_valuation(rules)['items']])
     groups = differ.assemble_backup(diff_cells, PAIRS, "T19NG", "启源Q05",
-                                    self_prices, comp_prices, valuation=None)
+                                    self_prices, comp_prices, valuation=valuation)
     errors = []
     for i, (g, (gm, gl)) in enumerate(zip(groups, golden)):
         # Updated display contract: name the existing configuration alone;
@@ -227,6 +248,11 @@ def test_backup_rows_match(rules, self_ladder, comp_ladder, diff_cells):
         new_less = {c['backup_less'] for c in diff_cells if c['pair']==i and c['no']>41}
         historical_less = [v for v in g['less'] if '座椅' not in v and v not in new_less]
         expected_less = [v for v in gl if '座椅' not in v]
+        if SEAT_LESS[i]:
+            expected_less.append(SEAT_LESS[i])
+        seat_amounts = [d['amount'] for d in g['valuation']['detail'] if d['no'] == 35]
+        assert seat_amounts == ([] if i == 0 else [-100])
+        assert 35 not in g['valuation']['missing']
         if historical_less != expected_less:
             errors.append(f"组{i+1} 少栏:\n  mine  ={historical_less}\n  golden={expected_less}")
     assert not errors, "BACKUP 多/少栏不一致:\n" + "\n".join(errors)

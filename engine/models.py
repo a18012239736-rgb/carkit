@@ -165,6 +165,17 @@ class Ladder:
         for item in items:
             if item.no == 32:
                 item.values = [usb_label(value) for value in item.values]
+            if item.no == 36 and not item.subs:
+                converted = []
+                for value in item.values:
+                    # Keep unknown/optional legacy descriptions visible rather
+                    # than showing twelve false "absent" controls.
+                    if isinstance(value, str) and value not in ('', '✕', '×', '-', '无', '无配置') and (
+                            '[待' in value or '○' in value or not any(feature in value for feature in ('通风', '加热', '按摩', '头枕'))):
+                        converted.append({sub: '[待定]原文：'+value for sub in SUBS})
+                    else:
+                        converted.append(normalize(value))
+                item.subs = [{'sub': sub, 'values': [value[sub] for value in converted]} for sub in SUBS]
             if item.no == 36 and item.subs and any(row['sub'] not in SUBS for row in item.subs):
                 old = {row['sub']:row['values'] for row in item.subs}
                 converted = []

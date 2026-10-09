@@ -15,11 +15,46 @@ const ST = {
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
+function setActionBusy(button, busy) {
+  if (busy) button.dataset.busy = '1';
+  else delete button.dataset.busy;
+  syncActionButtons();
+}
+
+function syncActionButtons() {
+  const ready = (id, enabled, reason) => {
+    const button = $(id);
+    if (!button) return;
+    button.disabled = !!button.dataset.busy || !enabled;
+    button.title = button.dataset.busy ? '正在处理，请稍候' : enabled ? '' : reason;
+  };
+  const stageReady = !!ST.stage?.trims.length && stagePlan().length > 0;
+  for (const id of ['#btn-stage-preview', '#btn-stage-export', '#btn-stage-excel'])
+    ready(id, stageReady, '请先选择车型，并勾选至少一个输出版型');
+  const competitor = $('#diff-mode').value === 'competitor';
+  const left = !!$(competitor ? '#diff-left-vehicle' : '#diff-snapshot').value;
+  const right = !!ST.ladder && !!$('#diff-ladder').value;
+  const box = $('#pairs-editor');
+  const pairs = $$('#pairs-editor .pair-row');
+  const paired = pairs.length > 0 && pairs.every(row => row.querySelector('.pair-self').value && row.querySelector('.pair-comp').value);
+  const loaded = JSON.parse(box.dataset.selfTrims || '[]').length > 0 && JSON.parse(box.dataset.compTrims || '[]').length > 0;
+  ready('#diff-edit-self', left, '请先选择左侧车型');
+  ready('#delete-self-file', left && !competitor, '请先选择本品配置');
+  ready('#review-competitor', right, '请先选择右侧车型');
+  ready('#btn-add-pair', left && right && loaded, '请选择两侧车型，等待版型载入');
+  ready('#btn-run-diff', left && right && paired, '请选择两侧车型，并添加有效版型配对');
+  for (const id of ['#btn-export-result', '#btn-result-excel'])
+    ready(id, !!ST.diff?.ok, '请先完成对比；配置或配对变更后需重新对比');
+  $('#comparison-action-hint').textContent = !left || !right ? '请选择左右两侧车型，再指定版型配对。' : !paired ? '请添加至少一组有效版型配对。' : ST.diff?.ok ? '结果已生成，可导出 Markdown 或 Excel。' : '版型配对已就绪，点击“开始对比”生成结果。';
+  ready('#ppt-save', !$('#ppt-review').hidden && ST.snapshot?.status === '待确认' && $('#ppt-confirm').checked, '请展开完整配置，核对后勾选确认');
+}
+
 function invalidateDiff() {
   ST.diff = null;
   $('#diff-result').hidden = true;
   $('#diff-status').textContent = '';
   $('#diff-status').className = 'status';
+  syncActionButtons();
   return ++ST.diffRevision;
 }
 
@@ -37,7 +72,7 @@ function configurationChoices(no) {
     33:['1个无线充电','2个无线充电'],39:['单色','多色'],40:['●'],41:['●'],
     5:[2,4,6,7,8,9,10,11,12].map(n=>`${n}气囊`),
     8:[1,2,3,4,5].map(n=>`${n}颗激光雷达`),
-    35:['主驾手调+副驾手调','主驾6向电调+副驾4向手调','主驾6向电调+副驾4向电调','主驾8向电调+副驾4向电调','主驾10向电调+副驾6向电调'],
+    35:['主驾6向手调+副驾4向手调','主驾6向电调+副驾4向手调','主驾6向电调+副驾4向电调','主驾8向电调+副驾4向电调','主驾10向电调+副驾6向电调'],
     38:[1,2,3,4].map(n=>`${n}车外扬声器`),
     6:['悬架软硬调节','悬架高低调节','悬架软硬+高低调节'],
     23:['4G','5G'],34:['织物','仿皮','真皮','翻毛皮','NAPPA真皮'],
@@ -273,6 +308,7 @@ async function refreshRawList() {
     if(!window.confirm(`删除历史记录「${r.label}」？\n原始数据移入回收站，已导出的文档保留。`))return;
     await api('remove_vehicle_history',r.file);
     ST.stage={trims:[],seriesId:'',model:''};
+    syncActionButtons();
     $('#stage-trims').hidden=true;$('#md-preview').hidden=true;
     if($('#diff-vehicle').value===r.file){
       $('#diff-vehicle').value='';
@@ -288,7 +324,7 @@ async function refreshRawList() {
 
 $("#btn-scrape-open").addEventListener("click", async () => {
   const sid = $("#scrape-series").value.trim();
-  if (!sid) return toast("请填写 seriesId 或 URL", "err");
+  if (!sid) return toast("请输入车型名称或汽车之家配置页网址", "err");
   $("#btn-scrape-capture").hidden = true;
   $("#scrape-status").textContent = "搜索和读取中…";
   $("#scrape-status").className = "status";
@@ -348,7 +384,7 @@ function renderStageTrimEditor() {
   document.querySelector('#ladder-visual')?.remove();
   $("#stage-trims").hidden = false;
   const trims = ST.stage.trims;
-  if(window.StageEditor) { StageEditor.mount($('#stage-trim-editor'), trims); return; }
+  if(window.StageEditor) { StageEditor.mount($('#stage-trim-editor'), trims); syncActionButtons(); return; }
   const price = t => {
     const m=String(t.price_guide ?? '').replace(/,/g,'').match(/\d+(?:\.\d+)?/);
     return m ? Number(m[0]) : Infinity;
@@ -357,6 +393,7 @@ function renderStageTrimEditor() {
   $("#stage-trim-editor").innerHTML = order.map(i => `<div class="stage-trim-row"><label><input type="checkbox" class="stage-use" data-i="${i}" checked> ${esc(trims[i].name)}（${trims[i].price_guide ?? '待核'}万）</label><select class="stage-base" data-i="${i}"><option value="">基本配置</option></select></div>`).join("");
   $$(".stage-use").forEach(cb => cb.addEventListener('change', updateStageBases));
   updateStageBases(true);
+  syncActionButtons();
 }
 
 function updateStageBases(reset=false) {
@@ -408,7 +445,7 @@ previewButton.onclick = async () => {
   panel.scrollIntoView({behavior:'smooth', block:'start', inline:'start'});
   panel.querySelector('.ladder-scroll').scrollLeft = 0;
 };
-$('#stage-trim-editor').addEventListener('change', () => document.querySelector('#ladder-visual')?.remove());
+$('#stage-trim-editor').addEventListener('change', () => { document.querySelector('#ladder-visual')?.remove(); syncActionButtons(); });
 
 $("#btn-stage-export").addEventListener("click", async () => {
   const plan = stagePlan();
@@ -665,7 +702,10 @@ $("#btn-make-template").addEventListener("click", async () => {
     invalidateDiff();
   }
   const res = await api("make_valuation_template");
-  if (res.ok) toast("当前规则 Excel 已生成：\n" + res.path, "ok");
+  if (res.ok) {
+    $('#valuation-info').textContent='当前使用：已保存的自定义规则';
+    toast("规则已保存并应用，Excel 已导出：\n" + res.path, "ok");
+  }
 });
 
 $("#btn-load-valuation").addEventListener("click", async () => {
@@ -749,6 +789,7 @@ async function refreshDiffSelects() {
   }
   if ($('#diff-valuation').value !== previousValuation) invalidateDiff();
   if (sel.value !== ST.competitorFile || (sel.value && !ST.ladder)) await selectCompetitor();
+  syncActionButtons();
 }
 function fillSelect(sel, files, placeholder) {
   const el = $(sel);
@@ -779,6 +820,7 @@ async function rebuildPairs() {
   box.querySelectorAll(".pair-row").forEach((r) => r.remove());
   box.dataset.selfTrims = '[]';
   box.dataset.compTrims = '[]';
+  syncActionButtons();
   const competitor=$('#diff-mode').value==='competitor';
   const [sn, ld] = [competitor ? $('#diff-left-vehicle').value : $("#diff-snapshot").value, $("#diff-ladder").value];
   if (!sn || !ld) return;
@@ -803,42 +845,57 @@ function addPairRow(st, ct) {
   const row = document.createElement("div");
   row.className = "pair-row";
   row.innerHTML = `
-    <select class="pair-self">${st.map((t) => `<option>${t}</option>`).join("")}</select>
+    <select class="pair-self" aria-label="左侧配对版型">${st.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
     <span class="dim">VS</span>
-    <select class="pair-comp">${ct.map((t) => `<option>${t}</option>`).join("")}</select>
-    <button class="pair-del">✕</button>`;
+    <select class="pair-comp" aria-label="右侧配对版型">${ct.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
+    <button class="pair-del" aria-label="删除此配对组" title="删除此配对组">✕</button>`;
   row.querySelector(".pair-del").addEventListener("click", () => {row.remove();invalidateDiff();});
   row.addEventListener('change',invalidateDiff);
   $("#pairs-editor").appendChild(row);
+  syncActionButtons();
 }
 
 $("#btn-run-diff").addEventListener("click", async () => {
+  const button = $('#btn-run-diff');
+  if (button.dataset.busy) return;
   const competitor=$('#diff-mode').value==='competitor';
   const sn = competitor ? $('#diff-left-vehicle').value : $("#diff-snapshot").value, ld = $("#diff-ladder").value;
-  if (!sn || !ld) return toast("请先选择快照与竞品阶梯", "err");
+  if (!sn || !ld) return toast("请选择左右两侧车型", "err");
   const pairs = $$("#pairs-editor .pair-row").map((r) => ({
     self_trim: r.querySelector(".pair-self").value,
     comp_trim: r.querySelector(".pair-comp").value,
   }));
-  if (!pairs.length) return toast("请至少指定一组版型配对（铁律：人工指定）", "err");
+  if (!pairs.length || pairs.some(p => !p.self_trim || !p.comp_trim)) return toast("请添加至少一组有效版型配对", "err");
+  setActionBusy(button, true);
+  button.textContent = '正在对比…';
   const revision = invalidateDiff();
-  const sp = competitor ? (await api('prepare_competitor',sn)).path : await api("workdir_path", "快照", sn);
-  const lp = await api("workdir_path", "阶梯", ld);
-  const vv = $("#diff-valuation").value;
-  const vp = vv ? await api("workdir_path", "赋值", vv) : "";
-  if (revision !== ST.diffRevision) return;
-  $("#diff-status").textContent = "计算中…";
-  const res = await api("run_diff", sp, lp, pairs, vp, competitor);
-  if (revision !== ST.diffRevision) return;
-  if (res.ok) {
-    ST.diff = res;
-    $("#diff-status").textContent = "✓ 结果已生成: " + res.md_path +
-      (res.missing_valuation.length ? `\n⚠ [待赋值] 项: ${res.missing_valuation.join(", ")} —— 请补赋值表，程序不脑补` : "");
-    $("#diff-status").className = "status ok";
-    renderDiff(res);
-  } else {
-    $("#diff-status").textContent = "✕ " + res.error;
-    $("#diff-status").className = "status err";
+  try {
+    const sp = competitor ? (await api('prepare_competitor',sn)).path : await api("workdir_path", "快照", sn);
+    const lp = await api("workdir_path", "阶梯", ld);
+    const vv = $("#diff-valuation").value;
+    const vp = vv ? await api("workdir_path", "赋值", vv) : "";
+    if (revision !== ST.diffRevision) return;
+    $("#diff-status").textContent = "计算中…";
+    const res = await api("run_diff", sp, lp, pairs, vp, competitor);
+    if (revision !== ST.diffRevision) return;
+    if (res.ok) {
+      ST.diff = res;
+      $("#diff-status").textContent = "✓ 结果已生成: " + res.md_path +
+        (res.missing_valuation.length ? `\n待补充赋值规则：${res.missing_valuation.join("、")}` : "");
+      $("#diff-status").className = "status ok";
+      renderDiff(res);
+    } else {
+      $("#diff-status").textContent = "✕ " + res.error;
+      $("#diff-status").className = "status err";
+    }
+  } catch (error) {
+    if (revision === ST.diffRevision) {
+      $('#diff-status').textContent = '对比未完成：' + error.message;
+      $('#diff-status').className = 'status err';
+    }
+  } finally {
+    button.textContent = '开始对比';
+    setActionBusy(button, false);
   }
 });
 
@@ -858,24 +915,24 @@ function renderDiff(res) {
   const money = (k, label) =>
     `<tr><th class="backup-label">${label}</th>` + groups.map((g) => {
       const v = (g.valuation || {})[k];
-      const reason = k==='overall' ? '综合竞争力公式尚未设置' : k==='flat_adv' && (g.self_price==null || g.comp_price==null) ? '缺少本品或竞品指导价' : '缺少赋值规则';
-      return `<td>${v == null ? `<span class="dim">${reason}</span>` : v}</td>`;
+      const reason = k==='overall' ? '尚未设置计算公式' : k==='flat_adv' && (g.self_price==null || g.comp_price==null) ? '左侧或右侧指导价未填写' : '缺少赋值规则';
+      return `<td>${v == null ? `<span class="dim">${reason}</span>` : fmtMoney(v)}</td>`;
     }).join("") + "</tr>";
-  h += money("config_adv", "配置优势") + money("flat_adv", "拉平指导价优势") + money("overall", "综合竞争力[待公式]");
+  h += money("config_adv", "配置优势（元）") + money("flat_adv", "拉平指导价优势（元）") + money("overall", "综合竞争力");
   h += "</tbody></table>";
-  $("#backup-table").innerHTML = h;
+  $("#backup-table").innerHTML = '<p class="dim">金额正值表示左侧车型占优，负值表示左侧车型落后；指导价单位为万元。</p>' + h;
   $("#backup-table").innerHTML += groups.map(g=>{
     const v=g.valuation||{};
-    return `<details open><summary>赋值计算明细：${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</summary><p>配置优势＝多配置合计 ${v.total_more??'?'} − 少配置合计 ${v.total_less??'?'} ＝ ${v.config_adv??'?'} 元</p><p>拉平指导价优势＝配置优势＋（竞品指导价−本品指导价）×10000</p><table class="grid"><tr><th>配置差异</th><th>计价依据</th><th>金额（元）</th></tr>${(v.detail||[]).map(x=>`<tr><td>${esc(x.side)}：${esc(x.display||String(x.no))}</td><td>${esc(x.rule||'')}</td><td>${x.amount>0?'+':''}${x.amount}</td></tr>`).join('')}</table></details>`;
+    return `<details><summary>展开赋值计算明细：${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</summary><p>配置优势＝多配置合计 ${fmtMoney(v.total_more)} − 少配置合计 ${fmtMoney(v.total_less)} ＝ ${fmtMoney(v.config_adv)} 元</p><p>拉平指导价优势＝配置优势＋（右侧指导价−左侧指导价）×10000</p><table class="grid"><tr><th>配置差异</th><th>计价依据</th><th>金额（元）</th></tr>${(v.detail||[]).map(x=>`<tr><td>${esc(x.side)}：${esc(x.display||String(x.no))}</td><td>${esc(x.rule||'')}</td><td>${fmtMoney(x.amount)}</td></tr>`).join('')}</table></details>`;
   }).join('');
   // 判定明细
   const nos = [...new Set(res.cells.map((c) => c.no))].sort((a, b) => configurationOrderKey(a) - configurationOrderKey(b));
   const nameByNo = {};
   res.cells.forEach((c) => (nameByNo[c.no] = c.name));
   let d = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
-  d += groups.map((g) => `<th>${g.pair.self_trim}vs${g.pair.comp_trim}</th>`).join("") + "</tr></thead><tbody>";
+  d += groups.map((g) => `<th>${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</th>`).join("") + "</tr></thead><tbody>";
   for (const [rowIndex,no] of nos.entries()) {
-    d += `<tr><td class="no">${rowIndex+1}</td><td>${nameByNo[no]}</td>`;
+    d += `<tr><td class="no">${rowIndex+1}</td><td>${esc(nameByNo[no])}</td>`;
     for (let pi = 0; pi < groups.length; pi++) {
       const c = res.cells.find((x) => x.no === no && x.pair === pi);
       if (!c) { d += "<td></td>"; continue; }
@@ -886,19 +943,28 @@ function renderDiff(res) {
   }
   d += "</tbody></table>";
   $("#detail-table").innerHTML = d;
+  syncActionButtons();
 }
 
-const fmtP = (p) => (p == null ? "?" : p);
+const fmtP = p => p == null ? '指导价未填写' : `指导价 ${Number(p).toFixed(2)} 万元`;
+const fmtMoney = value => value == null ? '待计算' : Number(value).toLocaleString('zh-CN', {useGrouping:false, maximumFractionDigits:2});
 
 $("#btn-export-result").addEventListener("click", async () => {
+  const button = $('#btn-export-result');
+  if (button.dataset.busy) return;
   if (!ST.diff) return toast("先运行对比", "err");
-  const result = ST.diff;
-  const filename = `竞争力对比-${result.self_model||'本品'}vs${result.comp_model||'竞品'}`.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.md';
-  const dest = await api("save_file_dialog", filename, ["Markdown (*.md)"]);
-  if (!dest || dest.error) return;
-  if (result !== ST.diff) return toast("配置或配对已变更，请重新对比后导出", "err");
-  await api("write_text_file", dest, result.md);
-  toast("已导出: " + dest, "ok");
+  setActionBusy(button, true);
+  try {
+    const result = ST.diff;
+    const filename = `竞争力对比-${result.self_model||'本品'}vs${result.comp_model||'竞品'}`.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.md';
+    const dest = await api("save_file_dialog", filename, ["Markdown (*.md)"]);
+    if (!dest || dest.error) return;
+    if (result !== ST.diff) return toast("配置或配对已变更，请重新对比后导出", "err");
+    await api("write_text_file", dest, result.md);
+    toast("已导出: " + dest, "ok");
+  } catch (error) {
+    // api() already reports the error; keep the current result available for retry.
+  } finally { setActionBusy(button, false); }
 });
 
 /* ---------- ⑥ 设置 ---------- */
@@ -945,6 +1011,7 @@ async function selectCompetitor() {
   $('#pairs-editor').querySelectorAll('.pair-row').forEach(r=>r.remove());
   $('#pairs-editor').dataset.selfTrims='[]';
   $('#pairs-editor').dataset.compTrims='[]';
+  syncActionButtons();
   const filename=$('#diff-vehicle').value;
   if(!filename) return;
   const result=await api('prepare_competitor',filename);
@@ -961,8 +1028,19 @@ $('#pairs-editor').before($('#diff-competitor-editor'));
 $('#review-competitor').textContent='修改当前竞品配置';
 $('#diff-competitor-editor h3').textContent='修改竞品配置';
 let comparisonSelf=null, comparisonSelfPath='';
+const seatAdjustDetails = new Map();
+function parseSeatAdjust(value) {
+  if(!seatAdjustDetails.has(value)) {
+    seatAdjustDetails.set(value,api('seat_adjust_details',value).then(result=>{
+      if(!result.ok) seatAdjustDetails.delete(value);
+      return result;
+    }).catch(error=>{seatAdjustDetails.delete(value);throw error;}));
+  }
+  return seatAdjustDetails.get(value);
+}
 function mountConfigurationEditor(root,model,kind,names={},review=false) {
   ConfigEditor.mount(root,{model,kind,names,review,choices:configurationChoices,
+    parseSeatAdjust,
     updateSnapshot:updateSnapshotValue,cascade:cascadeLadderValues,
     onChange:invalidateDiff});
 }
@@ -1007,7 +1085,7 @@ $('#diff-edit-self').onclick=async()=>{
     if(!isCurrent())return;
     ST.leftLadder=r.ladder; ST.leftLadderPath=r.path;
     $('#diff-self-editor h3').textContent='修改左侧竞品配置';
-    $('#diff-self-editor p').textContent='仅修改本次对比使用的竞品配置，不影响原始抓取记录。';
+    $('#diff-self-editor p').textContent='修正会用于该历史车型的后续对比，不修改原始抓取数据。';
     renderLadderTable('#diff-self-table',ST.leftLadder);
     $('#diff-self-editor').hidden=false;
     return;
@@ -1090,13 +1168,25 @@ function collectDraftColumns() {
 }
 function invalidateDraftPreview() {
   $('#ppt-review').hidden=true; $('#ppt-confirm').checked=false;
+  syncActionButtons();
+}
+function updateProductDraftCopy(manual) {
+  if (manual !== undefined) {
+    $('#ppt-page-step').hidden=manual;
+    $('#ppt-parse').closest('.row').hidden=manual;
+    $('#ppt-draft-heading').textContent=(manual ? '1' : '2')+'. 核对版型、价格与继承关系';
+    $('#ppt-review-heading').textContent=(manual ? '2' : '3')+'. 核对下方完整配置表';
+  }
+  const kind=$('#ppt-price-kind').value;
+  $('#ppt-price-help').hidden=kind==='指导价';
+  $('#ppt-price-help').textContent=kind==='TP价格' ? 'TP价格仅作参考，请在完整配置表中另填指导价。' : '价格口径尚未确定，请核对来源后填写指导价。';
 }
 $('#btn-manual-product').onclick=()=>{
   if(ST.pptDraft && !window.confirm('开始手动填写将清空当前导入草稿，是否继续？'))return;
   ST.pptDraft={model:'',price_kind:'指导价',source:'手动填写',columns:[{name:'',base:null,price:null,text:''}]};
   $('#ppt-model').value=''; $('#ppt-price-kind').value='指导价';
   $('#ppt-import-panel').hidden=false; $('#ppt-draft-panel').hidden=false;
-  $('#ppt-parse').closest('.row').hidden=true;
+  updateProductDraftCopy(true);
   $('#ppt-file-label').textContent='手动填写本品配置';
   $('#ppt-status').textContent='填写车型，添加版型和价格；配置可逐行粘贴，或展开后直接在完整表格中填写。';
   renderDraftColumns(ST.pptDraft); invalidateDraftPreview();
@@ -1109,18 +1199,20 @@ $('#ppt-add-trim').onclick=()=>{
 $('#ppt-add-trim').hidden=true;
 // Vue owns the draft column cards and keeps the draft model current.
 $('#ppt-model').addEventListener('input',invalidateDraftPreview);
-$('#ppt-price-kind').addEventListener('change',invalidateDraftPreview);
+$('#ppt-price-kind').addEventListener('change',()=>{ updateProductDraftCopy(); invalidateDraftPreview(); });
+$('#ppt-confirm').addEventListener('change',syncActionButtons);
 $('#btn-import-ppt').onclick=async()=>{
   const path=await api('open_file_dialog',['PowerPoint (*.pptx)']);
   if(!path || path.error)return;
   const res=await api('ppt_pages',path);
   ST.pptPath=path;
-  $('#ppt-parse').closest('.row').hidden=false;
+  updateProductDraftCopy(false);
   $('#ppt-file-label').textContent=path.split(/[\\/]/).pop();
   $('#ppt-page').innerHTML=res.pages.map(p=>`<option value="${p.page}">P${p.page} · ${esc(p.title)}</option>`).join('');
   const suggested=res.pages.find(p=>p.title.includes('配置阶梯'));
   if(suggested)$('#ppt-page').value=suggested.page;
   $('#ppt-import-panel').hidden=false; $('#ppt-draft-panel').hidden=true;$('#ppt-review').hidden=true;
+  invalidateDraftPreview();
   $('#ppt-status').textContent='请选择需要导入的配置阶梯页。';
 };
 $('#ppt-parse').onclick=async()=>{
@@ -1129,8 +1221,8 @@ $('#ppt-parse').onclick=async()=>{
     const {draft}=await api('ppt_parse',ST.pptPath,+$('#ppt-page').value);
     ST.pptDraft=draft;
     $('#ppt-model').value=draft.model; $('#ppt-price-kind').value=draft.price_kind;
-    $('#ppt-columns').innerHTML=draft.columns.map((c,i)=>`<div class="ppt-column" data-col="${i}"><label>版型名称<input class="ppt-name" value="${esc(c.name)}"></label><label>比较基准<select class="ppt-base"><option value="">独立基础配置</option>${draft.columns.filter(v=>v.name!==c.name).map(v=>`<option ${v.name===c.base?'selected':''} value="${esc(v.name)}">${esc(v.name)}</option>`).join('')}</select></label><label>页面价格（万元）<input class="ppt-price" type="number" step="0.01" value="${c.price??''}"></label><label>本列配置原文<textarea class="ppt-text">${esc(c.text)}</textarea></label></div>`).join('');
     $('#ppt-draft-panel').hidden=false; $('#ppt-review').hidden=true;
+    updateProductDraftCopy(false); invalidateDraftPreview();
     renderDraftColumns(draft);
     $('#ppt-status').textContent=`已识别${draft.columns.length}个版型，请核对比较基准。` + (draft.warnings||[]).join(' ');
   } catch(e){$('#ppt-status').textContent='解析未完成：'+e.message;}
@@ -1145,9 +1237,10 @@ $('#ppt-expand').onclick=async()=>{
       price:r.querySelector('.ppt-price').value||null,text:r.querySelector('.ppt-text').value}))};
   const res=await api('ppt_preview',draft);
   ST.snapshot=res.snapshot;ST.snapshotPath='';
-  $('#snapshot-info').textContent='PPT解析草稿 · 尚未保存';
+  $('#snapshot-info').textContent='本品配置草稿 · 尚未保存';
   await renderSnapshot();
   $('#ppt-review').hidden=false;$('#ppt-confirm').checked=false;
+  syncActionButtons();
   $('#ppt-evidence').textContent=JSON.stringify(res.snapshot.rulings[0],null,2);
   const remaining=res.snapshot.rulings[0]?.remaining||{};
   const unmatched=Object.entries(remaining).flatMap(([name,lines])=>lines.map(line=>`${name}：${line}`));
@@ -1156,7 +1249,7 @@ $('#ppt-expand').onclick=async()=>{
 };
 $('#ppt-save').onclick=async()=>{
   if(!$('#ppt-confirm').checked)return toast('请先核对并勾选确认','err');
-  if(!ST.snapshot || ST.snapshot.status!=='待确认')return toast('请先展开PPT配置','err');
+  if(!ST.snapshot || ST.snapshot.status!=='待确认')return toast('请先展开本品完整配置','err');
   if(!collectSnapshotEdits())return;
   const res=await api('save_ppt_snapshot',ST.snapshot,true);
   ST.snapshot=res.snapshot;ST.snapshotPath=res.path;
@@ -1164,6 +1257,7 @@ $('#ppt-save').onclick=async()=>{
   $('#snapshot-info').textContent=res.path;
   $('#ppt-status').textContent='已保存，可到竞争力对比选择本品。';
   $('#ppt-review').hidden=true;
+  syncActionButtons();
   toast('本品配置已保存','ok');
 };
 
@@ -1199,19 +1293,25 @@ for(const [anchor,kind] of [['btn-stage-export','ladder'],['btn-export-result','
   markdown.classList.add('export-button');
   group.append(markdown);
   const button=document.createElement('button');
+  button.id=kind==='ladder'?'btn-stage-excel':'btn-result-excel';
   button.textContent='导出 Excel';
   button.className='export-button';
   group.append(button);
   button.onclick=async()=>{
+    if(button.dataset.busy)return;
     if(kind==='diff'&&!ST.diff)return toast('请先运行对比','err');
-    button.disabled=true;
+    if(kind==='ladder'&&!stagePlan().length)return toast('请勾选至少一个输出版型','err');
+    setActionBusy(button,true);
     try {
       const result=await api('export_excel',kind,kind==='ladder'?stagePlan():ST.diff);
       if(!result.cancelled)toast(result.ok?'Excel 已导出：'+result.path:result.error,result.ok?'ok':'err');
-    } finally {button.disabled=false;}
+    } catch (error) {
+      // api() already displays a failure message.
+    } finally {setActionBusy(button,false);}
   };
 }
 $('#page-diff .notice').hidden=true;
 $('#page-diff .steps').textContent='01 选择车型　→　02 指定版型配对　→　03 查看并导出结果';
 $('#pairs-editor strong').textContent='版型配对';
 $('#page-diff .intro').textContent='选择两侧车型，指定版型配对，查看配置差异与赋值结果。';
+syncActionButtons();

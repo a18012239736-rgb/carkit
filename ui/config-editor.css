@@ -32,7 +32,7 @@
 #main .vue-config-editor input[type=number] { width:85px !important; }
 #main .vue-config-editor input[type=text] { width:220px !important; }
 #main .vue-config-editor .ce-seat-adjust select { width:74px !important; }
-#main .vue-config-editor .ce-seat-adjust input { width:60px !important; }
+#main .vue-config-editor .ce-seat-adjust input { width:78px !important; }
 #main .vue-config-editor input[type=checkbox] { flex:0 0 17px; width:17px !important; height:17px; min-height:0 !important; padding:0 !important; }
 #main .vue-config-editor input:focus,
 #main .vue-config-editor select:focus { outline:none; border-color:#5e9e9b; box-shadow:0 0 0 3px #8fd9d43b; }

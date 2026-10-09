@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>产品小工具 — 车型配置对比</title>
-<link rel="stylesheet" href="style.css?v=20260930-1">
-<link rel="stylesheet" href="config-editor.css?v=sticky-columns">
-<link rel="stylesheet" href="valuation-editor.css?v=config-controls-2">
-<link rel="stylesheet" href="ppt-draft-editor.css?v=vue-stage4">
+<link rel="stylesheet" href="style.css?v=ux-20261009">
+<link rel="stylesheet" href="config-editor.css?v=seat-mapping-20261009">
+<link rel="stylesheet" href="valuation-editor.css?v=ux-20261009-2">
+<link rel="stylesheet" href="ppt-draft-editor.css?v=ux-20261009">
 <script src="vendor/vue/vue.global.prod.js"></script>
 <script src="stage-editor.js?v=vue-stage8"></script>
 </head>
@@ -66,9 +66,10 @@
           <button id="btn-load-ladder">载入已有阶梯…</button>
         </div>
         <div id="diff-competitor-editor" class="card" hidden>
-          <h3>竞品配置校对（仅用于本次对比）</h3>
+          <h3>修改竞品配置</h3>
+          <p class="dim">修正会用于该历史车型的后续对比，不修改原始抓取数据。</p>
           <div class="table-wrap" id="diff-ladder-table-wrap"></div>
-          <button id="diff-save-competitor">保存本次竞品修正</button>
+          <button id="diff-save-competitor">保存竞品修正</button>
         </div>
         <div class="row">
           <button id="btn-save-ladder">保存修改</button>
@@ -96,28 +97,27 @@
         <div id="snapshot-trims" class="trims-editor"></div>
       </div>
       <div class="card" id="ppt-import-panel" hidden>
-        <h2>1. 选择配置阶梯页</h2>
+        <h2 id="ppt-page-step">1. 选择配置阶梯页</h2>
         <p id="ppt-file-label" class="dim"></p>
         <div class="row"><select id="ppt-page"></select><button id="ppt-parse" class="primary">解析这一页</button></div>
         <div id="ppt-draft-panel" hidden>
-          <h2>2. 核对版型、价格与继承关系</h2>
-          <div class="row"><label>本品车型</label><input id="ppt-model"><label>页面价格口径</label><select id="ppt-price-kind"><option>未确定</option><option>TP价格</option><option>指导价</option></select></div>
-          <p class="dim">TP价格仅作参考，不用于指导价比较。</p>
+          <h2 id="ppt-draft-heading">2. 核对版型、价格与继承关系</h2>
+          <div class="row"><label for="ppt-model">本品车型</label><input id="ppt-model" type="text" placeholder="请输入本品车型名称"><label for="ppt-price-kind">价格口径</label><select id="ppt-price-kind"><option>未确定</option><option>TP价格</option><option>指导价</option></select></div>
+          <p id="ppt-price-help" class="dim">TP价格仅作参考，不用于指导价比较。</p>
           <div id="ppt-columns"></div>
           <button id="ppt-add-trim">＋ 添加版型</button>
           <button id="ppt-expand" class="primary">展开为完整配置，进入核对</button>
         </div>
         <div id="ppt-review" hidden>
-          <h2>3. 核对下方完整配置表</h2>
+          <h2 id="ppt-review-heading">3. 核对下方完整配置表</h2>
           <p>可直接修改表格。待定项不计入多/少；座椅子项有待定时，当前按整项暂不比较。</p>
           <details><summary>原文及未自动归入清单的内容</summary><pre id="ppt-evidence"></pre></details>
           <label><input type="checkbox" id="ppt-confirm">我已核对版型、价格口径、继承关系及配置</label>
-          <button id="ppt-save" class="primary">确认并保存本品配置</button>
+          <button id="ppt-save" class="primary" disabled>确认并保存本品配置</button>
         </div>
         <div id="ppt-status" class="status"></div>
       </div>
-      <div class="card table-wrap" id="snapshot-table-wrap">
-      </div>
+      <div class="card table-wrap" id="snapshot-table-wrap"></div>
     </section>
 
     <!-- ⑤ 对比 -->
@@ -133,9 +133,10 @@
         <div class="row"><button data-goto="snapshot">导入本品PPT</button><button id="diff-edit-self">修改当前本品配置</button><button id="diff-toggle-valuation">调整赋值规则</button></div>
         <div id="diff-self-editor" class="card" hidden><h3>修改本品配置</h3><p>修改会同步到继承该项的版型，保存后重新对比。</p><div id="diff-self-table" class="table-wrap"></div><button id="diff-save-self">保存本品修正</button></div>
         <div id="pairs-editor" class="pairs-editor">
-          <div class="row"><strong>版型配对（必须人工指定，程序绝不自动配对）</strong>
+          <div class="row"><strong>版型配对</strong>
             <button id="btn-add-pair">+ 添加配对组</button></div>
         </div>
+        <p id="comparison-action-hint" class="dim" role="status" aria-live="polite">请选择左右两侧车型，再指定版型配对。</p>
         <div class="row">
           <button id="btn-run-diff" class="primary big">运行对比</button>
           <button id="btn-export-result">导出结果 md</button>
@@ -153,15 +154,13 @@
     <section id="page-valuation" class="page">
       <div class="valuation-page-nav"><button id="diff-close-valuation">← 返回竞争力对比</button></div>
       <h1>调整赋值规则</h1>
-      <p class="intro">管理竞争力对比使用的金额、档位和阈值，保存后立即用于后续对比。</p>
-      <div class="steps">01 检查规则　→　02 调整金额与阈值　→　03 保存并返回对比</div>
       <section class="card valuation-panel">
         <div class="valuation-heading">
-          <div><h2>当前赋值规则</h2><p class="dim">固定金额和动态分档均可直接修改；灰色项目只展示配置，不参与金额计算。</p></div>
+          <div><h2>当前赋值规则</h2><p class="dim">修改金额、档位与阈值，保存后应用于后续对比。灰色项目不纳入本轮对比，原始配置仍可查看。</p></div>
           <span id="valuation-info" class="dim"></span>
         </div>
         <div class="valuation-toolbar">
-          <button id="btn-make-template">导出当前规则 Excel</button>
+          <button id="btn-make-template">保存并导出规则 Excel</button>
           <button id="btn-load-valuation">从 Excel / JSON 导入…</button>
           <button id="btn-reset-valuation">恢复内置默认值</button>
           <button id="btn-save-valuation" class="primary">保存并立即应用</button>
@@ -195,9 +194,9 @@
   </main>
 </div>
 <div id="toast"></div>
-<script src="config-editor.js?v=vue-stage5"></script>
-<script src="valuation-editor.js?v=main-ui-2"></script>
-<script src="ppt-draft-editor.js?v=vue-stage4"></script>
-<script src="app.js?v=verification-button"></script>
+<script src="config-editor.js?v=seat-mapping-20261009"></script>
+<script src="valuation-editor.js?v=ux-20261009-2"></script>
+<script src="ppt-draft-editor.js?v=ux-20261009"></script>
+<script src="app.js?v=seat-mapping-20261009"></script>
 </body>
 </html>

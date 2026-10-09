@@ -416,59 +416,8 @@ def n_wireless_charge(raw, i, cfg):
 
 
 def n_seat_adjust(raw, i, cfg):
-    elec = _cell(raw, ["主/副驾驶座电动调节"], i)
-    main_c = _cell(raw, ["主座椅调节方式"], i)
-    pas_c = _cell(raw, ["副座椅调节方式"], i)
-
-    # Keep explicit totals and each seat's mode. Older descriptions without a
-    # stated total retain their existing summary instead of inventing counts.
-    from .stage_one import clean, parts
-    electric_text = ' '.join(parts(elec))
-    explicit = []
-    for seat, cell, short in (('主驾', main_c, '主'), ('副驾', pas_c, '副')):
-        text = clean(''.join(parts(cell)))
-        match = re.fullmatch(r'(?:主驾|副驾|座椅)?(\d+)向((?:电动|手动|电调|手调|调节)*)', text)
-        if match:
-            mode = match[2]
-            if '电' in mode:
-                mode = '电调'
-            elif '手' in mode:
-                mode = '手调'
-            else:
-                electric = _solid(elec) and (not electric_text or bool(re.search(short+r'(?:驾|驾驶位)?(?:●|(?=/|$))', electric_text)))
-                mode = '电调' if electric else '手调'
-            explicit.append(f'{seat}{match[1]}向{mode}')
-        else:
-            explicit.append(None)
-    if all(explicit):
-        return '+'.join(explicit)
-
-    def extras(cell):
-        if cell is None:
-            return []
-        parts = [cell.text] + [s.text for s in (cell.subs or [])]
-        joined = " ".join(p for p in parts if p)
-        ex = []
-        m = re.search(r"腿部支撑\((\d+)向\)|腰[部部]?支撑\((\d+)向\)|腰部支撑\((\d+)向\)", joined)
-        if "腿托" in joined:
-            ex.append("腿托")
-        w = re.search(r"腰[部]?支撑\((\d+)向\)", joined)
-        if w:
-            ex.append(f"腰撑{w.group(1)}向")
-        return ex
-
-    if _solid(elec):
-        base = "主副电调"
-    else:
-        base = "主副手调"
-    mex, pex = extras(main_c), extras(pas_c)
-    if mex and not pex:
-        return f"{base}(主含{'+'.join(mex)})"
-    if mex and pex:
-        return f"{base}(主{'+'.join(mex)}/副{'+'.join(pex)})"
-    if pex:
-        return f"{base}(副含{'+'.join(pex)})"
-    return base
+    from .seat_adjust import from_raw
+    return from_raw(raw, i)
 
 
 _SEAT_FUNCS = ["加热", "通风", "按摩"]

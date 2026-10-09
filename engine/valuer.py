@@ -61,7 +61,7 @@ DEFAULT_DYNAMIC_PARAMS = {
 }
 
 EDITOR_FIELDS = {
-    1: [('threshold_km', '不计价的续航差', 'km'), ('per_km', '超过阈值后每km', '元')],
+    1: [('threshold_km', '续航差计价阈值', 'km'), ('per_km', '达阈值后全续航差单价', '元/km')],
     3: [('platform_800v', '800V', '元')],
     4: [('base_inch', '基准轮径', '寸'), ('per_inch', '每增加1寸', '元'), ('alloy_bonus', '铝轮毂加价', '元')],
     5: [('per_airbag', '每个气囊', '元')],
@@ -346,25 +346,8 @@ def _amount_for(valuation, no, disp, side):
 
 
 def _seat_adjust_components(value):
-    text = str(value).replace('电动', '电调').replace('手动', '手调')
-    if text.strip() in ('', '✕', '-', '无') or text.startswith('○'):
-        return 0, 0
-    seats = re.findall(r'(主驾?|副驾?)(\d+)向?(电调|手调)?', text)
-    modes = {seat[0]: mode for seat, mode in re.findall(r'(主驾?|副驾?)(?:\d+向?)?(电调|手调)', text)}
-    common = re.fullmatch(r'●?主\d+向?副\d+向?(电调|手调)', text)
-    if seats:
-        positions = {seat[0] for seat in re.findall(r'主驾?|副驾?', text)}
-        directions = sum(int(n) for _, n, _ in seats) if positions == {seat[0] for seat, _, _ in seats} else None
-        if common:
-            return directions, len(seats) if common[1] == '电调' else 0
-        electric = sum(modes[pos] == '电调' for pos in positions) if positions <= modes.keys() else None
-        return directions, electric
-    if text.startswith(('主副', '前排')):
-        return None, 2 if '电调' in text else 0
-    if modes:
-        return None, sum(mode == '电调' for mode in modes.values())
-    count = 2 if '主副' in text or '前排' in text else 1
-    return None, count if '电调' in text else 0
+    from .seat_adjust import components
+    return components(value)
 
 
 def dynamic_delta(no, self_value, comp_value, custom_params=None):

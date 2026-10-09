@@ -39,6 +39,7 @@ const ST={diff:null,diffRevision:0,pairsRevision:0,competitorRevision:0,selfEdit
 const context={ST,$:node,$$:()=>node('#pairs-editor').rows,
   ConfigEditor:{unmount(root){delete root.model;},isMounted:root=>!!root.model,validate:()=>true},
   esc:String,toast(){},window:{confirm:()=>true},
+  syncActionButtons(){},setActionBusy(button,busy){if(busy)button.dataset.busy='1';else delete button.dataset.busy;},
   api:async()=>{throw new Error('unexpected API call');},renderDiff(){node('#diff-result').hidden=false;},
   collectValuationEdits:()=>true,renderValuation:async()=>{},
   addPairRow:(self,comp)=>pair(self[0],comp[0])};

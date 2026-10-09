@@ -169,5 +169,10 @@ def test_cli_defaults_keep_history_and_do_not_overwrite_adjacent_rule_json(tmp_p
     export_report(report, 'diff', result)
     book = load_workbook(report)
     assert book['对比汇总']['B5'].value == -400
+    for sheet in book:
+        for row in sheet:
+            for cell in row:
+                if isinstance(cell.value, (int, float)):
+                    assert cell.number_format == '0.##;[Red]-0.##'
     assert next(row[5] for row in book['赋值明细'].iter_rows(min_row=2, values_only=True) if 'R17' in row[3]) == -400
     book.close()

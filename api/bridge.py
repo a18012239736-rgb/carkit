@@ -18,7 +18,7 @@ from engine.rules import Rules, display_order_key
 from engine import rawschema, ladder as ladder_mod, differ, render_backup, valuer
 from engine.models import Snapshot, Ladder, ValuationTable, ValuationItem
 from engine.snapshot import resolve
-from engine import acquire, stage_one
+from engine import acquire, stage_one, __version__
 from engine.storage import atomic_write_text, unique_filename
 
 
@@ -51,7 +51,7 @@ class Bridge:
     # ---------- 通用 ----------
 
     def ping(self):
-        return {"ok": True, "version": "0.1.0", "rules": self.rules.version,
+        return {"ok": True, "version": __version__, "rules": self.rules.version,
                 "workdir": self.workdir}
 
     def open_file_dialog(self, file_types=None):
@@ -181,6 +181,17 @@ class Bridge:
             output = os.path.join(self.workdir, '阶梯', 'compare-'+key+'.json')
             if os.path.exists(output):
                 lad = Ladder.load(output)
+                # Recover source-backed seat directions only for untouched old
+                # summaries; a user's explicit correction remains authoritative.
+                from engine.seat_adjust import legacy_summary
+                from engine.mapper import n_seat_adjust
+                seat = lad.item(35)
+                if seat and raw.row('主座椅调节方式', '副座椅调节方式'):
+                    source_indices = {trim.short: i for i, trim in enumerate(raw.trims)}
+                    for i, trim in enumerate(lad.trims):
+                        source_i = source_indices.get(trim['name'])
+                        if source_i is not None and i < len(seat.values) and seat.values[i] == legacy_summary(raw, source_i):
+                            seat.values[i] = n_seat_adjust(raw, source_i, {})
                 # Existing captures keep hand edits; append only newly defined items.
                 missing = {it['no'] for it in self.rules.items} - {it.no for it in lad.items}
                 if missing:
@@ -426,6 +437,14 @@ class Bridge:
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    def seat_adjust_details(self, value):
+        """Use the same per-seat interpretation in the editor and valuation."""
+        try:
+            from engine.seat_adjust import parse
+            return {'ok': True, **parse(value)}
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
 
     # ---------- ③ 快照 ----------
 

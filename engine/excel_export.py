@@ -21,7 +21,7 @@ def export_report(path, kind, data):
                 cell.font = Font(name='Calibri', size=11)
                 cell.alignment = Alignment(vertical='top', wrap_text=True)
                 if isinstance(cell.value, (int, float)):
-                    cell.number_format = '#,##0.##;[Red]-#,##0.##'
+                    cell.number_format = '0.##;[Red]-0.##'
         for cell in ws[1]:
             cell.fill = PatternFill('solid', fgColor='245E6B')
             cell.font = Font(name='Calibri', bold=True, color='FFFFFF')

@@ -29,11 +29,11 @@
       },
       template:`<div class="ppt-draft-grid"><article v-for="(col,i) in columns" :key="i" class="ppt-column">
         <div class="ppt-column-head"><span class="ppt-column-index">版型 {{i+1}}</span><button v-if="columns.length>1" type="button" class="ppt-remove" @click="remove(i)">删除版型</button></div>
-        <label>版型名称<input class="ppt-name" :value="col.name" @change="rename(i,$event)"></label>
+        <label>版型名称<input class="ppt-name" type="text" :value="col.name" @change="rename(i,$event)"></label>
         <label>比较基准<select class="ppt-base" :value="col.base||''" @change="set(i,'base',$event.target.value||null)"><option value="">独立基础配置</option><option v-for="base in bases(i)" :key="base.name" :value="base.name">{{base.name}}</option></select></label>
         <label>价格（万元）<input class="ppt-price" type="number" min="0" step="0.01" :value="col.price??''" @input="set(i,'price',$event.target.value)"></label>
         <label>配置内容（每行一项，也可稍后在完整表格填写）<textarea class="ppt-text" :value="col.text||''" @input="set(i,'text',$event.target.value)"></textarea></label>
-      </article><button type="button" class="ppt-add-column" @click="add">＋ 添加版型</button></div>`
+      </article></div><div class="ppt-draft-toolbar"><button type="button" class="ppt-add-column" @click="add">＋ 添加版型</button></div>`
     });
     root.classList.add('vue-ppt-draft');
     app.mount(root);

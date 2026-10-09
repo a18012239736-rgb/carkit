@@ -107,27 +107,20 @@ def features(raw):
             add('影像',[['540影像'] if get('透明底盘/540度影像',i) else [clean(x) for x in get('驾驶辅助影像',i)] for i in range(count)],True)
         elif name in {'主座椅调节方式','副座椅调节方式','主/副驾驶座电动调节'}:
             consumed.update({'主座椅调节方式','副座椅调节方式','主/副驾驶座电动调节'})
+            from .seat_adjust import raw_directions, raw_modes
+            def seat_cell(source, i):
+                row = raw.row(source)
+                return row.cells[i] if row else None
             electric=[]
             for i in range(count):
-                text=' '.join(get('主/副驾驶座电动调节', i))
-                electric.append([pos+'座椅电调' for pos, pattern in
-                                 [('主驾', r'主驾|(?<!副)驾驶位'), ('副驾', r'副驾|副驾驶位')]
-                                 if re.search(pattern, text)])
+                modes = raw_modes(seat_cell('主/副驾驶座电动调节', i), seat_cell('主座椅调节方式', i), seat_cell('副座椅调节方式', i))
+                electric.append([pos+'座椅电调' for pos, mode in zip(('主驾','副驾'), modes) if mode == '电调'])
             add('座椅电调', electric)
             for pos, source in [('主驾', '主座椅调节方式'), ('副驾', '副座椅调节方式')]:
                 totals = []
                 for i in range(count):
                     text = clean(' '.join(get(source, i)))
-                    directions = 0
-                    # Seat directions include leg-rest adjustment, not lumbar,
-                    # bolster, shoulder or headrest support.
-                    pattern = r'(?:前后调节|靠背调节|高低调节|腿托调节|腿部支撑调节)(?:\((\d+)向\))?'
-                    for match in re.finditer(pattern, text):
-                        directions += int(match[1] or 2)
-                    if not directions:
-                        total = re.fullmatch(r'(?:主驾|副驾|座椅)?(\d+)向(?:电动|手动|电调|手调|调节)*', text)
-                        if total:
-                            directions = int(total[1])
+                    directions = raw_directions(seat_cell(source, i))
                     totals.append([f'{pos}{directions}向调节'] if directions else ([pos+'座椅调节（'+text+'）'] if text else []))
                 add(pos+'座椅调节', totals, True)
         elif name in {'巡航系统','辅助驾驶系统','辅助驾驶等级','辅助驾驶路段'}:
