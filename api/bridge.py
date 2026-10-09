@@ -590,6 +590,10 @@ class Bridge:
         try:
             if not pairs:
                 return {"ok": False, "error": "请先指定版型配对（程序不自动配对）"}
+            pairs = [dict(pair) for pair in pairs]
+            for i, pair in enumerate(pairs):
+                for key, label in (('self_floor_price', '左侧底价'), ('comp_floor_price', '右侧底价')):
+                    pair[key] = valuer.normalize_floor_price(pair.get(key), f'第{i+1}组{label}')
             if left_is_competitor:
                 from types import SimpleNamespace
                 self_lad = Ladder.load(snapshot_path)

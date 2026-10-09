@@ -30,7 +30,9 @@ function node(id) {
   return nodes.get(id);
 }
 function pair(self='Self',comp='Comp') {
-  const row={querySelector:selector=>({value:selector==='.pair-self'?self:comp}),
+  const floor=()=>({value:'',validity:{badInput:false},setCustomValidity(value){this.error=value;},reportValidity(){this.reported=true;return !this.error;}});
+  const fields={'.pair-self':{value:self},'.pair-comp':{value:comp},'.pair-self-floor':floor(),'.pair-comp-floor':floor()};
+  const row={querySelector:selector=>fields[selector],
     remove(){node('#pairs-editor').rows=node('#pairs-editor').rows.filter(r=>r!==row);}};
   node('#pairs-editor').rows.push(row);
   return row;
@@ -53,6 +55,7 @@ function load(start,end) {
 load('function invalidateDiff()', 'function configurationChoices(');
 load('function clearComparisonSelf()', "$('#delete-self-file')");
 load('async function rebuildPairs()', '$("#btn-add-pair")');
+load('function collectComparisonPairs()', '$("#btn-run-diff")');
 function seedResult() {ST.diff={md:'old result'};node('#diff-result').hidden=false;}
 """
     result = subprocess.run(

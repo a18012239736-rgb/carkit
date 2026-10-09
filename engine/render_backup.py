@@ -10,6 +10,27 @@ def _fmt_price(p):
     return f"{p:g}" if p is not None else "?"
 
 
+def _fmt_money(value):
+    return f"{value:.2f}".rstrip('0').rstrip('.') if value is not None else '未填写'
+
+
+def missing_metric_reason(group, key):
+    valuation = group.get('valuation') or {}
+    if valuation.get(key + '_reason'):
+        return valuation[key + '_reason']
+    if valuation.get('config_adv') is None:
+        return '缺少赋值规则'
+    return '左侧或右侧底价未填写' if key == 'overall' else '左侧或右侧指导价未填写'
+
+
+def floor_calculation(group):
+    valuation = group.get('valuation') or {}
+    if valuation.get('overall') is None:
+        return valuation.get('overall_reason') or '缺少底价或赋值数据'
+    return (f"{_fmt_money(valuation['config_adv'])} + {_fmt_money(group.get('comp_floor_price'))} "
+            f"− {_fmt_money(group.get('self_floor_price'))} = {_fmt_money(valuation['overall'])}")
+
+
 def render_md(self_model, comp_model, groups, cells, rules_version="v1",
               checklist="v1", date=None, notes=None, pair_labels=None):
     date = date or datetime.date.today().isoformat()
@@ -18,6 +39,7 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
     lines.append("")
     lines.append(f"- 配对：使用者指定（程序绝不自动配对）")
     lines.append(f"- 规则：对比配置清单 {checklist} / 豁免规则 {rules_version}（carkit engine 生成）")
+    lines.append("- 价格口径：指导价单位为万元；底价及计算金额单位为元。底价为本次配对手动填写，不修改车型指导价。")
     lines.append("")
     lines.append("## 竞争力对比表（deck BACKUP 格式）")
     lines.append("")
@@ -37,12 +59,22 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
         for g in groups:
             v = g.get("valuation") or {}
             val = v.get(key)
-            row.append("待赋值明细表" if val is None else f"{val:g}")
+            row.append(missing_metric_reason(g, key) if val is None else _fmt_money(val))
         lines.append(f"| {label} | " + " | ".join(row) + " |")
 
-    money_row("config_adv", "配置优势")
-    money_row("flat_adv", "拉平指导价优势")
-    money_row("overall", "综合竞争力")
+    money_row("config_adv", "配置优势（元）")
+    money_row("flat_adv", "拉平指导价优势（元）")
+    money_row("overall", "综合竞争力（元）")
+    lines.append("")
+    lines.append("## 底价与价格计算依据")
+    lines.append("")
+    lines.append("综合竞争力（拉平底价优势）＝配置优势＋右侧底价−左侧底价。底价缺失时不使用指导价或0代替。")
+    lines.append("")
+    lines.append("| 版型配对 | 左侧底价（元） | 右侧底价（元） | 综合竞争力计算（元） |")
+    lines.append("| --- | --- | --- | --- |")
+    for g in groups:
+        left, right = g.get('self_floor_price'), g.get('comp_floor_price')
+        lines.append(f"| {g['pair']['self_trim']} vs {g['pair']['comp_trim']} | {_fmt_money(left)} | {_fmt_money(right)} | {floor_calculation(g)} |")
     lines.append("")
     if notes:
         for nt in notes:

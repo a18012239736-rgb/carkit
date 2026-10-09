@@ -4,7 +4,7 @@
 - 单项金额 = f(赋值表 pricing 类型, 自方值, 对方值)
 - 配置优势 = Σ(多项金额) − Σ(少项金额)
 - 拉平指导价优势 = 配置优势 + (竞品指导价 − 自产品指导价) × 10000
-- 综合竞争力 = 可插拔公式（pjy 未提供前输出 None → 渲染层显示 [待公式]）
+- 综合竞争力 = 配置优势 + 右侧底价 − 左侧底价（底价单位元，按本次配对填写）
 
 任何一项查不到金额 → 该组 config_adv=None 并列出 missing（渲染层显示 待赋值明细表/[待赋值]）。
 """
@@ -13,9 +13,6 @@ import copy
 import json
 import math
 import re
-
-# 综合竞争力公式注册表：pjy 给公式后在此登记
-OVERALL_FORMULAS = {}
 
 # Built-in version of the user's "竞争力对比配置清单参考(1).xlsx".
 # A slash in the workbook means the item is deliberately zero-valued.
@@ -214,9 +211,28 @@ def _segmented_km(vitem, km):
     return total
 
 
+def normalize_floor_price(value, label='底价'):
+    """Optional per-pair price in yuan; never substitute guide/reference prices."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    error = f'{label}须为大于0的有效数字，单位元'
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(error)
+    try:
+        price = float(value)
+    except (ValueError, OverflowError):
+        raise ValueError(error) from None
+    if not math.isfinite(price) or price <= 0:
+        raise ValueError(error)
+    return price
+
+
 def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
-               valuation, overall_formula: str | None = None, *, cells=None) -> dict:
-    """一组配对的三指标。more_map/less_map: {item_no: backup显示串}"""
+               valuation, overall_formula: str | None = None, *, cells=None,
+               self_floor_price=None, comp_floor_price=None) -> dict:
+    """一组配对的三指标；overall_formula 旧参数仅保留调用兼容。"""
+    self_floor_price = normalize_floor_price(self_floor_price, '左侧底价')
+    comp_floor_price = normalize_floor_price(comp_floor_price, '右侧底价')
     missing = []
     total_more = total_less = 0.0
     detail = []
@@ -263,15 +279,20 @@ def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
             detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": side, "amount": round(amt, 2), "display": disp, "rule": explain_rule(valuation, no)})
     if missing:
         return {"config_adv": None, "flat_adv": None, "overall": None,
+                "config_adv_reason": '缺少配置赋值规则', "flat_adv_reason": '缺少配置赋值规则',
+                "overall_reason": '缺少配置赋值规则',
                 "missing": sorted(set(missing)), "detail": detail}
     config_adv = round(total_more - total_less, 2)
     flat_adv = None
     if config_adv is not None and self_price is not None and comp_price is not None:
         flat_adv = round(config_adv + (comp_price - self_price) * 10000, 2)
     overall = None
-    if overall_formula and overall_formula in OVERALL_FORMULAS and flat_adv is not None:
-        overall = OVERALL_FORMULAS[overall_formula](config_adv, flat_adv, self_price, comp_price)
+    missing_floors = [side for side, price in (('左侧', self_floor_price), ('右侧', comp_floor_price)) if price is None]
+    if not missing_floors:
+        overall = round(config_adv + comp_floor_price - self_floor_price, 2)
     return {"config_adv": config_adv, "flat_adv": flat_adv, "overall": overall,
+            "config_adv_reason": '', "flat_adv_reason": '缺少左侧或右侧指导价' if flat_adv is None else '',
+            "overall_reason": '缺少'+'、'.join(missing_floors)+'底价' if missing_floors else '',
             "total_more": total_more, "total_less": total_less,
             "missing": [], "detail": detail}
 

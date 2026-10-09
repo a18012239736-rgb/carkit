@@ -844,15 +844,40 @@ $("#btn-add-pair").addEventListener("click", () => {
 function addPairRow(st, ct) {
   const row = document.createElement("div");
   row.className = "pair-row";
+  const [left, right] = $('#diff-mode').value === 'competitor' ? ['左侧', '右侧'] : ['本品', '竞品'];
   row.innerHTML = `
-    <select class="pair-self" aria-label="左侧配对版型">${st.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
-    <span class="dim">VS</span>
-    <select class="pair-comp" aria-label="右侧配对版型">${ct.map((t) => `<option>${esc(t)}</option>`).join("")}</select>
+    <div class="pair-side"><label><span>${left}版型</span><select class="pair-self" aria-label="${left}配对版型">${st.map((t) => `<option>${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${left}底价（元）</span><input class="pair-self-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${left}底价（元）"></label></div>
+    <span class="dim pair-vs">VS</span>
+    <div class="pair-side"><label><span>${right}版型</span><select class="pair-comp" aria-label="${right}配对版型">${ct.map((t) => `<option>${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${right}底价（元）</span><input class="pair-comp-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${right}底价（元）"></label></div>
     <button class="pair-del" aria-label="删除此配对组" title="删除此配对组">✕</button>`;
   row.querySelector(".pair-del").addEventListener("click", () => {row.remove();invalidateDiff();});
-  row.addEventListener('change',invalidateDiff);
+  row.addEventListener('input', event => {event.target.setCustomValidity('');invalidateDiff();});
+  row.addEventListener('change', event => {
+    const side = event.target === row.querySelector('.pair-self') ? 'self' : event.target === row.querySelector('.pair-comp') ? 'comp' : '';
+    if (side) {const input=row.querySelector(`.pair-${side}-floor`);input.value='';input.setCustomValidity('');}
+    invalidateDiff();
+  });
   $("#pairs-editor").appendChild(row);
   syncActionButtons();
+}
+
+function collectComparisonPairs() {
+  const labels = $('#diff-mode').value === 'competitor' ? ['左侧', '右侧'] : ['本品', '竞品'];
+  const pairs = [];
+  for (const [i, row] of $$('#pairs-editor .pair-row').entries()) {
+    const pair = {self_trim:row.querySelector('.pair-self').value, comp_trim:row.querySelector('.pair-comp').value};
+    for (const [j, side] of ['self', 'comp'].entries()) {
+      const input=row.querySelector(`.pair-${side}-floor`), text=input.value.trim();
+      const price=text==='' ? null : Number(text);
+      if (input.validity.badInput || (price!==null && (!Number.isFinite(price) || price<=0))) {
+        const message=`第${i+1}组${labels[j]}底价应为大于0的有效金额，单位元；也可留空。`;
+        input.setCustomValidity(message);input.reportValidity();toast(message,'err');return null;
+      }
+      input.setCustomValidity('');pair[`${side}_floor_price`]=price;
+    }
+    pairs.push(pair);
+  }
+  return pairs;
 }
 
 $("#btn-run-diff").addEventListener("click", async () => {
@@ -861,10 +886,8 @@ $("#btn-run-diff").addEventListener("click", async () => {
   const competitor=$('#diff-mode').value==='competitor';
   const sn = competitor ? $('#diff-left-vehicle').value : $("#diff-snapshot").value, ld = $("#diff-ladder").value;
   if (!sn || !ld) return toast("请选择左右两侧车型", "err");
-  const pairs = $$("#pairs-editor .pair-row").map((r) => ({
-    self_trim: r.querySelector(".pair-self").value,
-    comp_trim: r.querySelector(".pair-comp").value,
-  }));
+  const pairs = collectComparisonPairs();
+  if (!pairs) return;
   if (!pairs.length || pairs.some(p => !p.self_trim || !p.comp_trim)) return toast("请添加至少一组有效版型配对", "err");
   setActionBusy(button, true);
   button.textContent = '正在对比…';
@@ -902,6 +925,8 @@ $("#btn-run-diff").addEventListener("click", async () => {
 function renderDiff(res) {
   $("#diff-result").hidden = false;
   const groups = res.groups;
+  const [left, right] = $('#diff-mode').value === 'competitor' ? ['左侧', '右侧'] : ['本品', '竞品'];
+  const reason = (g, k) => g.valuation?.[k+'_reason'] || (k==='overall' ? (g.self_floor_price==null || g.comp_floor_price==null ? '请填写双方底价后计算综合竞争力' : '缺少赋值规则') : k==='flat_adv' && (g.self_price==null || g.comp_price==null) ? '左侧或右侧指导价未填写' : '缺少赋值规则');
   // P21 layout: each manually paired comparison is a column; metrics are rows.
   let h = '<table class="grid backup-table"><thead><tr><th class="backup-label"></th>';
   h += groups.map((g) =>
@@ -915,15 +940,16 @@ function renderDiff(res) {
   const money = (k, label) =>
     `<tr><th class="backup-label">${label}</th>` + groups.map((g) => {
       const v = (g.valuation || {})[k];
-      const reason = k==='overall' ? '尚未设置计算公式' : k==='flat_adv' && (g.self_price==null || g.comp_price==null) ? '左侧或右侧指导价未填写' : '缺少赋值规则';
-      return `<td>${v == null ? `<span class="dim">${reason}</span>` : fmtMoney(v)}</td>`;
+      return `<td>${v == null ? `<span class="dim">${esc(reason(g,k))}</span>` : fmtMoney(v)}</td>`;
     }).join("") + "</tr>";
-  h += money("config_adv", "配置优势（元）") + money("flat_adv", "拉平指导价优势（元）") + money("overall", "综合竞争力");
+  h += money("config_adv", "配置优势（元）") + money("flat_adv", "拉平指导价优势（元）") + money("overall", "综合竞争力（元）");
   h += "</tbody></table>";
   $("#backup-table").innerHTML = '<p class="dim">金额正值表示左侧车型占优，负值表示左侧车型落后；指导价单位为万元。</p>' + h;
   $("#backup-table").innerHTML += groups.map(g=>{
     const v=g.valuation||{};
-    return `<details><summary>展开赋值计算明细：${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</summary><p>配置优势＝多配置合计 ${fmtMoney(v.total_more)} − 少配置合计 ${fmtMoney(v.total_less)} ＝ ${fmtMoney(v.config_adv)} 元</p><p>拉平指导价优势＝配置优势＋（右侧指导价−左侧指导价）×10000</p><table class="grid"><tr><th>配置差异</th><th>计价依据</th><th>金额（元）</th></tr>${(v.detail||[]).map(x=>`<tr><td>${esc(x.side)}：${esc(x.display||String(x.no))}</td><td>${esc(x.rule||'')}</td><td>${fmtMoney(x.amount)}</td></tr>`).join('')}</table></details>`;
+    const floors=`${left}底价：${g.self_floor_price==null?'未填写':fmtMoney(g.self_floor_price)+' 元'}；${right}底价：${g.comp_floor_price==null?'未填写':fmtMoney(g.comp_floor_price)+' 元'}（仅本次配对）`;
+    const overall=v.overall==null ? esc(reason(g,'overall')) : `${fmtMoney(v.config_adv)}＋${fmtMoney(g.comp_floor_price)}－${fmtMoney(g.self_floor_price)}＝${fmtMoney(v.overall)} 元`;
+    return `<details><summary>展开赋值计算明细：${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</summary><p>配置优势＝多配置合计 ${fmtMoney(v.total_more)} − 少配置合计 ${fmtMoney(v.total_less)} ＝ ${fmtMoney(v.config_adv)} 元</p><p>拉平指导价优势＝配置优势＋（右侧指导价−左侧指导价）×10000</p><p>${floors}</p><p>综合竞争力＝配置优势＋${right}底价－${left}底价；${overall}</p><table class="grid"><tr><th>配置差异</th><th>计价依据</th><th>金额（元）</th></tr>${(v.detail||[]).map(x=>`<tr><td>${esc(x.side)}：${esc(x.display||String(x.no))}</td><td>${esc(x.rule||'')}</td><td>${fmtMoney(x.amount)}</td></tr>`).join('')}</table></details>`;
   }).join('');
   // 判定明细
   const nos = [...new Set(res.cells.map((c) => c.no))].sort((a, b) => configurationOrderKey(a) - configurationOrderKey(b));
@@ -1315,3 +1341,88 @@ $('#page-diff .steps').textContent='01 选择车型　→　02 指定版型配�
 $('#pairs-editor strong').textContent='版型配对';
 $('#page-diff .intro').textContent='选择两侧车型，指定版型配对，查看配置差异与赋值结果。';
 syncActionButtons();
+
+// Keep horizontal navigation within reach, even on systems that hide scrollbars.
+function mountFloatingScroll() {
+  const main=document.getElementById('main');
+  const bar=document.createElement('div');
+  bar.id='floating-scroll'; bar.hidden=true;
+  bar.setAttribute('role','group'); bar.setAttribute('aria-label','横向滚动');
+  bar.innerHTML='<span id="floating-scroll-label">左右查看</span><select id="floating-scroll-target" aria-label="选择横向滚动区域"></select><input id="floating-scroll-range" type="range" min="0" step="1" aria-label="左右滚动配置">';
+  document.body.append(bar);
+  const select=bar.querySelector('select'), range=bar.querySelector('input');
+  const names={
+    'raw-inspector':'完整配置', 'diff-ladder-table-wrap':'修改竞品配置',
+    'ladder-table-wrap':'修改竞品配置', 'snapshot-table-wrap':'修改本品配置',
+    'diff-self-table':'修改左侧配置', 'backup-table':'竞争力对比表',
+    'detail-table':'配置判定明细', 'valuation-table-wrap':'赋值规则'
+  };
+  let targets=[], current=null, nextId=0, pending=false, signature='', watched=[];
+  function name(target) {
+    return target.classList.contains('ladder-scroll')?'配置阶梯':names[target.id]||'配置表';
+  }
+  function sync() {
+    if(!current)return;
+    range.max=Math.max(0,current.scrollWidth-current.clientWidth);
+    range.value=Math.max(0,Math.min(Number(range.max),current.scrollLeft));
+    range.setAttribute('aria-controls',current.id);
+    range.setAttribute('aria-valuetext',`${name(current)}，已滚动 ${Math.round(Number(range.value)/Number(range.max)*100)||0}%`);
+  }
+  function refresh() {
+    pending=false;
+    const containers=[...main.querySelectorAll('.table-wrap, .ladder-scroll')];
+    const observe=[main,...containers,...containers.map(t=>t.firstElementChild).filter(Boolean)];
+    if(resize&&(observe.length!==watched.length||observe.some((t,i)=>t!==watched[i]))) {
+      resize.disconnect(); observe.forEach(t=>resize.observe(t)); watched=observe;
+    }
+    targets=containers.filter(target=>{
+      const rect=target.getBoundingClientRect();
+      return target.clientWidth>0&&target.scrollWidth-target.clientWidth>1&&
+        rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<window.innerHeight-64&&
+        rect.right>0&&rect.left<window.innerWidth;
+    });
+    if(!targets.includes(current))current=targets[0]||null;
+    bar.hidden=!current;
+    document.body.classList.toggle('has-floating-scroll',!!current);
+    if(!current)return;
+    for(const target of targets)if(!target.id)target.id=`horizontal-target-${++nextId}`;
+    const nextSignature=targets.map(t=>`${t.id}:${name(t)}`).join('|');
+    if(signature!==nextSignature) {
+      select.replaceChildren(...targets.map(target=>{
+        const option=document.createElement('option');
+        option.value=target.id; option.textContent=name(target); return option;
+      }));
+      signature=nextSignature;
+    }
+    select.hidden=targets.length<2;
+    select.value=current.id;
+    const rect=main.getBoundingClientRect();
+    const left=Math.max(12,rect.left+20), right=Math.min(window.innerWidth-12,rect.right-20);
+    bar.style.left=`${left}px`; bar.style.width=`${Math.max(0,right-left)}px`;
+    sync();
+  }
+  function schedule() {
+    if(!pending) { pending=true; requestAnimationFrame(refresh); }
+  }
+  const resize=typeof ResizeObserver==='undefined'?null:new ResizeObserver(schedule);
+  new MutationObserver(schedule).observe(main,{
+    childList:true,subtree:true,characterData:true,attributes:true,
+    attributeFilter:['hidden','class','style']
+  });
+  document.addEventListener('scroll',schedule,true);
+  window.addEventListener('resize',schedule);
+  function choose(event) {
+    const target=event.target.closest('.table-wrap, .ladder-scroll');
+    if(targets.includes(target)) { current=target; select.value=target.id; sync(); }
+  }
+  main.addEventListener('pointerdown',choose);
+  main.addEventListener('focusin',choose);
+  select.addEventListener('change',()=>{
+    current=targets.find(t=>t.id===select.value)||current; sync();
+  });
+  range.addEventListener('input',()=>{
+    if(current) { current.scrollLeft=Number(range.value); sync(); }
+  });
+  schedule();
+}
+mountFloatingScroll();

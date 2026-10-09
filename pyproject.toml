@@ -1,6 +1,6 @@
 [project]
 name = "carkit"
-version = "0.1.15"
+version = "0.1.16"
 description = "车型配置对比工具：5C 抓取 + 41项赋值对比，独立 Windows exe + GUI"
 requires-python = ">=3.10"
 dependencies = [

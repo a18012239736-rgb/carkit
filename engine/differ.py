@@ -771,6 +771,10 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
     """按 BACKUP_MORE/LESS_ORDER 汇总每组的多/少栏；valuation 为 None 时金额行占位"""
     groups = []
     for pi, pair in enumerate(pairs):
+        from .valuer import normalize_floor_price
+        pair = dict(pair)
+        for key, label in (('self_floor_price', '左侧底价'), ('comp_floor_price', '右侧底价')):
+            pair[key] = normalize_floor_price(pair.get(key), f'第{pi+1}组{label}')
         more, less = [], []
         more_map, less_map = {}, {}
         for c in cells:
@@ -790,12 +794,16 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
              "more_items": [n for n in more_map], "less_items": [n for n in less_map]}
         sp, cp = self_prices.get(pair["self_trim"]), comp_prices.get(pair["comp_trim"])
         g["self_price"], g["comp_price"] = sp, cp
+        g['self_floor_price'], g['comp_floor_price'] = pair['self_floor_price'], pair['comp_floor_price']
         if valuation is not None:
             from .valuer import value_pair
             g["valuation"] = value_pair(more_map, less_map, sp, cp, valuation,
+                                         self_floor_price=g['self_floor_price'], comp_floor_price=g['comp_floor_price'],
                                          cells=[c for c in cells if c['pair'] == pi])
         else:
             g["valuation"] = {"config_adv": None, "flat_adv": None, "overall": None,
+                              "config_adv_reason": '缺少配置赋值规则', "flat_adv_reason": '缺少配置赋值规则',
+                              "overall_reason": '缺少配置赋值规则',
                               "missing": sorted(set(list(more_map) + list(less_map)))}
         groups.append(g)
     return groups

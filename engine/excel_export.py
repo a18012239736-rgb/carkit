@@ -4,6 +4,7 @@ from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from .rules import display_order_key
+from .render_backup import floor_calculation, missing_metric_reason
 
 
 def export_report(path, kind, data):
@@ -43,9 +44,9 @@ def export_report(path, kind, data):
         rows = [[f'{left} vs {right} · 竞争力对比'], ['版型配对'] + [header(g) for g in groups],
                 [left+'多'] + ['\n'.join(g['more']) or '—' for g in groups],
                 [left+'少'] + ['\n'.join(g['less']) or '—' for g in groups]]
-        for key, label in [('config_adv','配置优势（元）'), ('flat_adv','拉平指导价优势（元）'), ('overall','综合竞争力')]:
+        for key, label in [('config_adv','配置优势（元）'), ('flat_adv','拉平指导价优势（元）'), ('overall','综合竞争力（元）')]:
             rows.append([label] + [g.get('valuation', {}).get(key) if g.get('valuation', {}).get(key) is not None else
-                                  ('公式未设置' if key == 'overall' else '缺少价格或赋值数据') for g in groups])
+                                  missing_metric_reason(g, key) for g in groups])
         sheet('对比汇总', rows)
         ws = book['对比汇总']
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(groups)+1)
@@ -76,6 +77,15 @@ def export_report(path, kind, data):
         ws.page_setup.fitToHeight = 0
         ws.print_options.horizontalCentered = True
         ws.print_area = ws.dimensions
+        sheet('价格计算', [['左侧版型', '右侧版型', '左侧指导价（万元）', '右侧指导价（万元）',
+                          '左侧底价（元）', '右侧底价（元）', '配置优势（元）', '拉平指导价优势（元）',
+                          '综合竞争力（元）', '综合竞争力计算依据']] + [
+            [g['pair']['self_trim'], g['pair']['comp_trim'], g.get('self_price'), g.get('comp_price'),
+             g.get('self_floor_price'), g.get('comp_floor_price'), g.get('valuation', {}).get('config_adv'),
+             g.get('valuation', {}).get('flat_adv'), g.get('valuation', {}).get('overall'),
+             floor_calculation(g)]
+            for g in groups])
+        book['价格计算'].freeze_panes = 'C2'
         sheet('赋值明细', [['左侧版型', '右侧版型', '多或少', '配置差异', '计价依据', '金额（元）']] + [
             [g['pair']['self_trim'], g['pair']['comp_trim'], d['side'], d.get('display'), d.get('rule'), d.get('amount')]
             for g in groups for d in sorted(g.get('valuation', {}).get('detail', []), key=lambda item: display_order_key(item['no']))])
