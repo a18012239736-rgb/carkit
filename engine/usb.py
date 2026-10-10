@@ -15,5 +15,8 @@ def usb_total(value):
 
 
 def usb_label(value):
+    text = str(value or '')
+    if '[待' in text or '?' in text or '○' in text:
+        return value
     count = usb_total(value)
     return f'USB/Type-C {count}个' if count is not None else value

@@ -11,27 +11,32 @@ def empty():
     return {sub: '✕' for sub in SUBS}
 
 
-def _front_scopes(phrase):
-    if re.search(r'仅(?:驾驶位|主驾)|主驾|主驾驶', phrase) and not re.search(r'副驾|副驾驶|主副|前排', phrase):
+def _front_scopes(phrase, *, legacy=False):
+    driver = r'仅(?:驾驶位|主驾)|主驾|主驾驶' + ('' if legacy else r'|(?<!副)驾驶位')
+    if re.search(driver, phrase) and not re.search(r'副驾|副驾驶|主副|前排', phrase):
         return ('主驾',)
     if re.search(r'仅副驾|副驾|副驾驶', phrase) and not re.search(r'主驾|主驾驶|主副|前排', phrase):
         return ('副驾',)
     return ('主驾', '副驾')
 
 
-def from_text(front='', rear='', headrest=''):
+def from_text(front='', rear='', headrest='', *, legacy=False):
     out = empty()
     for text, seats in ((front, ('主驾', '副驾')), (rear, ('二排',))):
-        for phrase in re.split(r'[+＋；;、\n]|(?<=\))(?=[^\s])', str(text)):
-            scopes = _front_scopes(phrase) if seats[0] != '二排' else seats
+        text = str(text)
+        if not legacy:
+            text = text.replace('头枕扬声器', '头枕音响').replace('头枕喇叭', '头枕音响').replace('（', '(').replace('）', ')')
+        for phrase in re.split(r'[+＋；;、\n]|(?<=\))(?=[^\s])', text):
+            scopes = _front_scopes(phrase, legacy=legacy) if seats[0] != '二排' else seats
             for feature in FEATURES:
                 if feature in phrase:
                     for seat in scopes:
                         out[seat + feature] = ('[待定]请确认头枕音响座位' if feature == '头枕音响'
                             and seat != '二排' and not any(scope in phrase for scope in ('主驾','副驾','前排','主副','驾驶位')) else '●')
     if headrest:
-        scopes = ('二排',) if '二排' in headrest or '后排' in headrest else _front_scopes(headrest)
-        if not any(seat in headrest for seat in SEATS) and '前排' not in headrest:
+        scopes = ('二排',) if '二排' in headrest or '后排' in headrest else _front_scopes(headrest, legacy=legacy)
+        known_scopes = (*SEATS, '前排') if legacy else (*SEATS, '前排', '主副', '驾驶位', '后排')
+        if not any(scope in headrest for scope in known_scopes):
             scopes = ('主驾', '副驾')
             for seat in scopes:
                 out[seat + '头枕音响'] = '[待定]请确认头枕音响座位'

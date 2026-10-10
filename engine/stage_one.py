@@ -6,6 +6,7 @@ from .models import Cell, RawTable
 from .rules import Rules
 
 EMPTY = {'', '-', '—', '无', '不支持', '✕'}
+RANGE_ROWS = ('CLTC纯电续航里程(km)', 'WLTC纯电续航里程(km)', 'NEDC纯电续航里程(km)')
 
 
 def parts(cell, optional=False):
@@ -53,9 +54,8 @@ def features(raw):
         if name in consumed or name not in allowed: continue
         consumed.add(name)
         values=[parts(c) for c in row.cells]
-        if name in {'CLTC纯电续航里程(km)','WLTC纯电续航里程(km)','NEDC纯电续航里程(km)'}:
-            chosen=next((n for n in ['CLTC纯电续航里程(km)','WLTC纯电续航里程(km)','NEDC纯电续航里程(km)'] if raw.row(n)),None)
-            if name!=chosen: continue
+        if name in RANGE_ROWS:
+            if row is not raw.row(*RANGE_ROWS): continue
             add(name,[[name[:4]+'纯电续航'+(_detail(v)+'km' if _detail(v) else '') for v in vs] for vs in values],True)
         elif name in {'前轮胎规格','后轮胎规格','轮圈材质'}:
             consumed.update({'前轮胎规格','后轮胎规格','轮圈材质'})
@@ -113,22 +113,27 @@ def features(raw):
             add('影像',[['540影像'] if get('透明底盘/540度影像',i) else [clean(x) for x in get('驾驶辅助影像',i)] for i in range(count)],True)
         elif name in {'主座椅调节方式','副座椅调节方式','主/副驾驶座电动调节'}:
             consumed.update({'主座椅调节方式','副座椅调节方式','主/副驾驶座电动调节'})
-            from .seat_adjust import raw_directions, raw_modes
-            def seat_cell(source, i):
-                row = raw.row(source)
-                return row.cells[i] if row else None
+            from .seat_adjust import raw_details
+            details = [raw_details(raw, i, include_terms=False) for i in range(count)]
             electric=[]
             for i in range(count):
-                modes = raw_modes(seat_cell('主/副驾驶座电动调节', i), seat_cell('主座椅调节方式', i), seat_cell('副座椅调节方式', i))
+                _, modes, _ = details[i]
                 electric.append([pos+'座椅电调' for pos, mode in zip(('主驾','副驾'), modes) if mode == '电调'])
             add('座椅电调', electric)
-            for pos, source in [('主驾', '主座椅调节方式'), ('副驾', '副座椅调节方式')]:
+            for j, (pos, source) in enumerate([('主驾', '主座椅调节方式'), ('副驾', '副座椅调节方式')]):
                 totals = []
                 for i in range(count):
                     text = _detail(' '.join(get(source, i)))
-                    directions = raw_directions(seat_cell(source, i))
-                    totals.append([f'{pos}{directions}向调节'] if directions else ([pos+'座椅调节（'+text+'）'] if text else [pos+'座椅调节'] if get(source, i) else []))
+                    counts, _, positions = details[i]
+                    directions = counts[j]
+                    value = f'{pos}{directions}向调节' if directions else pos+'座椅调节（'+text+'）' if text else pos+'座椅调节' if get(source, i) else ''
+                    totals.append([value] if value else [])
                 add(pos+'座椅调节', totals, True)
+        elif name in {'高压平台','800V高压平台','高压平台（V）','高压平台(V)'}:
+            sources = ['高压平台','800V高压平台','高压平台（V）','高压平台(V)']
+            consumed.update(sources)
+            from .mapper import n_high_voltage
+            add('高压平台', [[value[1:]] if (value := n_high_voltage(raw, i, {'source_rows':sources})).startswith('●') else [] for i in range(count)], True)
         elif name in {'巡航系统','辅助驾驶系统','辅助驾驶等级','辅助驾驶路段'}:
             # The source table splits one ADAS level over four rows. Present it
             # once so the ladder does not repeat the same upgrade four times.
@@ -199,14 +204,15 @@ def features(raw):
             values=[]
             for c in row.cells:
                 text=' '.join(parts(c))
+                label = '化妆镜照明灯' if '照明' in text else '化妆镜'
                 if '主驾' in text and '副驾' in text:
-                    values.append(['主副驾化妆镜照明灯'])
+                    values.append(['主副驾'+label])
                 elif '主驾' in text:
-                    values.append(['主驾化妆镜照明灯'])
+                    values.append(['主驾'+label])
                 elif '副驾' in text:
-                    values.append(['副驾化妆镜照明灯'])
+                    values.append(['副驾'+label])
                 else:
-                    values.append(['化妆镜照明灯'] if text else [])
+                    values.append([label] if text else [])
             add(name, values)
         elif name == '方向盘位置调节':
             values=[]
@@ -229,13 +235,19 @@ def features(raw):
                 else:
                     values.append(['方向盘材质'] if has_material else [])
             add('方向盘', values, True)
-        elif name == '电动座椅记忆':
+        elif name in {'电动座椅记忆','座椅记忆功能','电动座椅记忆功能'}:
+            sources = ['电动座椅记忆','座椅记忆功能','电动座椅记忆功能']
+            consumed.update(sources)
+            from .mapper import n_seat_memory
             memory=[]
-            for vs in values:
-                text=' '.join(vs)
-                memory.append([name] if vs and not _detail(text) else [pos+'座椅记忆' for pos in ('主驾','副驾','后排')
-                               if pos in text or (pos in ('主驾','副驾') and '前排' in text)])
-            add(name, memory)
+            memory_row = raw.row(*sources)
+            for i in range(count):
+                value = n_seat_memory(raw, i, {'source_rows':sources})
+                seats = ['主驾座椅记忆','副驾座椅记忆'] if value == '前排座椅记忆' else [value] if value.startswith(('主驾','副驾')) else []
+                if any('[待' not in text and re.search(r'后排(?![○✕×-])', text) for text in parts(memory_row.cells[i])):
+                    seats.append('后排座椅记忆')
+                memory.append(seats or (['电动座椅记忆'] if value.startswith('[待定]') else []))
+            add('电动座椅记忆', memory)
         elif name in {'前排座椅功能','第二排座椅功能','后排座椅功能'}:
             v=[]
             for vs in values:
@@ -245,7 +257,7 @@ def features(raw):
                         feats.append(name)
                         continue
                     scope=['主驾'] if re.search('仅驾驶位|仅主驾|主驾驶',item) else ['副驾'] if '副驾驶' in item else ['主驾','副驾'] if name.startswith('前') else ['后排']
-                    for f in ['加热','通风','按摩']:
+                    for f in ['加热','通风','按摩','头枕扬声器','头枕音响']:
                         if f in item: feats.extend(p+'座椅'+f for p in scope)
                 v.append(list(dict.fromkeys(feats)))
             add(name,v)
@@ -284,6 +296,7 @@ def features(raw):
                 if name=='芯片总算力': return value+'算力'
                 if name=='手机互联/映射': return value.replace('支持','')
                 if name=='无钥匙进入功能': return value+'无钥匙进入'
+                if name=='零重力座椅': return value+'零重力座椅'
                 if name=='外观套件': return value+'外观套件'
                 if name=='全液晶仪表盘': return '全液晶仪表'
                 if name in {'天窗类型','可变悬架功能','辅助驾驶路段'}: return value
@@ -436,7 +449,7 @@ def _position_line(raw, plan):
         bits = [energy.replace('纯电动', '纯电') + level]
     else:
         bits = [level or energy]
-    range_row = next((row for row in raw.rows if '纯电续航里程' in row.name), None)
+    range_row = raw.row(*RANGE_ROWS)
     ranges = []
     if range_row:
         for entry in plan:
@@ -444,7 +457,7 @@ def _position_line(raw, plan):
             if value and value[0] not in ranges:
                 ranges.append(value[0])
     if ranges:
-        bits.append('CLTC续航' + '/'.join(clean(value) for value in ranges) + 'km')
+        bits.append(range_row.name[:4] + '续航' + '/'.join(clean(value) for value in ranges) + 'km')
     return '，'.join(value for value in bits if value)
 
 
@@ -470,7 +483,7 @@ def render(raw, plan):
     elif isinstance(raw.source, str) and raw.source.startswith(('http://', 'https://')):
         lines.append(f'来源链接：{esc(raw.source)}')
     lines += ['', '## 版型与价格', '']
-    range_row = next((row for row in raw.rows if '纯电续航里程' in row.name), None)
+    range_row = raw.row(*RANGE_ROWS)
     if range_row:
         by_range = {}
         for entry in plan:

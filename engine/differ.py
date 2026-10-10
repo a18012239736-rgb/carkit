@@ -219,7 +219,8 @@ def cmp_seat36(sv, cv, comp_sub_vals=None, params=None, **kw):
     s = normalize(sv)
     c = normalize(cv)
     if comp_sub_vals:
-        c.update(normalize(comp_sub_vals) if any(k in comp_sub_vals for k in SUBS) else {})
+        c = dict(c)
+        c.update({key: comp_sub_vals[key] for key in SUBS if key in comp_sub_vals})
     more, less, unknown = [], [], []
     for key in SUBS:
         left, right = str(s[key]), str(c[key])
@@ -254,18 +255,24 @@ def cmp_seat36(sv, cv, comp_sub_vals=None, params=None, **kw):
 # ---------- 主流程 ----------
 
 def _pair_values(self_ladder, comp_ladder, no, si, ci):
-    sit = self_ladder.item(no)
-    cit = comp_ladder.item(no)
-    sv = sit.values[si] if sit and si < len(sit.values) else "✕"
-    cv = cit.values[ci] if cit and ci < len(cit.values) else "✕"
+    def value(ladder, index):
+        entry = ladder.item(no)
+        result = entry.values[index] if entry and index < len(entry.values) else "✕"
+        if no == 36 and entry and entry.subs:
+            from .seat_functions import SUBS, normalize
+            result = dict(normalize(result))
+            # The summary cannot represent every seat. Both sides must use
+            # the stored per-seat states, including absent/optional/pending.
+            result.update({row['sub']: row['values'][index] if index < len(row['values']) else '✕'
+                           for row in entry.subs if row['sub'] in SUBS})
+        return result, entry
+
+    sv, _ = value(self_ladder, si)
+    cv, cit = value(comp_ladder, ci)
     if no == 32:
         from .usb import usb_label
         sv, cv = usb_label(sv), usb_label(cv)
-    comp_sub_vals = {}
-    if cit:
-        for sr in cit.subs or []:
-            comp_sub_vals[sr["sub"]] = sr["values"][ci] if ci < len(sr["values"]) else "✕"
-    return sv, cv, cit, comp_sub_vals
+    return sv, cv, cit
 
 
 def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
@@ -295,7 +302,7 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
         ci = find_trim(comp_trims, pair["comp_trim"])
         for item in rules.items:
             no = item["no"]
-            sv, cv, cit, comp_subs = _pair_values(self_ladder, comp_ladder, no, si, ci)
+            sv, cv, cit = _pair_values(self_ladder, comp_ladder, no, si, ci)
             vitem = valuation.item(no) if valuation is not None else None
             screen_optional = ''
             if no in (21, 22, 29):
@@ -337,18 +344,20 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt, "", ""))
                 continue
 
-            # ---- #31 内后视镜：手动防眩目默认双方●，只比流媒体 ----
+            # ---- #31 内后视镜：只计流媒体差异，显示保留防眩目类型 ----
             if no == 31:
                 s_media, c_media = _has(sv) and "流媒体" in str(sv), _has(cv) and "流媒体" in str(cv)
+                ss = '流媒体' if s_media else '自动防眩目' if _has(sv) and '自动防眩目' in str(sv) else '手动防眩目'
+                cs = '流媒体' if c_media else '自动防眩目' if _has(cv) and '自动防眩目' in str(cv) else '手动防眩目'
                 if s_media == c_media:
                     verdict, exempt = SAME, "rearview_manual"
-                    disp = "同 手动防眩目(同)" if not s_media else "同 流媒体(流媒体)"
+                    disp = '同 手动防眩目(同)' if ss == cs == '手动防眩目' else f'同 {ss}({cs})'
                 elif s_media:
                     verdict = MORE
-                    disp = "多 流媒体(手动防眩目)"
+                    disp = f'多 {ss}({cs})'
                 else:
                     verdict = LESS
-                    disp = "少 手动防眩目(流媒体)"
+                    disp = f'少 {ss}({cs})'
                 cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt,
                                    '流媒体后视镜' if verdict == MORE else '',
                                    '流媒体后视镜' if verdict == LESS else ''))
@@ -393,10 +402,8 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 continue
 
             if no == 36:
-                from .seat_functions import SUBS, normalize
+                from .seat_functions import normalize
                 sv, cv = dict(normalize(sv)), dict(normalize(cv))
-                if any(key in comp_subs for key in SUBS):
-                    cv.update(normalize(comp_subs))
                 verdict, disp, backup = cmp_seat36(sv, cv, params=vitem.get('params') if vitem else None)
                 backup_more, backup_less = (backup, "") if verdict == MORE else (("", backup) if verdict == LESS else ("", ""))
                 cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less))
@@ -572,7 +579,8 @@ def _cmp_generic(no, item, sv, cv):
         return (MORE if s_n > c_n else LESS), ss, cs
     if no == 32:
         from .usb import usb_total
-        s_n, c_n = usb_total(sv), usb_total(cv)
+        s_n = usb_total(sv if _has(sv) else '✕')
+        c_n = usb_total(cv if _has(cv) else '✕')
         if s_n is None or c_n is None:
             return SAME, ss, cs
         if s_n == c_n:

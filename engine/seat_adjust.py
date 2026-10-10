@@ -166,6 +166,39 @@ def _cells(raw, i):
             for name in ('主/副驾驶座电动调节', '主座椅调节方式', '副座椅调节方式')]
 
 
+def standard_front_positions(cell):
+    """Explicit front seats only; embedded optional/pending markers stay excluded."""
+    from .stage_one import parts
+    positions = set()
+    for text in parts(cell):
+        if '[待' in text:
+            continue
+        for match in re.finditer(r'(主副(?:驾)?|前排|主(?:驾(?:驶(?:位|座)?)?)?|副(?:驾(?:驶(?:位|座)?)?)?|驾驶位)([●○✕×-]?)', text):
+            scope, marker = match.groups()
+            if marker in {'○', '✕', '×', '-'}:
+                continue
+            positions.update((0, 1) if scope.startswith(('主副','前排')) else (1,) if scope.startswith('副') else (0,))
+    return sorted(positions)
+
+
+def zero_gravity_positions(raw, i):
+    """Never infer a seat position from the presence of a zero-gravity dot alone."""
+    row = raw.row('零重力座椅')
+    return standard_front_positions(row.cells[i]) if row and i < len(row.cells) else []
+
+
+def raw_details(raw, i, *, include_terms=True):
+    electric, main, passenger = _cells(raw, i)
+    counts = [raw_directions(cell) for cell in (main, passenger)]
+    positions = zero_gravity_positions(raw, i) if include_terms else []
+    # pjy confirmed this mapping for MG 07, not every brand's zero-gravity seat.
+    if raw.series_id == '8563' or re.sub(r'\s+', '', raw.model).upper() == 'MG07':
+        for j in positions:
+            if counts[j] is None:
+                counts[j] = 10
+    return counts, raw_modes(electric, main, passenger), positions
+
+
 def _extras(cell, standard=False):
     from .stage_one import clean, parts
     joined = clean(' '.join(parts(cell))) if standard else ' '.join([cell.text]+[sub.text for sub in cell.subs]) if cell else ''
@@ -200,15 +233,20 @@ def legacy_summary(raw, i):
     return base+_suffix(_extras(main), _extras(passenger))
 
 
-def from_raw(raw, i):
+def from_raw(raw, i, *, include_terms=True):
     from .stage_one import clean, parts
     electric, main, passenger = _cells(raw, i)
-    if electric is None and main is None and passenger is None:
+    counts, modes, positions = raw_details(raw, i, include_terms=include_terms)
+    gravity = raw.row('零重力座椅') if include_terms else None
+    unknown = parts(gravity.cells[i]) if gravity and i < len(gravity.cells) else []
+    if unknown and not positions and electric is None and main is None and passenger is None:
+        return '[待定]零重力座椅：'+ '+'.join(unknown) + '（请确认座位和方向数）'
+    if electric is None and main is None and passenger is None and not positions:
         return '✕'
-    modes = raw_modes(electric, main, passenger)
-    counts = [raw_directions(cell) for cell in (main, passenger)]
     if any(mode is None for mode in modes):
         evidence = '/'.join(clean(' '.join(parts(cell))) for cell in (electric, main, passenger))
+        if positions:
+            evidence += '/' + '+'.join(NAMES[j]+(str(counts[j])+'向' if counts[j] else '')+'零重力座椅' for j in positions)
         return '[待定]座椅调节：'+evidence
     values = [name+(str(count)+'向' if count is not None else '')+mode for name, count, mode in zip(NAMES, counts, modes)]
     extras = [_extras(cell, standard=True) for cell in (main, passenger)]
@@ -217,4 +255,8 @@ def from_raw(raw, i):
         if counts[i] is None and text and not extras[i]:
             extras[i].append('原文：'+text)
     suffix = _suffix(*extras)
+    if positions:
+        suffix += '(' + '+'.join(NAMES[j]+'零重力座椅' for j in positions) + ')'
+    elif unknown:
+        suffix += '(零重力座椅座位未说明)'
     return label('+'.join(values)+suffix)

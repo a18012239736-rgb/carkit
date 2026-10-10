@@ -181,32 +181,78 @@ class Bridge:
             output = os.path.join(self.workdir, '阶梯', 'compare-'+key+'.json')
             if os.path.exists(output):
                 lad = Ladder.load(output)
-                # Recover source-backed seat directions only for untouched old
-                # summaries; a user's explicit correction remains authoritative.
-                from engine.seat_adjust import legacy_summary
-                from engine.mapper import n_seat_adjust
-                seat = lad.item(35)
-                if seat and raw.row('主座椅调节方式', '副座椅调节方式'):
-                    source_indices = {trim.short: i for i, trim in enumerate(raw.trims)}
-                    for i, trim in enumerate(lad.trims):
-                        source_i = source_indices.get(trim['name'])
-                        if source_i is not None and i < len(seat.values) and seat.values[i] == legacy_summary(raw, source_i):
-                            seat.values[i] = n_seat_adjust(raw, source_i, {})
+                # Upgrade only untouched source-backed values, in the same cache.
+                # Marketing terms never override a user's different correction.
+                from engine.seat_adjust import from_raw, legacy_summary
+                from engine.mapper import legacy_mapped_item, map_raw_to_ladder, n_high_voltage, n_seat_memory, n_sunroof
+                mapped = map_raw_to_ladder(raw, self.rules)
+                source_indices = {trim.short: i for i, trim in enumerate(raw.trims)}
+                configs = {item['no']: item for item in self.rules.items}
+                roof, seat = lad.item(18), lad.item(35)
+                alias_updates = []
+                for no, aliases, normalize in (
+                    (3, ('高压平台（V）', '高压平台(V)'), n_high_voltage),
+                    (45, ('电动座椅记忆功能',), n_seat_memory),
+                ):
+                    item = lad.item(no)
+                    if item and item.row_absent and raw.row(*aliases):
+                        alias_updates.append((item, normalize))
+                for i, trim in enumerate(lad.trims):
+                    source_i = source_indices.get(trim['name'])
+                    if source_i is None:
+                        continue
+                    if roof and i < len(roof.values) and roof.values[i] == n_sunroof(raw, source_i, configs[18], include_terms=False):
+                        roof.values[i] = n_sunroof(raw, source_i, configs[18])
+                    if seat and i < len(seat.values):
+                        old_values = [from_raw(raw, source_i, include_terms=False)]
+                        if raw.row('主座椅调节方式', '副座椅调节方式'):
+                            old_values.append(legacy_summary(raw, source_i))
+                        if seat.values[i] in old_values:
+                            seat.values[i] = from_raw(raw, source_i)
+                    for item, normalize in alias_updates:
+                        if i < len(item.values) and item.values[i] == '✕':
+                            item.values[i] = normalize(raw, source_i, configs[item.no])
+                    for no in (9, 25, 29, 31, 34, 36):
+                        item = lad.item(no)
+                        if not item or i >= len(item.values):
+                            continue
+                        old = legacy_mapped_item(raw, source_i, no)
+                        if item.values[i] != old['value']:
+                            continue
+                        if no == 36:
+                            current_subs = {row['sub']: row['values'][i] for row in item.subs if i < len(row['values'])}
+                            if current_subs != old['subs']:
+                                continue  # An explicit seat correction keeps its whole trim authoritative.
+                            for row in item.subs:
+                                row['values'][i] = next(sub['values'][source_i] for sub in mapped[no]['subs'] if sub['sub'] == row['sub'])
+                        item.values[i] = mapped[no]['values'][source_i]
+                for item in (roof, seat, lad.item(3), lad.item(45)):
+                    if item and raw.row(*configs[item.no]['source_rows']):
+                        item.row_absent = False
                 # Existing captures keep hand edits; append only newly defined items.
                 missing = {it['no'] for it in self.rules.items} - {it.no for it in lad.items}
                 if missing:
                     fresh = ladder_mod.build_ladder(raw, self.rules, model=raw.model,
                                                     series_id=raw.series_id, date=_today())
-                    lad.items.extend(it for it in fresh.items if it.no in missing)
+                    indices = [source_indices.get(trim['name']) for trim in lad.trims]
+                    for item in fresh.items:
+                        if item.no not in missing:
+                            continue
+                        item.values = [item.values[i] if i is not None else '[待定]原始版型未匹配' for i in indices]
+                        for sub in item.subs:
+                            sub['values'] = [sub['values'][i] if i is not None else '[待定]原始版型未匹配' for i in indices]
+                        lad.items.append(item)
                     lad.items.sort(key=lambda it: display_order_key(it.no))
                 # Refresh applicability without discarding manual configuration edits.
                 from engine.powertrain import energy_types, not_applicable
                 energies = energy_types(raw)
                 for i, trim in enumerate(lad.trims):
-                    trim['energy_type'] = energies[i]
-                for item in lad.items:
-                    for i in range(len(item.values)):
-                        if not_applicable(energies[i], item.no):
+                    source_i = source_indices.get(trim['name'])
+                    if source_i is None or source_i >= len(energies):
+                        continue
+                    trim['energy_type'] = energies[source_i]
+                    for item in lad.items:
+                        if i < len(item.values) and not_applicable(energies[source_i], item.no):
                             item.values[i] = '不适用'
                 lad.save(output)
             else:

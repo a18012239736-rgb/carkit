@@ -52,6 +52,26 @@ def _num(text: str):
     return float(m.group(0)) if m else None
 
 
+def _standard_parts(c: Cell | None) -> list[str]:
+    """Select standard subitems before interpreting their type or value."""
+    from .stage_one import parts
+    return [text for text in parts(c) if not _pending_part(text)]
+
+
+def _pending_part(text: str) -> bool:
+    return '[待' in text or text.strip() == '?'
+
+
+def _pending_parts(c: Cell | None) -> list[str]:
+    from .stage_one import parts
+    return [text for text in parts(c) if _pending_part(text)]
+
+
+def _pending_value(*cells: Cell | None) -> str:
+    text = '+'.join(text for cell in cells for text in _pending_parts(cell))
+    return text if '[待定]' in text else '[待定]' + text if text else ''
+
+
 # ---------- 各项归一化 ----------
 
 def n_range(raw, i, cfg):
@@ -80,6 +100,8 @@ def n_high_voltage(raw, i, cfg):
     if c is None:
         return ABSENT
     t = _txt(c)
+    if not _optional(c) and re.fullmatch(r"\d+(?:\.\d+)?", t):
+        return f"●{t}V"
     if _solid(c):
         return "●800V" if "800" in t else f"●{t or '高压平台'}"
     return ABSENT
@@ -192,25 +214,26 @@ def n_adas(raw, i, cfg):
     sysc = _cell(raw, ["辅助驾驶系统"], i)
     lvl = _cell(raw, ["辅助驾驶等级"], i)
     cruise = _cell(raw, ["巡航系统", "巡航系统类型"], i)
-    seg_t, sys_t = _txt(seg), _txt(sysc)
-    if _solid(seg) and "城市" in seg_t:
+    seg_t, sys_t = '+'.join(_standard_parts(seg)), '+'.join(_standard_parts(sysc))
+    if "城市" in seg_t:
         return "城市NOA"
-    if _solid(seg) and "高速" in seg_t:
+    if "高速" in seg_t:
         return "高速NOA"
-    if _solid(sysc) and "城市" in sys_t:
+    if "城市" in sys_t:
         return "城市NOA"
-    if _solid(sysc) and ("高速" in sys_t or "领航" in sys_t):
+    if "高速" in sys_t or "领航" in sys_t:
         return "高速NOA"
-    if _solid(lvl) and "L2" in _txt(lvl).upper():
+    if any("L2" in text.upper() for text in _standard_parts(lvl)):
         base = "基础L2"
-        if _optional(sysc) and sys_t:
-            return f"{base}(○{sys_t}选装)"
+        if not sys_t and _optional(sysc) and _txt(sysc):
+            return f"{base}(○{_txt(sysc)}选装)"
         return base
-    if _solid(sysc):
+    if sys_t:
         return "基础L2"
-    if _solid(cruise):
-        return f"{_txt(cruise)}(无L2)"
-    return ABSENT
+    cruise_values = _standard_parts(cruise)
+    if cruise_values:
+        return f"{cruise_values[0]}(无L2)"
+    return _pending_value(seg, sysc, lvl, cruise) or ABSENT
 
 
 def n_bool(raw, i, cfg):
@@ -220,14 +243,19 @@ def n_bool(raw, i, cfg):
 
 def n_seat_memory(raw, i, cfg):
     c = _cell(raw, cfg['source_rows'], i)
-    if not _solid(c):
-        return _bool_val(c)
-    t = _txt(c)
-    if '前排' in t or ('主驾' in t and '副驾' in t):
+    from .stage_one import parts
+    standard = parts(c)
+    if not standard:
+        return '○(选装)' if parts(c, optional=True) else ABSENT
+    if any('[待' in text for text in standard):
+        return '[待定]座椅记忆位置未说明'
+    from .seat_adjust import standard_front_positions
+    positions = standard_front_positions(c)
+    if positions == [0, 1]:
         return '前排座椅记忆'
-    if '副驾' in t or '副驾驶' in t:
+    if positions == [1]:
         return '副驾座椅记忆'
-    if '主驾' in t or '驾驶位' in t or '主驾驶' in t:
+    if positions == [0]:
         return '主驾座椅记忆'
     return '[待定]座椅记忆位置未说明'
 
@@ -265,10 +293,8 @@ def n_lamp(raw, i, cfg):
     return f"{_txt(c)}大灯"
 
 
-def n_sunroof(raw, i, cfg):
+def n_sunroof(raw, i, cfg, *, include_terms=True):
     c = _cell(raw, ["天窗类型"], i)
-    if c is None:
-        return ABSENT
 
     def core(cell):
         t = _txt(cell)
@@ -276,6 +302,26 @@ def n_sunroof(raw, i, cfg):
             t = t[:-2]
         return t or "天窗"
 
+    if include_terms:
+        from .stage_one import parts, clean, _detail
+        light = _cell(raw, ['光感天幕'], i)
+        pending = []
+        for dot, is_optional in [('●', False), ('○', True)]:
+            values = parts(c, optional=is_optional)
+            light_values = parts(light, optional=is_optional)
+            pending.extend(v for v in values + light_values if '[待' in v)
+            values = [v for v in values if '[待' not in v]
+            has_light = any('[待' not in v for v in light_values)
+            if not values and not has_light:
+                continue
+            text = clean(values[0]) if values and _detail(values[0]) else '不可开启全景天窗' if has_light else '天窗'
+            branded = has_light or '光感天幕' in text
+            text = text.replace('光感天幕', '不可开启全景天窗').removesuffix('天窗') or '天窗'
+            return dot + text + ('(光感天幕)' if branded else '') + ('(选装)' if dot == '○' else '')
+        return '[待定]天窗：' + '+'.join(pending) if pending else ABSENT
+    # The pre-term output is kept for migrating untouched cached values only.
+    if c is None:
+        return ABSENT
     if _solid(c):
         return f"●{core(c)}"
     if _optional(c):
@@ -341,9 +387,8 @@ def n_network(raw, i, cfg):
 
 def n_material(raw, i, cfg):
     c = _cell(raw, cfg["source_rows"], i)
-    if not _solid(c):
-        return _bool_val(c)
-    return _txt(c)
+    values = _standard_parts(c)
+    return '+'.join(values) if values else _pending_value(c) or _bool_val(c)
 
 
 def n_steer_adjust(raw, i, cfg):
@@ -361,9 +406,14 @@ def n_steer_adjust(raw, i, cfg):
 def n_cluster(raw, i, cfg):
     full = _cell(raw, ["全液晶仪表盘"], i)
     size_c = _cell(raw, ["液晶仪表尺寸", "行车电脑显示屏幕"], i)
-    size = _screen_core(_txt(size_c)).replace("寸", "")
+    size_values = _standard_parts(size_c)
+    size = _screen_core(size_values[0] if size_values else '').replace("寸", "")
     size_s = f"{size}寸" if size else ""
-    if _solid(full):
+    full_values = _standard_parts(full)
+    pending = ('' if size_values else _pending_value(size_c)) or ('' if full_values else _pending_value(full))
+    if pending:
+        return (('全液晶' if full_values else '') + size_s + '仪表：' + pending)
+    if full_values:
         return f"全液晶仪表({size_s})" if size_s else "全液晶仪表"
     if _optional(full):
         return f"{size_s}仪表(○全液晶选装)" if size_s else "○全液晶(选装)"
@@ -386,15 +436,17 @@ def n_hud(raw, i, cfg):
 
 def n_rearview(raw, i, cfg):
     c = _cell(raw, ["内后视镜功能"], i)
-    if not _solid(c):
-        return _bool_val(c)
-    parts = [c.text] + [s.text for s in (c.subs or [])]
-    joined = " ".join(parts)
+    values = _standard_parts(c)
+    if not values:
+        return _pending_value(c) or _bool_val(c)
+    joined = ' '.join(values)
     if "流媒体" in joined:
         return "流媒体"
-    if "防眩目" in joined:
+    if "自动防眩目" in joined:
+        return "自动防眩目"
+    if "手动防眩目" in joined:
         return "手动防眩目"
-    return _txt(c)
+    return '+'.join(values)
 
 
 def n_usb(raw, i, cfg):
@@ -424,28 +476,30 @@ _SEAT_FUNCS = ["加热", "通风", "按摩"]
 
 
 def n_seat_func(raw, i, cfg):
-    from .seat_functions import SUBS, from_text
+    from .seat_functions import FEATURES, SUBS, from_text
     c = _cell(raw, ["前排座椅功能"], i)
-    parts = []
-    if c:
-        for src in ([c] if c.text else []) + list(c.subs or []):
-            if src.dot == "●" and src.text:
-                parts.append(src.text)
-    funcs = [f for f in _SEAT_FUNCS if any(f in p for p in parts)]
-    only_driver = any("仅驾驶位" in p or "仅主驾" in p for p in parts)
-    if not funcs:
-        val = ABSENT
-    elif only_driver:
-        val = f"{'/'.join(funcs)}(仅主驾)"
-    else:
-        val = f"前排{'/'.join(funcs)}(主副)"
+    parts = _standard_parts(c)
     hc = _cell(raw, ["前排座椅头枕扬声器", "头枕音响"], i)
     row2 = _cell(raw, ["第二排座椅功能", "后排座椅功能"], i)
-    rparts = []
-    if row2:
-        rparts = ([row2.text] if row2.dot == "●" and row2.text else []) + \
-                 [s.text for s in (row2.subs or []) if s.dot == "●"]
-    sub_map = from_text('+'.join(parts), '+'.join(rparts), (_txt(hc) or '头枕音响') if _solid(hc) else '')
+    sub_map = from_text('+'.join(parts), '+'.join(_standard_parts(row2)), '+'.join(_standard_parts(hc)))
+    for cell, field in ((c, 'front'), (row2, 'rear'), (hc, 'headrest')):
+        for text in _pending_parts(cell):
+            unknown = from_text(**{field: text})
+            if not any(value != ABSENT for value in unknown.values()):
+                unknown = from_text(**{field: text + ''.join(FEATURES)})
+            for sub, value in unknown.items():
+                if value != ABSENT and sub_map[sub] != '●':
+                    sub_map[sub] = '[待定]' + sub + '：' + text
+    funcs = [f for f in _SEAT_FUNCS if any(sub_map[seat + f] == '●' for seat in ('主驾', '副驾'))]
+    summaries = []
+    for scope, seats in [('主副', ('主驾', '副驾')), ('仅主驾', ('主驾',)), ('仅副驾', ('副驾',))]:
+        selected = [f for f in funcs if tuple(seat for seat in ('主驾', '副驾') if sub_map[seat + f] == '●') == seats]
+        if selected:
+            summaries.append(('前排' if scope == '主副' else '') + '/'.join(selected) + f'({scope})')
+    val = '+'.join(summaries) if summaries else ABSENT
+    pending = [sub for sub in SUBS if '[待定]' in sub_map[sub]]
+    if pending:
+        val = (val + '+' if summaries else '') + '[待定]' + '/'.join(pending)
     return val, funcs, {sub: sub_map[sub] for sub in SUBS}
 
 
@@ -477,6 +531,66 @@ def n_text(raw, i, cfg):
     if not _solid(c):
         return _bool_val(c)
     return _txt(c) or "●"
+
+
+def legacy_mapped_item(raw, i, no):
+    """Frozen automatic outputs for upgrading untouched pre-fix caches only."""
+    if no in (25, 34):
+        c = _cell(raw, ['方向盘材质' if no == 25 else '座椅材质'], i)
+        return {'value': _txt(c) if _solid(c) else _bool_val(c)}
+    if no == 9:
+        seg = _cell(raw, ['辅助驾驶路段'], i)
+        sysc = _cell(raw, ['辅助驾驶系统'], i)
+        lvl = _cell(raw, ['辅助驾驶等级'], i)
+        cruise = _cell(raw, ['巡航系统', '巡航系统类型'], i)
+        seg_t, sys_t = _txt(seg), _txt(sysc)
+        if _solid(seg) and '城市' in seg_t:
+            value = '城市NOA'
+        elif _solid(seg) and '高速' in seg_t:
+            value = '高速NOA'
+        elif _solid(sysc) and '城市' in sys_t:
+            value = '城市NOA'
+        elif _solid(sysc) and ('高速' in sys_t or '领航' in sys_t):
+            value = '高速NOA'
+        elif _solid(lvl) and 'L2' in _txt(lvl).upper():
+            value = f'基础L2(○{sys_t}选装)' if _optional(sysc) and sys_t else '基础L2'
+        elif _solid(sysc):
+            value = '基础L2'
+        elif _solid(cruise):
+            value = f'{_txt(cruise)}(无L2)'
+        else:
+            value = ABSENT
+        return {'value': value}
+    if no == 29:
+        full = _cell(raw, ['全液晶仪表盘'], i)
+        size_c = _cell(raw, ['液晶仪表尺寸', '行车电脑显示屏幕'], i)
+        size = _screen_core(_txt(size_c)).replace('寸', '')
+        size_s = f'{size}寸' if size else ''
+        if _solid(full):
+            value = f'全液晶仪表({size_s})' if size_s else '全液晶仪表'
+        elif _optional(full):
+            value = f'{size_s}仪表(○全液晶选装)' if size_s else '○全液晶(选装)'
+        else:
+            value = f'{size_s}仪表' if size_s else _bool_val(size_c)
+        return {'value': value}
+    if no == 31:
+        c = _cell(raw, ['内后视镜功能'], i)
+        joined = ' '.join([_txt(c)] + [s.text for s in (c.subs or [])]) if c else ''
+        value = _bool_val(c) if not _solid(c) else '流媒体' if '流媒体' in joined else '手动防眩目' if '防眩目' in joined else _txt(c)
+        return {'value': value}
+    if no == 36:
+        from .seat_functions import from_text
+        c = _cell(raw, ['前排座椅功能'], i)
+        parts = [src.text for src in (([c] if c and c.text else []) + list(c.subs or []) if c else []) if src.dot == '●' and src.text]
+        funcs = [f for f in _SEAT_FUNCS if any(f in p for p in parts)]
+        only_driver = any('仅驾驶位' in p or '仅主驾' in p for p in parts)
+        value = ABSENT if not funcs else f"{'/'.join(funcs)}(仅主驾)" if only_driver else f"前排{'/'.join(funcs)}(主副)"
+        hc = _cell(raw, ['前排座椅头枕扬声器', '头枕音响'], i)
+        row2 = _cell(raw, ['第二排座椅功能', '后排座椅功能'], i)
+        rparts = (([row2.text] if row2.dot == '●' and row2.text else []) + [s.text for s in row2.subs if s.dot == '●']) if row2 else []
+        subs = from_text('+'.join(parts), '+'.join(rparts), (_txt(hc) or '头枕音响') if _solid(hc) else '', legacy=True)
+        return {'value': value, 'subs': subs}
+    raise ValueError(f'No frozen source-cell migration for item {no}')
 
 
 NORMALIZERS = {
