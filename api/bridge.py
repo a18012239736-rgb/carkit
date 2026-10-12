@@ -212,7 +212,7 @@ class Bridge:
                     for item, normalize in alias_updates:
                         if i < len(item.values) and item.values[i] == '✕':
                             item.values[i] = normalize(raw, source_i, configs[item.no])
-                    for no in (9, 25, 29, 31, 34, 36):
+                    for no in (9, 25, 29, 30, 31, 34, 36):
                         item = lad.item(no)
                         if not item or i >= len(item.values):
                             continue
@@ -226,7 +226,7 @@ class Bridge:
                             for row in item.subs:
                                 row['values'][i] = next(sub['values'][source_i] for sub in mapped[no]['subs'] if sub['sub'] == row['sub'])
                         item.values[i] = mapped[no]['values'][source_i]
-                for item in (roof, seat, lad.item(3), lad.item(45)):
+                for item in (roof, seat, lad.item(3), lad.item(30), lad.item(45)):
                     if item and raw.row(*configs[item.no]['source_rows']):
                         item.row_absent = False
                 # Existing captures keep hand edits; append only newly defined items.
@@ -336,6 +336,51 @@ class Bridge:
             return {"ok": False, "error": "请先抓取车型。"}
         return {"ok": True, "raw": self.stage_raw.to_dict()}
 
+    def _stage_excluded_rows(self):
+        workdir = getattr(self, 'workdir', None)
+        path = os.path.join(workdir, '阶梯展示排除清单.json') if workdir else ''
+        if not path or not os.path.exists(path):
+            return list(stage_one.DEFAULT_EXCLUDED_ROWS)
+        with open(path, encoding='utf-8') as source:
+            return self._validate_stage_exclusions(json.load(source))
+
+    @staticmethod
+    def _validate_stage_exclusions(rows):
+        if not isinstance(rows, list) or any(not isinstance(name, str) for name in rows):
+            raise ValueError('不展示的配置须为配置行名列表')
+        return list(dict.fromkeys(name.strip() for name in rows if name.strip()))
+
+    def stage_display_rules(self):
+        try:
+            groups = {}
+            standard, optional = set(), set()
+            for row in self.stage_raw.rows if self.stage_raw else []:
+                # Older grouped imports included the heading's symbol legend.
+                name = re.sub(r'\s*[●]?\s*标配\s*[○]?\s*选配\s*[-−—]?\s*无\s*$', '', row.group or '').strip() or (
+                    '价格信息' if row.name in ('厂商指导价(元)', '经销商报价') else '未分类（旧数据）')
+                names = groups.setdefault(name, [])
+                if row.name not in names:
+                    names.append(row.name)
+                if any(stage_one.parts(cell) for cell in row.cells):
+                    standard.add(row.name)
+                if any(stage_one.parts(cell, optional=True) for cell in row.cells):
+                    optional.add(row.name)
+            return {'ok': True, 'excluded_rows': self._stage_excluded_rows(),
+                    'rows': list(dict.fromkeys(row.name for row in self.stage_raw.rows)) if self.stage_raw else [],
+                    'groups': [{'name': name, 'rows': rows} for name, rows in groups.items()],
+                    'option_status': {name: 'mixed' if name in standard else 'optional' for name in optional}}
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
+
+    def save_stage_display_rules(self, excluded_rows):
+        try:
+            rows = self._validate_stage_exclusions(excluded_rows)
+            path = os.path.join(self.workdir, '阶梯展示排除清单.json')
+            atomic_write_text(path, json.dumps(rows, ensure_ascii=False, indent=2)+'\n')
+            return {'ok': True, 'excluded_rows': rows}
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
+
     def stage_filters(self):
         if not self.stage_raw:
             return {'ok': True, 'filters': []}
@@ -360,7 +405,8 @@ class Bridge:
                 return {"ok": False, "error": "请先选择历史车型或抓取车型。"}
             raw = self.stage_raw
             stage_one.validate_plan(raw, plan)
-            fs = stage_one.features(raw)
+            excluded = self._stage_excluded_rows()
+            fs = stage_one.features(raw, excluded)
             columns = []
             for entry in plan:
                 i, b = entry['target'], entry['base']
@@ -369,7 +415,7 @@ class Bridge:
                     'price': raw.trims[i].price_guide,
                     'base': raw.trims[b].short if b is not None else None,
                     'items': stage_one._compact_items(stage_one._change_items(fs, i, b), b),
-                    'options': stage_one._option_lines(raw, i),
+                    'options': stage_one._option_lines(raw, i, excluded),
                 })
             return {'ok': True, 'model': raw.model, 'columns': columns}
         except Exception as e:
@@ -410,7 +456,7 @@ class Bridge:
             if not self.stage_raw:
                 return {"ok": False, "error": "请先抓取车型。"}
             stage_one.validate_plan(self.stage_raw, plan)
-            md = stage_one.render(self.stage_raw, plan)
+            md = stage_one.render(self.stage_raw, plan, self._stage_excluded_rows())
             safe = re.sub(r'[^\w\-一-龥]+', '_', filename or self.stage_raw.model or '车型配置阶梯').strip('_')
             path = self._new_output_path('阶梯', safe, '.md')
             if choose_path:
@@ -685,6 +731,7 @@ class Bridge:
             comp_prices = {t["name"]: t.get("price_guide") for t in comp_lad.trims}
             groups = differ.assemble_backup(cells, pairs, snap.model, comp_lad.model,
                                             self_prices, comp_prices, valuation)
+            render_backup.format_configurations(cells, groups)
             notes = [f"[暂定/待定]：{p.get('reason')}（{p.get('handling')}）" for p in snap.pending]
             md = render_backup.render_md(snap.model, comp_lad.model, groups, cells,
                                          rules_version=self.rules.version,

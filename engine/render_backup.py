@@ -1,9 +1,111 @@
 """render_backup — DiffResult → deck BACKUP 页表格式 md（对齐 golden 输出）"""
 from __future__ import annotations
 import datetime
+import re
 from .rules import display_order_key
 
 VERDICT_MARK = {"多": "**多**", "少": "**少**", "同": "同", "豁免": "豁免", "不计": "不计"}
+
+
+def _configuration_label(no, value):
+    """Format evidence for reading, never normalize the calculation values."""
+    from .seat_adjust import parse
+    text = str(value or '').strip()
+    if text in {'', '✕', '×', 'X', '-', '—', '无', '无配置'}:
+        return '无'
+    if '[待' in text or text == '不适用':
+        return text
+    if text.startswith('○'):
+        return '选配：' + _configuration_label(no, text[1:].replace('(选装)', ''))
+    text = text.lstrip('●').strip()
+    if no == 3:
+        voltage = re.search(r'(\d+(?:\.\d+)?)\s*[Vv]', text)
+        return voltage[1]+'V' if voltage else '800V' if text in {'', '有', '支持', '高压平台', '高压快充'} else text
+    if no == 18:
+        if '光感天幕' in text:
+            return re.sub(r'^不可开启全景(?:天窗)?[（(](光感天幕[^()（）]*)[)）]', r'\1', text)
+        return text if '天窗' in text or '天幕' in text else text+'天窗'
+    if no == 20:
+        from .stage_one import mirror_description
+        return mirror_description([text or '有'])[0]
+    if no in (21, 22, 29):
+        size = re.search(r'\d+(?:\.\d+)?', text)
+        size = f'{float(size[0]):g}寸' if size and 0 < float(size[0]) <= 100 else ''
+        if no == 29:
+            optional_full = bool(re.search(r'○\s*全液晶', text))
+            full = '全液晶' in text and not optional_full
+            label = ('全液晶' if full else '') + size + '仪表'
+            return label + ('（全液晶选配）' if optional_full else '') if full or size or not text else text
+        label = size + ('中控' if no == 21 else '副驾屏')
+        options = re.findall(r'○\s*(\d+(?:\.\d+)?)\s*(?:寸|英寸)?选装', text)
+        return label + ''.join(f'（{float(option):g}寸选配）' for option in options) if size else text
+    if no == 34:
+        return text if text.endswith('座椅') else text+'座椅' if text else '座椅材质'
+    if no == 35:
+        parsed = parse(value)
+        if parsed['editable']:
+            return '，'.join(_seat_label(seat) for seat in parsed['seats'] if seat['count'] is not None or seat['mode']) + parsed['suffix']
+    return text
+
+
+def _seat_label(seat):
+    return seat['name'] + (str(seat['count'])+'向' if seat['count'] is not None else '') + (seat['mode'] or '调节')
+
+
+def _configuration_difference(no, left, right):
+    from .differ import _has
+    from .seat_adjust import parse
+    a, b = _configuration_label(no, left), _configuration_label(no, right)
+    if a == b:
+        return a
+    if no == 35:
+        s, c = parse(left), parse(right)
+        if s['editable'] and c['editable']:
+            changes = []
+            for current, previous in zip(s['seats'], c['seats']):
+                if current == previous:
+                    continue
+                label = _seat_label(current) if current['count'] is not None or current['mode'] else '无'
+                if previous['count'] is not None or previous['mode']:
+                    label += '（'+_seat_label(previous)+'）'
+                changes.append(label)
+            if s['suffix'] != c['suffix']:
+                changes.append((s['suffix'] or '无') + ('（'+c['suffix']+'）' if c['suffix'] else ''))
+            return '，'.join(changes)
+    if _has(str(left)) and _has(str(right)):
+        return a+'('+b+')'
+    return a if _has(str(left)) else b if _has(str(right)) else a+'('+b+')'
+
+
+def format_configurations(cells, groups):
+    """Apply ladder wording after pricing; UI and both exports share the result."""
+    from .differ import MORE, LESS, SAME, _has, _merge_seat_labels, BACKUP_MORE_ORDER, BACKUP_LESS_ORDER
+    affected = {3, 18, 20, 21, 22, 29, 34, 35}
+    for cell in cells:
+        no, verdict = cell['no'], cell['verdict']
+        if no not in affected:
+            continue
+        left, right = cell['self_config'], cell['comp_config']
+        cell['self_val'], cell['comp_val'] = _configuration_label(no, left), _configuration_label(no, right)
+        if verdict not in (MORE, LESS, SAME):
+            continue  # Keep the original pending / exemption explanation.
+        difference = _configuration_difference(no, left, right)
+        option_notes = ''.join(re.findall(r' (?:左侧|右侧)选装按无配置计', cell['display']))
+        cell['display'] = verdict+' '+difference+option_notes
+        if verdict in (MORE, LESS):
+            summary = difference
+            if no == 3:
+                value = left if verdict == MORE and _has(str(left)) else right
+                summary = _configuration_label(no, value)
+            cell['backup_more'], cell['backup_less'] = (summary, '') if verdict == MORE else ('', summary)
+    for pi, group in enumerate(groups):
+        pair_cells = {cell['no']: cell for cell in cells if cell['pair'] == pi}
+        for side, order, field in (('more', BACKUP_MORE_ORDER, 'backup_more'), ('less', BACKUP_LESS_ORDER, 'backup_less')):
+            labels = {no: cell[field] for no, cell in pair_cells.items() if cell[field]}
+            group[side] = _merge_seat_labels([labels[no] for no in order+sorted(labels.keys()-set(order)) if no in labels])
+        for detail in (group.get('valuation') or {}).get('detail', []):
+            if detail['no'] in affected and (cell := pair_cells.get(detail['no'])):
+                detail['display'] = cell['backup_more'] or cell['backup_less'] or cell['display']
 
 
 def _fmt_price(p):

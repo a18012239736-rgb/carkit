@@ -26,7 +26,7 @@ def raw_table(rows):
 
 
 def feature_values(raw, index=1):
-    return {f['key']: f['values'][index] for f in stage_one.features(raw)}
+    return {f['key']: f['values'][index] for f in stage_one.features(raw, excluded_rows=[])}
 
 
 @pytest.mark.parametrize('text', ['', '有', '支持', '是', '●'])
@@ -34,7 +34,7 @@ def test_standard_presence_names_special_controls_without_bare_values(text):
     raw = raw_table({name: [Cell(), Cell(dot='●', text=text)] for name in LABELS})
     assert feature_values(raw) == {label: [label] for label in LABELS.values()}
     assert all(not values for values in feature_values(raw, 0).values())
-    items = stage_one._compact_items(stage_one._change_items(stage_one.features(raw), 1, 0), 0)
+    items = stage_one._compact_items(stage_one._change_items(stage_one.features(raw, excluded_rows=[]), 1, 0), 0)
     assert set(items) == set(LABELS.values())
 
 
@@ -87,9 +87,9 @@ def test_optional_presence_is_named_and_stays_out_of_standard_equipment():
     })
     assert feature_values(raw) == {'手机互联/映射': ['CarPlay'], '可变悬架功能': [],
                                   '天窗类型': [], '空调温度控制方式': []}
-    assert stage_one._option_lines(raw, 1) == ['手机互联/映射：HiCar', '可变悬架功能',
+    assert stage_one._option_lines(raw, 1, excluded_rows=[]) == ['手机互联/映射：HiCar', '可变悬架功能',
                                               '天窗类型：可开启全景天窗', '空调温度控制方式']
-    standard, optional = stage_one.render(raw, PLAN).split('## 选装')
+    standard, optional = stage_one.render(raw, PLAN, excluded_rows=[]).split('## 选装')
     assert 'CarPlay' in standard and 'HiCar' not in standard
     assert '可变悬架功能' not in standard and '可开启全景天窗' not in standard
     assert '> 选装：可变悬架功能' in optional
@@ -101,8 +101,8 @@ def test_missing_equipment_is_not_added(rows):
     raw = raw_table(rows)
     for index in (0, 1):
         assert not any(feature_values(raw, index).values())
-        assert stage_one._change_items(stage_one.features(raw), index, None) == []
-        assert stage_one._option_lines(raw, index) == []
+        assert stage_one._change_items(stage_one.features(raw, excluded_rows=[]), index, None) == []
+        assert stage_one._option_lines(raw, index, excluded_rows=[]) == []
 
 
 def test_presence_deduplication_depends_on_each_trim_and_keeps_existing_short_labels():
@@ -119,10 +119,11 @@ def test_presence_deduplication_depends_on_each_trim_and_keeps_existing_short_la
     for name in parameters:
         assert first[name] == []
         assert second[name] == [name]
-    for name, label in [('哨兵模式/千里眼', '哨兵模式'), ('车窗防夹手功能', '防夹手'),
-                        ('全液晶仪表盘', '全液晶仪表')]:
+    for name, label in [('哨兵模式/千里眼', '哨兵模式'), ('车窗防夹手功能', '防夹手')]:
         assert first[name] == second[name] == [label]
-    features = stage_one.features(raw)
+    assert first['仪表'] == ['全液晶10寸仪表']
+    assert second['仪表'] == ['全液晶仪表']
+    features = stage_one.features(raw, excluded_rows=[])
     assert '前/后电动车窗' not in dict(stage_one._change_items(features, 0, None))
     assert dict(stage_one._change_items(features, 1, None))['前/后电动车窗'] == '前/后电动车窗'
 
@@ -134,6 +135,7 @@ def test_preview_markdown_and_excel_share_named_presence(tmp_path):
     })
     bridge.save_file_dialog = lambda name, *_: str(tmp_path / name)
     try:
+        assert bridge.save_stage_display_rules([])['ok']
         preview = bridge.stage_preview(PLAN)
         assert preview['ok']
         assert set(preview['columns'][1]['items']) == set(LABELS.values())

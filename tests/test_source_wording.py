@@ -11,10 +11,10 @@ def test_source_brand_names_are_not_explanatory_nested_comparisons():
     raw = table({'天窗类型':[Cell(dot='●',text='不可开启全景天窗')]*2,
                  '光感天幕':[Cell(),Cell(dot='●')],
                  '零重力座椅':[Cell(),Cell(dot='●',text='副驾驶')]})
-    features = stage_one.features(raw)
+    features = stage_one.features(raw, excluded_rows=[])
     changes = stage_one._compact_items(stage_one._change_items(features,1,0),0)
     assert changes == ['光感天幕','副驾驶零重力座椅']
-    md = stage_one.render(raw,[{'target':0,'base':None},{'target':1,'base':0}])
+    md = stage_one.render(raw,[{'target':0,'base':None},{'target':1,'base':0}], excluded_rows=[])
     assert md.count('不可开启全景天窗') == 1
     assert '光感天幕  ' in md
     assert '副驾驶零重力座椅  ' in md
@@ -23,22 +23,22 @@ def test_source_brand_names_are_not_explanatory_nested_comparisons():
 
 def test_raw_roof_wording_is_preserved_even_without_a_separate_brand_row():
     raw = table({'天窗类型':[Cell(),Cell(dot='●',text='光感天幕')]})
-    assert stage_one.features(raw)[0]['values'] == [[],['光感天幕']]
+    assert stage_one.features(raw, excluded_rows=[])[0]['values'] == [[],['光感天幕']]
 
 
 def test_vanity_mirror_does_not_invent_illumination_and_keeps_explicit_lighting():
     raw = table({'车内化妆镜':[Cell(dot='●',text='主驾+副驾'),
                                Cell(dot='●',text='主驾+照明灯',subs=[Cell(dot='●',text='副驾+照明灯')])]})
-    feature = next(f for f in stage_one.features(raw) if f['key']=='车内化妆镜')
+    feature = next(f for f in stage_one.features(raw, excluded_rows=[]) if f['key']=='车内化妆镜')
     assert feature['values'] == [['主副驾化妆镜'],['主副驾化妆镜照明灯']]
 
 
 def test_headrest_speaker_source_word_and_scope_are_visible():
     raw = table({'前排座椅功能':[Cell(),Cell(dot='●',text='头枕扬声器(仅驾驶位)',
                                                       subs=[Cell(dot='○',text='按摩(仅副驾驶位)')])]})
-    feature = next(f for f in stage_one.features(raw) if f['key']=='前排座椅功能')
+    feature = next(f for f in stage_one.features(raw, excluded_rows=[]) if f['key']=='前排座椅功能')
     assert feature['values'] == [[],['主驾座椅头枕扬声器']]
-    assert stage_one._option_lines(raw,1) == ['前排座椅功能：按摩(仅副驾驶位)']
+    assert stage_one._option_lines(raw,1, excluded_rows=[]) == ['前排座椅功能：按摩(仅副驾驶位)']
 
 
 def test_comparison_preserves_automatic_rearview_wording_without_changing_pricing():
@@ -67,11 +67,11 @@ def test_ladder_summary_groups_and_features_choose_the_same_range_standard():
     raw = table({'WLTC纯电续航里程(km)':[Cell(text='185'),Cell()],
                  'CLTC纯电续航里程(km)':[Cell(text='245'),Cell(text='650')]})
     plan = [{'target':0,'base':None},{'target':1,'base':0}]
-    md = stage_one.render(raw,plan)
+    md = stage_one.render(raw,plan, excluded_rows=[])
     assert 'CLTC续航245/650km' in md
     assert '245km：基础' in md and '650km：旗舰' in md
     assert '185' not in md and '续航待核' not in md
     raw.rows.pop()
-    md = stage_one.render(raw,plan)
+    md = stage_one.render(raw,plan, excluded_rows=[])
     assert 'WLTC续航185km' in md
     assert 'CLTC续航185' not in md

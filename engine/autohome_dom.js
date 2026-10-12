@@ -13,11 +13,20 @@
     // Keep position-specific symbols (主●/副○), not a single symbol for the whole cell.
     return clean(clone.textContent) || '-';
   };
-  const rows = [...document.querySelectorAll('div[class*="style_row"]')].map(r => {
+  const rows = [];
+  let group = '';
+  for (const r of document.querySelectorAll('div')) {
+    if (/(?:^|\s)style_table_title(?:__|\s|$)/.test(r.className || '')) {
+      const title = (r.querySelector('div[class*="style_table_title_col"]') || r).cloneNode(true);
+      title.querySelectorAll('div[class*="style_table_title_prompt"]').forEach(p => p.replaceWith(''));
+      group = clean(title.textContent);
+      continue;
+    }
+    if (!/(?:^|\s)style_row(?:__|\s|$)/.test(r.className || '')) continue;
     const cols = [...r.children].filter(c => /(?:^|\s)style_col__/.test(c.className || ''));
-    if (cols.length < 2) return null;
-    return {n:clean(cols[0].textContent), v:cols.slice(1).map(cell)};
-  }).filter(Boolean);
+    if (cols.length < 2) continue;
+    rows.push({n:clean(cols[0].textContent), v:cols.slice(1).map(cell), group});
+  }
   const total = (document.body.innerText.match(/共\s*(\d+)\s*款车型/) || [])[1];
   const years = [...document.querySelectorAll('input[type="checkbox"]')].map(i=>i.value).filter(v=>/^\d{4}$/.test(v));
   return {headers, ids, rows, rowCount:rows.length, expectedCount:total ? Number(total) : null, years, url:location.href};

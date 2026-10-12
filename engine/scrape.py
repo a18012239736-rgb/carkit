@@ -32,14 +32,22 @@ EVALUATE_JS = """
       /outline/.test(i.className) ? '○' : /solid/.test(i.className) ? '●' : ''));
     return clean(clone.textContent) || '-';
   };
-  const rows = Array.from(document.querySelectorAll('div[class*="style_row"]'));
+  const rows = Array.from(document.querySelectorAll('div'));
   const out = [];
+  let group = '';
   for (const r of rows) {
+    if (/(?:^|\\s)style_table_title(?:__|\\s|$)/.test(r.className || '')) {
+      const title = (r.querySelector('div[class*="style_table_title_col"]') || r).cloneNode(true);
+      title.querySelectorAll('div[class*="style_table_title_prompt"]').forEach(p => p.replaceWith(''));
+      group = clean(title.textContent);
+      continue;
+    }
+    if (!/(?:^|\\s)style_row(?:__|\\s|$)/.test(r.className || '')) continue;
     const cols = Array.from(r.children).filter(c => /(?:^|\\s)style_col(?:__|\\s|$)/i.test(c.className || ''));
     if (cols.length < 2) continue;
     const name = clean(cols[0].textContent).replace(/[●○]/g, '');
     const vals = cols.slice(1).map(cell);
-    if (name) out.push({n: name, v: vals});
+    if (name) out.push({n: name, v: vals, group});
   }
   return JSON.stringify({headers, rowCount: out.length, rows: out});
 }
@@ -158,13 +166,24 @@ def parse_saved_html(path: str, series_id: str = "") -> "RawTable":
     if not headers or any(not h for h in headers):
         raise ValueError('HTML 中未找到完整版型表头，请等配置表加载完成后重新保存。')
     rows = []
-    for r in rows_el:
+    group = ''
+    for r in doc.xpath('//div'):
+        cls = r.get('class') or ''
+        if re.search(r'(?:^|\s)style_table_title(?:__|\s|$)', cls):
+            title = r.xpath('.//div[contains(@class,"style_table_title_col")]')
+            title = deepcopy(title[0] if title else r)
+            for prompt in title.xpath('.//div[contains(@class,"style_table_title_prompt")]'):
+                prompt.drop_tree()
+            group = clean(title.text_content())
+            continue
+        if not re.search(r'(?:^|\s)style_row(?:__|\s|$)', cls):
+            continue
         cols = [c for c in r if re.search(r'(?:^|\s)style_col(?:__|\s|$)', c.get("class") or "", re.I)]
         if len(cols) < 2:
             continue
         name = re.sub(r"[●○]", "", clean(cols[0].text_content()))
         if name:
-            rows.append({'n': name, 'v': [cell_text(c) for c in cols[1:]]})
+            rows.append({'n': name, 'v': [cell_text(c) for c in cols[1:]], 'group': group})
     data = {'headers': headers, 'rows': rows}
     validate(data)
     raw = rawschema.from_compact(data, series_id=series_id)

@@ -1,12 +1,240 @@
 """Configuration ladder with explicit user-defined baselines and lossless evidence."""
 from __future__ import annotations
 import re
+from collections import Counter
+from dataclasses import replace
 from decimal import Decimal
 from .models import Cell, RawTable
-from .rules import Rules
 
 EMPTY = {'', '-', '—', '无', '不支持', '✕'}
 RANGE_ROWS = ('CLTC纯电续航里程(km)', 'WLTC纯电续航里程(km)', 'NEDC纯电续航里程(km)')
+
+# pjy's saved selection (2026-10-12), matched by exact source row name only.
+# New equipment is visible by default; these preferences never enter valuation.
+DEFAULT_EXCLUDED_ROWS = (
+    '电池容量(kWh)',
+    '电池快充时间(小时)',
+    '电池慢充时间(小时)',
+    '电池快充电量范围(%)',
+    '百公里耗电量(kWh/100km)',
+    '整备质量(kg)',
+    '最大满载质量(kg)',
+    '长*宽*高(mm)',
+    '长度(mm)',
+    '宽度(mm)',
+    '高度(mm)',
+    '轴距(mm)',
+    '前轮距(mm)',
+    '后轮距(mm)',
+    '最大功率(kW)',
+    '最大扭矩(N·m)',
+    '电动机(Ps)',
+    '电动机总功率(kW)',
+    '电动机总马力(Ps)',
+    '电动机总扭矩(N·m)',
+    '前电动机最大功率(kW)',
+    '前电动机最大扭矩(N·m)',
+    '后电动机最大功率(kW)',
+    '后电动机最大扭矩(N·m)',
+    '变速箱',
+    '简称',
+    '挡位个数',
+    '变速箱类型',
+    '整车质保',
+    '电池组质保',
+    '三电首任车主质保政策',
+    '前制动器类型',
+    '后制动器类型',
+    '驻车制动类型',
+    '备胎规格',
+    '外观颜色',
+    '内饰颜色',
+    '快充功能',
+    '快充功率(kW)',
+    '厂商',
+    '级别',
+    '能源类型',
+    '环保标准',
+    '上市时间',
+    'WLTC纯电续航里程(km)',
+    '电池慢充电量范围(%)',
+    '车身结构',
+    '发动机',
+    '官方0-100km/h加速(s)',
+    '官方0-50km/h加速(s)',
+    '最高车速(km/h)',
+    'WLTC综合油耗(L/100km)',
+    '最低荷电状态油耗(L/100km)WLTC',
+    '最低荷电状态油耗(L/100km)NEDC',
+    '电能当量燃料消耗量(L/100km)',
+    '油电综合燃料消耗量(L/100km)',
+    '接近角(°)',
+    '离去角(°)',
+    '最小转弯半径(m)',
+    '扬声器品牌名称',
+    '主动式环境氛围灯',
+    '触摸式阅读灯',
+    '手机无线充电功率',
+    '多媒体/充电接口',
+    '发动机型号',
+    '排量(mL)',
+    '排量(L)',
+    '进气形式',
+    '发动机布局',
+    '气缸排列形式',
+    '气缸数(个)',
+    '每缸气门数(个)',
+    '压缩比',
+    '配气机构',
+    '最大马力(Ps)',
+    '最大净功率(kW)',
+    '燃油标号',
+    '供油方式',
+    '缸盖材料',
+    '缸体材料',
+    '前电动机品牌',
+    '后电动机品牌',
+    '前电动机型号',
+    '后电动机型号',
+    '电机类型',
+    '驱动电机数',
+    '电机布局',
+    '电池类型',
+    '电芯品牌',
+    '电池特有技术',
+    '电池冷却方式',
+    '电池快充时间(分钟)',
+    '慢充接口位置',
+    '快充接口位置',
+    '对外交流放电功率(kW)',
+    '驱动方式',
+    '前悬架类型',
+    '后悬架类型',
+    '助力类型',
+    '车体结构',
+    '驾驶模式切换',
+    '能量回收系统',
+    '自动驻车',
+    '上坡辅助',
+    '前/后驻车雷达',
+    '驾驶辅助影像',
+    '芯片总算力',
+    '前方感知摄像头',
+    '摄像头数量',
+    '前方感知摄像头像素',
+    '车内摄像头数量',
+    '超声波雷达数量',
+    '毫米波雷达数量',
+    '倒车车侧预警系统',
+    '卫星导航系统',
+    '导航路况信息显示',
+    '地图品牌',
+    '并线辅助',
+    '车道保持辅助系统',
+    '车道居中保持',
+    '道路交通标识识别',
+    '辅助泊车入位',
+    '遥控泊车',
+    '辅助变道',
+    '辅助匝道自动驶出(入)',
+    '方向盘离手检测',
+    '辅助驾驶路段',
+    '发动机电子防盗',
+    '车内中控锁',
+    '钥匙类型',
+    '无钥匙启动系统',
+    '无钥匙进入功能',
+    '远程启动功能',
+    '电池预加热',
+    '近光灯光源',
+    '远光灯光源',
+    'LED日间行车灯',
+    '自适应远近光',
+    '自动头灯',
+    '车前雾灯',
+    '大灯高度可调',
+    '大灯延时关闭',
+    '前/后电动车窗',
+    '车窗一键升降功能',
+    '车窗防夹手功能',
+    '后排侧隐私玻璃',
+    '中控屏幕尺寸',
+    '中控屏幕类型',
+    '蓝牙/车载电话',
+    '语音识别控制系统',
+    '语音助手唤醒词',
+    '语音分区域唤醒识别',
+    '语音连续识别',
+    '可见即可说',
+    '应用商店',
+    '车载智能系统',
+    '车机系统内存(GB)',
+    '车机系统存储(GB)',
+    '车联网',
+    'OTA升级',
+    'Wi-Fi热点',
+    '手机APP远程功能',
+    '换挡形式',
+    '多功能方向盘',
+    '行车电脑显示屏幕',
+    'HUD抬头尺寸',
+    '内后视镜功能',
+    'ETC装置',
+    '运动风格座椅',
+    '前排座椅功能',
+    '电动座椅记忆功能',
+    '副驾驶位后排可调节按钮',
+    '第二排座椅调节',
+    '后排座椅放倒形式',
+    '前/后中央扶手',
+    '后排杯架',
+    'ABS防抱死',
+    '制动力分配(EBD/CBC等)',
+    '刹车辅助(EBA/BAS/BA等)',
+    '牵引力控制(ASR/TCS/TRC等)',
+    '车身稳定控制(ESC/ESP/DSC等)',
+    '胎压监测功能',
+    '安全带未系提醒',
+    'ISOFIX儿童座椅接口',
+    '车道偏离预警系统',
+    '主动刹车/主动安全系统',
+    '疲劳驾驶提示',
+    'DOW开门预警',
+    '前方碰撞预警',
+    '后方碰撞预警',
+    '哨兵模式/千里眼',
+    '低速行车警告',
+    '内置行车记录仪',
+    '道路救援呼叫',
+    '厂商指导价(元)',
+    '经销商报价',
+    '车门开启方式',
+    '车门数(个)',
+    '座位数(个)',
+    '油箱容积(L)',
+    '前备厢容积(L)',
+    '后备厢容积(L)',
+    '风阻系数(Cd)',
+    '三电系统质保',
+    '高精定位',
+    '记忆泊车',
+    '循迹倒车',
+    '信号灯识别',
+    '隐藏电动门把手',
+    '主动降噪',
+    'USB/Type-C最大充电功率',
+    '对外直流放电功率(kW)',
+    '陡坡缓降',
+    '起步提醒',
+    '语音免唤醒词',
+    '面部识别',
+)
+
+
+def display_raw(raw, excluded_rows=None):
+    """A filtered view, not a mutation of the original capture or calculation data."""
+    excluded = set(DEFAULT_EXCLUDED_ROWS if excluded_rows is None else excluded_rows)
+    return replace(raw, rows=[row for row in raw.rows if row.name not in excluded])
 
 
 def parts(cell, optional=False):
@@ -32,17 +260,41 @@ def _detail(value):
     return '' if value in {'有', '支持', '是', '标配'} else value
 
 
-def features(raw):
+def mirror_description(values):
+    """One concise label; keep automatic folding distinct for comparison."""
+    aliases = (
+        ('电调', r'电动调节|电调'),
+        ('锁车自动折叠', r'锁车自动折叠'),
+        ('折叠', r'电动折叠|自动折叠|折叠'),
+        ('加热', r'加热'),
+        ('记忆', r'记忆'),
+        ('倒车下翻', r'倒车自动下翻|倒车下翻'),
+    )
+    mapped=[]
+    for value in values:
+        text = re.sub(r'(?:外)?后视镜(?:功能[：:]?)?', '', clean(value))
+        for label, pattern in aliases:
+            if re.search(pattern, text):
+                mapped.append(label)
+                text = re.sub(pattern, '+', text)
+        text = re.sub(r'\(\s*\)', '', text)
+        mapped.extend(token for token in re.split(r'[+/、\s]+', text) if _detail(token))
+    comparison = sorted(set(mapped)) if mapped else ['外后视镜功能'] if values else []
+    displayed = ['折叠' if token == '锁车自动折叠' else token for token in mapped]
+    known = [label for label in ('电调', '折叠', '加热', '记忆', '倒车下翻') if label in displayed]
+    extra = list(dict.fromkeys(token for token in displayed if token not in known))
+    summary = '外后视镜' + '+'.join(known + extra) if mapped else '外后视镜功能'
+    return summary, comparison
+
+
+def features(raw, excluded_rows=None):
     """Each feature is scalar or a set of independently inheritable subfeatures."""
     out=[]
     consumed=set()
-    allowed={n for item in Rules().items for n in item.get('source_rows',[])}
-    allowed |= {'手机互联/映射','感应雨刷功能','外观套件',
-                 '辅助驾驶芯片','哨兵模式/千里眼','内置行车记录仪',
-                 '无钥匙进入功能','车窗一键升降功能','车窗防夹手功能','前/后电动车窗',
-                 '车内化妆镜','多功能方向盘',
-                 '空调温度控制方式','电动座椅记忆','前排座椅头枕扬声器',
-                 '后排座椅头枕扬声器'}
+    captured_electric = raw.row('主/副驾驶座电动调节') is not None
+    raw = display_raw(raw, excluded_rows)
+    name_counts = Counter(row.name for row in raw.rows)
+    occurrences = Counter()
     count=len(raw.trims)
     def get(name,i):
         r=raw.row(name)
@@ -51,9 +303,15 @@ def features(raw):
         out.append({'key':key,'values':[[value if _detail(value) else key for value in vs] for vs in values],'scalar':scalar})
     for row in raw.rows:
         name=row.name
-        if name in consumed or name not in allowed: continue
-        consumed.add(name)
+        occurrence = occurrences[(row.group, name)]
+        occurrences[(row.group, name)] += 1
         values=[parts(c) for c in row.cells]
+        if name in consumed or name in RANGE_ROWS:
+            first = raw.row(name)
+            if name_counts[name] > 1 and row is not first and row.cells != first.cells:
+                add((row.group, name, occurrence), [[name+_detail(value) for value in vs] for vs in values])
+                continue
+            if name in consumed: continue
         if name in RANGE_ROWS:
             if row is not raw.row(*RANGE_ROWS): continue
             add(name,[[name[:4]+'纯电续航'+(_detail(v)+'km' if _detail(v) else '') for v in vs] for vs in values],True)
@@ -72,8 +330,9 @@ def features(raw):
             v=[]
             for i in range(count):
                 has = bool(get('对外放电', i))
-                power = _detail(' '.join(get('对外交流放电功率(kW)', i) or get('对外放电功率(kW)', i)))
-                v.append([f'对外放电{clean(power)}kW' if has and power else '对外放电'] if has else [])
+                source = next((n for n in ('对外交流放电功率(kW)', '对外放电功率(kW)') if get(n, i)), '')
+                power = _detail(' '.join(get(source, i))) if source else ''
+                v.append([f'对外放电{clean(power)}kW' if power else '对外放电'] if has else [source+power] if source else [])
             add('对外放电', v, True)
         elif name in {'激光雷达数量','激光雷达品牌'}:
             consumed.update({'激光雷达数量','激光雷达品牌'})
@@ -113,27 +372,60 @@ def features(raw):
             add('影像',[['540影像'] if get('透明底盘/540度影像',i) else [clean(x) for x in get('驾驶辅助影像',i)] for i in range(count)],True)
         elif name in {'主座椅调节方式','副座椅调节方式','主/副驾驶座电动调节'}:
             consumed.update({'主座椅调节方式','副座椅调节方式','主/副驾驶座电动调节'})
-            from .seat_adjust import raw_details
+            from .seat_adjust import parse, raw_details
             details = [raw_details(raw, i, include_terms=False) for i in range(count)]
-            electric=[]
-            for i in range(count):
-                _, modes, _ = details[i]
-                electric.append([pos+'座椅电调' for pos, mode in zip(('主驾','副驾'), modes) if mode == '电调'])
-            add('座椅电调', electric)
+            electric_hidden = captured_electric and raw.row('主/副驾驶座电动调节') is None
             for j, (pos, source) in enumerate([('主驾', '主座椅调节方式'), ('副驾', '副座椅调节方式')]):
                 totals = []
                 for i in range(count):
                     text = _detail(' '.join(get(source, i)))
-                    counts, _, positions = details[i]
+                    counts, modes, _ = details[i]
                     directions = counts[j]
-                    value = f'{pos}{directions}向调节' if directions else pos+'座椅调节（'+text+'）' if text else pos+'座椅调节' if get(source, i) else ''
+                    mode = modes[j]
+                    if electric_hidden:
+                        mode = parse(text if text.startswith(('主', '副')) else pos+text.removeprefix('座椅'))['seats'][j]['mode']
+                    if directions:
+                        value = f'{pos}{directions}向'+(mode or '调节')
+                    elif get(source, i) or mode == '电调':
+                        if re.fullmatch(r'(?:主驾|副驾|座椅)?(?:电动|手动|电调|手调)(?:调节)?', text):
+                            text = ''
+                        value = pos+(mode or '座椅调节')+('（'+text+'）' if text else '')
+                    else:
+                        value = ''
                     totals.append([value] if value else [])
                 add(pos+'座椅调节', totals, True)
-        elif name in {'高压平台','800V高压平台','高压平台（V）','高压平台(V)'}:
-            sources = ['高压平台','800V高压平台','高压平台（V）','高压平台(V)']
+                extras=[]
+                for i in range(count):
+                    values=[]
+                    if details[i][0][j] is not None:
+                        for value in get(source, i):
+                            # Direction totals deliberately exclude lumbar/headrest
+                            # supports; keep those source details in the display.
+                            remainder=re.sub(r'(?:前后调节|靠背调节|高低调节)(?:\(\d+向\))?', '', clean(value))
+                            remainder=re.sub(r'^(?:主驾|副驾|座椅)?(?:手调|电调|手动(?:调节)?|电动(?:调节)?)?\d+向(?:手调|电调|手动|电动|调节)*', '', remainder)
+                            remainder=remainder.strip(' +/、')
+                            if _detail(remainder): values.append(pos+remainder)
+                    extras.append(list(dict.fromkeys(values)))
+                add(pos+'支撑', extras)
+        elif name in {'高压平台','800V高压平台','高压平台（V）','高压平台(V)','高压快充'}:
+            sources = ['高压平台','800V高压平台','高压平台（V）','高压平台(V)','高压快充']
             consumed.update(sources)
-            from .mapper import n_high_voltage
-            add('高压平台', [[value[1:]] if (value := n_high_voltage(raw, i, {'source_rows':sources})).startswith('●') else [] for i in range(count)], True)
+            v=[]
+            presence = {'有','支持','是','标配','高压平台','800V高压平台','高压快充'}
+            for i in range(count):
+                values = [(source, clean(value)) for source in sources for value in get(source, i) if clean(value) not in EMPTY]
+                voltage = next((match[1]+'V' for _, value in values
+                                if (match := re.fullmatch(r'(\d+(?:\.\d+)?)\s*[Vv]?', value)) and float(match[1]) > 0), '')
+                details = [source+value for source, value in values if value not in presence]
+                platform_option = any(parts(row.cells[i], optional=True)
+                                      for source in sources[:-1] if (row := raw.row(source)))
+                if voltage:
+                    v.append([voltage])
+                elif details:
+                    v.append(list(dict.fromkeys(details)))
+                else:
+                    v.append(['800V'] if values and not platform_option else [])
+            add('高压平台', v, True)
         elif name in {'巡航系统','辅助驾驶系统','辅助驾驶等级','辅助驾驶路段'}:
             # The source table splits one ADAS level over four rows. Present it
             # once so the ladder does not repeat the same upgrade four times.
@@ -155,6 +447,19 @@ def features(raw):
                         values=['辅助驾驶']
                 v.append(values)
             add('辅助驾驶', v, True)
+            for source in ('辅助驾驶系统', '辅助驾驶等级', '辅助驾驶路段'):
+                details=[]
+                for i in range(count):
+                    values=[]
+                    for value in get(source, i):
+                        text=_detail(value)
+                        if not text: continue
+                        if source == '辅助驾驶系统' and text in {'L1', 'L2', '基础L2辅助驾驶', '辅助驾驶', '辅助驾驶系统'}: continue
+                        if source == '辅助驾驶等级' and re.fullmatch(r'L2(?:级|辅助驾驶)?', text): continue
+                        if source == '辅助驾驶路段' and re.fullmatch(r'(?:(?:城市|高速)(?:路段|道路|公路)?[+/、\s]*)+', text): continue
+                        values.append(source+text)
+                    details.append(values)
+                add(source, details, True)
         elif name in {'电动后备厢','电动后备厢位置记忆','电动后备箱'}:
             consumed.update({'电动后备厢','电动后备厢位置记忆','电动后备箱'})
             v=[]
@@ -190,16 +495,13 @@ def features(raw):
             add('氛围灯', v)
         elif name == '外后视镜功能':
             values=[]
+            comparison_values=[]
             for vs in [parts(c) for c in row.cells]:
-                mapped=[]
-                text=' '.join(vs)
-                if '电动调节' in text: mapped.append('外后视镜电调')
-                if '电动折叠' in text: mapped.append('外后视镜电动折叠')
-                if '锁车自动折叠' in text: mapped.append('锁车自动折叠')
-                if '加热' in text: mapped.append('外后视镜加热')
-                if vs and not _detail(text): mapped.append(name)
-                values.append(list(dict.fromkeys(mapped)))
-            add(name, values)
+                summary, comparison = mirror_description(vs)
+                comparison_values.append(comparison)
+                values.append([summary] if vs else [])
+            add(name, values, True)
+            out[-1]['comparison_values'] = comparison_values
         elif name == '车内化妆镜':
             values=[]
             for c in row.cells:
@@ -257,12 +559,32 @@ def features(raw):
                         feats.append(name)
                         continue
                     scope=['主驾'] if re.search('仅驾驶位|仅主驾|主驾驶',item) else ['副驾'] if '副驾驶' in item else ['主驾','副驾'] if name.startswith('前') else ['后排']
-                    for f in ['加热','通风','按摩','头枕扬声器','头枕音响']:
-                        if f in item: feats.extend(p+'座椅'+f for p in scope)
+                    for token in re.split(r'[+/、]', item):
+                        matched = [f for f in ['加热','通风','按摩','头枕扬声器','头枕音响'] if f in token]
+                        feats.extend(p+'座椅'+f for f in matched for p in scope)
+                        remainder=clean(token)
+                        for feature in matched: remainder=remainder.replace(feature, '')
+                        remainder=re.sub(r'\((?:仅驾驶位|仅主驾|主驾驶|副驾驶|主驾|副驾|主副驾|前排|后排)\)', '', remainder).strip()
+                        if _detail(remainder):
+                            feats.append(name+'：'+(clean(token) if remainder.startswith('(') else remainder))
                 v.append(list(dict.fromkeys(feats)))
             add(name,v)
+        elif name in {'全液晶仪表盘','液晶仪表尺寸'}:
+            consumed.update({'全液晶仪表盘','液晶仪表尺寸'})
+            v=[]
+            for i in range(count):
+                full = get('全液晶仪表盘', i)
+                known = {'全液晶','全液晶仪表','全液晶仪表盘'}
+                full_lcd = any(not _detail(value) or clean(value) in known for value in full)
+                sizes = [_detail(value) for value in get('液晶仪表尺寸', i) if _detail(value)]
+                descriptions = [('全液晶' if full_lcd else '') + size + ('寸' if re.fullmatch(r'\d+(?:\.\d+)?', size) else '') + '仪表' for size in sizes]
+                if not descriptions:
+                    descriptions = ['全液晶仪表'] if full_lcd else ['液晶仪表尺寸'] if get('液晶仪表尺寸', i) else []
+                descriptions.extend('全液晶仪表盘'+_detail(value) for value in full if _detail(value) and clean(value) not in known)
+                v.append(list(dict.fromkeys(descriptions)))
+            add('仪表',v,True)
         else:
-            scalar=name in {'中控屏幕尺寸','副驾驶位屏幕尺寸','4G/5G网络','方向盘材质','方向盘位置调节','液晶仪表尺寸','座椅材质','扬声器数量','车外扬声器数量','车内环境氛围灯','天窗类型','近光灯光源','电芯品牌','手机无线充电功率'}
+            scalar=name in {'中控屏幕尺寸','副驾驶位屏幕尺寸','4G/5G网络','方向盘材质','方向盘位置调节','座椅材质','扬声器数量','车外扬声器数量','车内环境氛围灯','天窗类型','近光灯光源','电芯品牌','手机无线充电功率'}
             if name=='远光灯光源' and raw.row('近光灯光源') and all(get(name,i)==get('近光灯光源',i) for i in range(count)): continue
             parameter={'中控彩色屏幕':'中控屏幕尺寸', '车联网':'4G/5G网络', '行车电脑显示屏幕':'液晶仪表尺寸'}.get(name)
             if parameter:
@@ -270,11 +592,10 @@ def features(raw):
             def fmt(value):
                 value=_detail(value)
                 if not value:
-                    return {'哨兵模式/千里眼':'哨兵模式', '车窗防夹手功能':'防夹手', '全液晶仪表盘':'全液晶仪表'}.get(name,name)
+                    return {'哨兵模式/千里眼':'哨兵模式', '车窗防夹手功能':'防夹手'}.get(name,name)
                 if name=='电池类型': return value if value.endswith('电池') else value+'电池'
                 if name=='电芯品牌': return value+'电芯'
                 if name=='中控屏幕尺寸': return value+'中控'
-                if name=='液晶仪表尺寸': return value+'仪表'
                 if name=='扬声器数量': return re.sub(r'个|喇叭','',value)+'扬声器'
                 if name=='车外扬声器数量': return re.sub(r'个|喇叭','',value)+'个车外扬声器'
                 if name=='近光灯光源': return value+'大灯'
@@ -298,10 +619,13 @@ def features(raw):
                 if name=='无钥匙进入功能': return value+'无钥匙进入'
                 if name=='零重力座椅': return value+'零重力座椅'
                 if name=='外观套件': return value+'外观套件'
-                if name=='全液晶仪表盘': return '全液晶仪表'
                 if name in {'天窗类型','可变悬架功能','辅助驾驶路段'}: return value
                 return name+value
-            add(name,[list(dict.fromkeys(fmt(v) for v in vs)) for vs in values],scalar)
+            # Row identity matters when different sections share a name. Older
+            # captures have no group; a per-name occurrence keeps both rows
+            # without depending on the position of unrelated source rows.
+            key = (row.group, name, occurrence) if name_counts[name] > 1 else name
+            add(key,[list(dict.fromkeys(fmt(v) for v in vs)) for vs in values],scalar)
     return out
 
 
@@ -326,10 +650,10 @@ def _price(value):
         return str(value)
 
 
-def _option_lines(raw, trim_index):
+def _option_lines(raw, trim_index, excluded_rows=None):
     """Return one quoted line per optional row; options never enter standard deltas."""
     result = []
-    for row in raw.rows:
+    for row in display_raw(raw, excluded_rows).rows:
         values = parts(row.cells[trim_index], optional=True)
         if not values:
             continue
@@ -343,7 +667,7 @@ _BASE_GROUPS = [
     ('无钥匙进入功能', '主动闭合式进气格栅'),
     ('前/后电动车窗', '车窗一键升降功能', '车窗防夹手功能'),
     ('方向盘', '方向盘材质', '方向盘位置调节', '多功能方向盘'),
-    ('座椅材质', '主驾座椅调节', '主驾支撑', '副驾座椅调节', '副驾支撑'),
+    ('主驾座椅调节', '副驾座椅调节'),
     ('扬声器数量', '车外扬声器数量'),
     ('空调温度控制方式', '后座出风口'),
 ]
@@ -355,7 +679,8 @@ def _change_items(fs, trim_index, base_index):
     for feature in fs:
         cur = feature['values'][trim_index]
         prev = feature['values'][base_index] if base_index is not None else []
-        if cur == prev:
+        comparison = feature.get('comparison_values', feature['values'])
+        if comparison[trim_index] == (comparison[base_index] if base_index is not None else []):
             continue
         if base_index is None:
             # The one-touch row already conveys the window coverage; keeping
@@ -364,6 +689,10 @@ def _change_items(fs, trim_index, base_index):
                 continue
             if cur:
                 items.append((feature['key'], '+'.join(cur)))
+            continue
+        if feature['key'] in {'外后视镜功能', '高压平台'}:
+            # This row is a single current-equipment summary, not a repeated baseline.
+            items.append((feature['key'], '+'.join(cur) if cur else '无（' + '+'.join(prev) + '）'))
             continue
         if feature['scalar'] and cur and prev:
             left, right = ('（', '）') if feature['key'] in {'主驾座椅调节', '副驾座椅调节'} else ('(', ')')
@@ -385,7 +714,7 @@ def _change_items(fs, trim_index, base_index):
 def _compact_items(items, base_index):
     def compact_seats(lines):
         result = []
-        functions_order = ('通风', '加热', '按摩', '记忆', '电调')
+        functions_order = ('通风', '加热', '按摩', '记忆')
         seat_tokens = {p+'座椅'+f for p in ('主驾','副驾','后排') for f in functions_order}
         found = {p:set() for p in ('主驾','副驾','后排')}
         insertion = None
@@ -420,15 +749,17 @@ def _compact_items(items, base_index):
                 positions[group_index] = len(grouped)
                 grouped.append(value)
             else:
-                grouped[positions[group_index]] += '+' + value
+                grouped[positions[group_index]] += ('，' if key in {'主驾座椅调节', '副驾座椅调节'} else '+') + value
         return compact_seats(grouped)
-    # Merge repeated rows only. Comparison parentheses retain the chosen baseline;
-    # unchanged rows stay omitted.
+    # Merge repeated rows and the two seat summaries. Comparison parentheses
+    # retain the chosen baseline; unchanged rows stay omitted.
     grouped = []
     positions = {}
     for key, value in items:
+        if key in {'主驾座椅调节', '副驾座椅调节'}:
+            key = ('主驾座椅调节', '副驾座椅调节')
         if key in positions:
-            grouped[positions[key]] += '+' + value
+            grouped[positions[key]] += ('，' if key == ('主驾座椅调节', '副驾座椅调节') else '+') + value
         else:
             positions[key] = len(grouped)
             grouped.append(value)
@@ -461,7 +792,7 @@ def _position_line(raw, plan):
     return '，'.join(value for value in bits if value)
 
 
-def render(raw, plan):
+def render(raw, plan, excluded_rows=None):
     """Render the user-facing ladder in the accepted 5C paragraph format.
 
     The raw table remains lossless upstream.  This view is deliberately compact:
@@ -470,7 +801,7 @@ def render(raw, plan):
     end instead of being repeated after every trim.
     """
     validate_plan(raw,plan)
-    fs=features(raw)
+    fs=features(raw, excluded_rows)
     esc=lambda s: str(s).replace('|','\\|').replace('\n',' ')
     lines=[f'# 5C-看竞争-{esc(raw.model)}','']
     position = _position_line(raw, plan)
@@ -520,7 +851,7 @@ def render(raw, plan):
         lines.append('')
     option_blocks=[]
     for entry in plan:
-        i=entry['target']; opts=_option_lines(raw, i)
+        i=entry['target']; opts=_option_lines(raw, i, excluded_rows)
         if opts:
             option_blocks.append((raw.trims[i].short, opts))
     if option_blocks:

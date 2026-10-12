@@ -26,7 +26,7 @@ def source(rows, model='MG 07', series='8563'):
 def test_live_roof_and_seat_terms_are_visible_but_never_double_priced():
     raw = mg07()
     mapped = map_raw_to_ladder(raw, Rules())
-    features = {f['key']: f['values'] for f in stage_one.features(raw)}
+    features = {f['key']: f['values'] for f in stage_one.features(raw, excluded_rows=[])}
     for i in range(7):
         flagship = i in (4, 6)
         roof, seat = mapped[18]['values'][i], mapped[35]['values'][i]
@@ -54,7 +54,7 @@ def test_live_new_literal_row_aliases_preserve_value_and_seat_scope():
     assert mapped[3]['values'] == ['●400V'] * 5 + ['●800V'] * 2
     assert mapped[45]['values'] == ['主驾座椅记忆'] * 4 + ['前排座椅记忆', '主驾座椅记忆', '前排座椅记忆']
     assert dynamic_delta(45, mapped[45]['values'][4], mapped[45]['values'][3]) == 100
-    features = {f['key']: f['values'] for f in stage_one.features(raw)}
+    features = {f['key']: f['values'] for f in stage_one.features(raw, excluded_rows=[])}
     assert features['高压平台'] == [['400V']] * 5 + [['800V']] * 2
     assert features['电动座椅记忆'][4] == ['主驾座椅记忆', '副驾座椅记忆']
     assert features['电动座椅记忆'][3] == ['主驾座椅记忆']
@@ -122,7 +122,8 @@ def test_memory_alias_respects_each_subitem_standard_optional_marker():
     mapped = map_raw_to_ladder(raw, Rules())
     assert mapped[45]['values'] == ['主驾座椅记忆']
     assert not mapped[45]['row_absent']
-    assert '副驾' not in str(next(f for f in stage_one.features(raw) if f['key'] == '电动座椅记忆')['values'])
+    assert '副驾' not in str(next(f for f in stage_one.features(raw, excluded_rows=[])
+                                if f['key'] == '电动座椅记忆')['values'])
 
 
 @pytest.mark.parametrize('cell,expected', [
@@ -135,7 +136,8 @@ def test_memory_alias_respects_each_subitem_standard_optional_marker():
 ])
 def test_ladder_preserves_standard_rear_memory_without_new_rear_pricing(cell, expected):
     raw = source({'电动座椅记忆': cell}, model='其他车型', series='other')
-    feature = next(f for f in stage_one.features(raw) if f['key'] == '电动座椅记忆')
+    feature = next(f for f in stage_one.features(raw, excluded_rows=[])
+                   if f['key'] == '电动座椅记忆')
     assert feature['values'] == [expected]
     value = map_raw_to_ladder(raw, Rules())[45]['values'][0]
     front_count = sum(v in expected for v in ['主驾座椅记忆', '副驾座椅记忆'])
@@ -149,10 +151,10 @@ def test_ladder_preserves_standard_rear_memory_without_new_rear_pricing(cell, ex
 
 def test_alias_rows_can_precede_canonical_rows_without_duplication():
     raw = mg07()
-    before = stage_one.features(raw)
+    before = stage_one.features(raw, excluded_rows=[])
     names = {'光感天幕', '零重力座椅', '电动座椅记忆功能'}
     raw.rows = [r for r in raw.rows if r.name in names] + [r for r in raw.rows if r.name not in names]
-    after = stage_one.features(raw)
+    after = stage_one.features(raw, excluded_rows=[])
     assert {f['key']: f['values'] for f in before} == {f['key']: f['values'] for f in after}
     assert len({f['key'] for f in after}) == len(after)
 

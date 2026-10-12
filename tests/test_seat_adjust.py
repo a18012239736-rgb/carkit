@@ -114,8 +114,11 @@ def test_q05_raw_map_stage_and_calculation_share_the_same_evidence():
     assert seat_adjust.legacy_summary(raw, 0) == '主副手调'
     assert seat_adjust.legacy_summary(raw, 1) == '主副电调(主含腰撑4向)'
     assert seat_adjust.legacy_summary(raw, 3) == '主副电调(主腰撑4向/副腿托+腰撑4向)'
-    electric = next(item for item in stage_one.features(raw) if item['key'] == '座椅电调')
-    assert electric['values'] == [[]] + [['主驾座椅电调', '副驾座椅电调']]*6
+    features = {item['key']: item['values'] for item in stage_one.features(raw)}
+    assert '座椅电调' not in features
+    assert features['主驾座椅调节'] == [['主驾6向手调']] + [['主驾6向电调']]*6
+    assert features['副驾座椅调节'] == [[f'副驾{count}向'+('手调' if i == 0 else '电调')]
+                                    for i, count in enumerate((4, 4, 4, 6, 6, 4, 6))]
     assert dynamic_delta(35, values[3], values[1]) == 100
     assert dynamic_delta(35, values[1], values[3]) == -100
     assert dynamic_delta(35, values[1], '主副手调') == 800

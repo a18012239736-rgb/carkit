@@ -23,7 +23,7 @@ def standard(values):
 
 
 def changes(raw, target=1, base=0):
-    return stage_one._compact_items(stage_one._change_items(stage_one.features(raw), target, base), base)
+    return stage_one._compact_items(stage_one._change_items(stage_one.features(raw, excluded_rows=[]), target, base), base)
 
 
 @pytest.mark.parametrize('name,before,after,expected', [
@@ -52,15 +52,17 @@ def test_set_removals_are_single_lines_and_pure_additions_keep_existing_format(b
 def test_other_set_features_show_remaining_functions_not_only_removed_functions():
     raw = raw_table({'外后视镜功能': [standard(['电动调节', '电动折叠', '加热']),
                                    standard(['电动调节', '加热'])]})
-    assert changes(raw) == ['外后视镜电调+外后视镜加热（外后视镜电调+外后视镜电动折叠+外后视镜加热）']
+    assert changes(raw) == ['外后视镜电调+加热']
 
 
-def test_comparison_uses_selected_baseline_not_neighboring_trim():
+def test_comparison_uses_selected_baseline_not_neighboring_trim(tmp_path):
     raw = raw_table({'主动闭合式进气格栅': [Cell(dot='●'), Cell(), Cell()]})
     assert changes(raw, 2, 0) == ['无（主动闭合式进气格栅）']
     assert changes(raw, 2, 1) == []
     bridge = Bridge.__new__(Bridge)
+    bridge.workdir = str(tmp_path)
     bridge.stage_raw = raw
+    assert bridge.save_stage_display_rules([])['ok']
     preview = bridge.stage_preview(PLAN + [{'target': 2, 'base': 0}])
     assert preview['ok']
     assert preview['columns'][2]['base'] == '版型0'
@@ -80,8 +82,8 @@ def test_seat_compression_keeps_old_functions_inside_baseline_parentheses(before
 def test_standard_to_optional_still_lists_option_separately():
     raw = raw_table({'主动闭合式进气格栅': [Cell(dot='●'), Cell(dot='○')]})
     assert changes(raw) == ['无（主动闭合式进气格栅）']
-    assert stage_one._option_lines(raw, 1) == ['主动闭合式进气格栅']
-    config, optional = stage_one.render(raw, PLAN).split('## 选装')
+    assert stage_one._option_lines(raw, 1, excluded_rows=[]) == ['主动闭合式进气格栅']
+    config, optional = stage_one.render(raw, PLAN, excluded_rows=[]).split('## 选装')
     assert '无（主动闭合式进气格栅）' in config
     assert '> 选装：主动闭合式进气格栅' in optional
 
@@ -92,13 +94,17 @@ def test_preview_markdown_and_excel_share_removal_labels(tmp_path):
         '中控屏幕尺寸': [Cell(text='15.6英寸'), Cell()],
         '手机互联/映射': [standard(['CarPlay', 'HiCar']), standard(['HiCar', 'CarLife'])],
         '前排座椅功能': [standard(['通风', '加热', '按摩']), standard(['加热'])],
+        '外后视镜功能': [standard(['电动调节', '电动折叠', '后视镜加热', '后视镜记忆']),
+                         standard(['电动调节', '电动折叠', '后视镜加热'])],
     })
     expected = ['无（主动闭合式进气格栅）', '无（15.6寸中控）',
-                'HiCar+CarLife（CarPlay+HiCar）', '前排加热（前排通风加热按摩）']
+                'HiCar+CarLife（CarPlay+HiCar）', '前排加热（前排通风加热按摩）',
+                '外后视镜电调+折叠+加热']
     bridge = Bridge(str(tmp_path / 'work'))
     bridge.stage_raw = raw
     bridge.save_file_dialog = lambda name, *_: str(tmp_path / name)
     try:
+        assert bridge.save_stage_display_rules([])['ok']
         preview = bridge.stage_preview(PLAN)
         assert preview['ok']
         assert preview['columns'][1]['items'] == expected

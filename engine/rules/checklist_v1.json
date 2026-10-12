@@ -33,7 +33,7 @@
     {"no": 27, "name": "方向盘加热", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["方向盘加热"]},
     {"no": 28, "name": "方向盘记忆", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["方向盘记忆"]},
     {"no": 29, "name": "仪表盘", "fill_rule": "有全液晶写全液晶；没有就写**寸仪表", "value_type": "cluster", "normalize": "cluster", "source_rows": ["全液晶仪表盘", "液晶仪表尺寸", "行车电脑显示屏幕"], "merge": true},
-    {"no": 30, "name": "HUD", "fill_rule": "AR-HUD照写AR-HUD；普通写HUD", "value_type": "hud", "normalize": "hud", "source_rows": ["HUD抬头数字显示", "抬头显示", "HUD"], "car_kb_gap": true},
+    {"no": 30, "name": "HUD", "fill_rule": "AR-HUD照写AR-HUD；普通写HUD", "value_type": "hud", "normalize": "hud", "source_rows": ["HUD抬头数字显示", "抬头显示", "HUD", "AR-HUD增强现实抬头显示", "AR-HUD"], "car_kb_gap": true},
     {"no": 31, "name": "内后视镜", "md_name": "内后视镜功能", "fill_rule": "有流媒体写流媒体；手动防眩目默认双方●（行业事实标配），只有流媒体才参与比较", "value_type": "rearview", "normalize": "rearview", "source_rows": ["内后视镜功能"]},
     {"no": 32, "name": "USB数量", "md_name": "USB/Type-C接口数量", "fill_rule": "默认共3个（0元），仅额外接口计差价", "value_type": "usb", "normalize": "usb", "source_rows": ["USB/Type-C接口数量"]},
     {"no": 33, "name": "无线充电", "md_name": "手机无线充电功能", "fill_rule": "只标前后排和有无；前排只有一个的情况pjy自己再分辨", "value_type": "wireless_charge", "normalize": "wireless_charge", "source_rows": ["手机无线充电功能", "手机无线充电功率"], "merge": true},

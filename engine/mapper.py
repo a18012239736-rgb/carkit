@@ -423,15 +423,31 @@ def n_cluster(raw, i, cfg):
 
 
 def n_hud(raw, i, cfg):
-    c = _cell(raw, cfg["source_rows"], i)
-    if not _solid(c):
-        return _bool_val(c)
-    t = _txt(c).upper()
-    if "P-HUD" in t or "P HUD" in t:
-        return "●P-HUD"
-    if "AR" in t:
-        return "●AR-HUD"
-    return "●HUD"
+    from .stage_one import parts
+    standard, optional, cells = [], [], []
+    order = ['HUD', 'AR-HUD', 'P-HUD']
+    for name in cfg['source_rows']:
+        c = _cell(raw, [name], i)
+        cells.append(c)
+        for values, target in ((_standard_parts(c), standard), (parts(c, optional=True), optional)):
+            for value in values:
+                if _pending_part(value):
+                    continue
+                text = (name + ' ' + value).upper().replace(' ', '')
+                if 'P-HUD' in text or 'PHUD' in text:
+                    kind = 'P-HUD'
+                elif 'AR-HUD' in text or 'ARHUD' in text or '增强现实' in text or value.upper() == 'AR':
+                    kind = 'AR-HUD'
+                else:
+                    kind = 'HUD'
+                target.append(kind)
+    # A higher optional type must not replace a confirmed standard HUD.
+    if standard:
+        return '●' + max(standard, key=order.index)
+    pending = _pending_value(*cells)
+    if pending:
+        return pending
+    return '○' + max(optional, key=order.index) + '(选装)' if optional else ABSENT
 
 
 def n_rearview(raw, i, cfg):
@@ -572,6 +588,11 @@ def legacy_mapped_item(raw, i, no):
             value = f'{size_s}仪表(○全液晶选装)' if size_s else '○全液晶(选装)'
         else:
             value = f'{size_s}仪表' if size_s else _bool_val(size_c)
+        return {'value': value}
+    if no == 30:
+        c = _cell(raw, ['HUD抬头数字显示', '抬头显示', 'HUD'], i)
+        text = _txt(c).upper()
+        value = _bool_val(c) if not _solid(c) else '●P-HUD' if 'P-HUD' in text or 'P HUD' in text else '●AR-HUD' if 'AR' in text else '●HUD'
         return {'value': value}
     if no == 31:
         c = _cell(raw, ['内后视镜功能'], i)

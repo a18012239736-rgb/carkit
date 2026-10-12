@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>产品小工具 — 车型配置对比</title>
-<link rel="stylesheet" href="style.css?v=floating-scroll-20261010">
+<link rel="stylesheet" href="style.css?v=stage-options-20261012">
 <link rel="stylesheet" href="config-editor.css?v=seat-mapping-20261009">
 <link rel="stylesheet" href="valuation-editor.css?v=ux-20261009-2">
 <link rel="stylesheet" href="ppt-draft-editor.css?v=ux-20261009">
@@ -42,6 +42,7 @@
       </div>
       <div class="card" id="stage-candidates" hidden><h2>请选择车型</h2><div id="stage-candidate-list"></div></div>
       <div class="card" id="stage-trims" hidden><h2>选择输出版型与比较基准</h2><p class="dim">第一行作为基本配置；后续版型可选择之前已输出的版型作为比较基准。程序只写相对基准的变化，继承项不重复。</p><button id="inspect-raw">查看完整配置</button><div id="raw-inspector" class="table-wrap" hidden></div><div id="stage-trim-editor"></div><button id="btn-stage-export" class="primary">导出配置阶梯 Markdown</button><div id="stage-export-status" class="status"></div><details id="md-preview" hidden><summary>查看导出文档</summary><pre id="md-preview-text"></pre></details></div>
+      <div id="stage-display-settings" hidden></div>
       <details class="card advanced-import"><summary>备用：导入本地配置数据</summary>
         <div class="row">
           <button id="btn-import-raw">导入 HTML / raw JSON…</button>
@@ -198,6 +199,7 @@
 <script src="config-editor.js?v=seat-mapping-20261009"></script>
 <script src="valuation-editor.js?v=ux-20261009-2"></script>
 <script src="ppt-draft-editor.js?v=ux-20261009"></script>
-<script src="app.js?v=floating-scroll-20261010"></script>
+<script src="stage-display-settings.js?v=stage-options-20261012"></script>
+<script src="app.js?v=stage-display-layout-20261012"></script>
 </body>
 </html>

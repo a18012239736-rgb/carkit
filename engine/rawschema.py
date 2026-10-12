@@ -70,7 +70,7 @@ def from_compact(data, series_id: str = "", scraped_at: str = "") -> RawTable:
     rows = []
     for r in rows_in:
         cells = [_split_compact_cell(v) for v in r.get("v", [])]
-        rows.append(RawRow(name=r["n"], cells=cells))
+        rows.append(RawRow(name=r["n"], cells=cells, group=r.get("group", "")))
     # 价格行
     price_row = next((r for r in rows if r.name == "厂商指导价(元)"), None)
     if price_row:

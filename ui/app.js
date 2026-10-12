@@ -308,8 +308,11 @@ async function refreshRawList() {
     if(!window.confirm(`删除历史记录「${r.label}」？\n原始数据移入回收站，已导出的文档保留。`))return;
     await api('remove_vehicle_history',r.file);
     ST.stage={trims:[],seriesId:'',model:''};
+    stageDisplayRevision++;
+    document.querySelector('#ladder-visual')?.remove();
+    StageDisplaySettings.refresh();
     syncActionButtons();
-    $('#stage-trims').hidden=true;$('#md-preview').hidden=true;
+    $('#stage-trims').hidden=true;$('#stage-display-settings').hidden=true;$('#md-preview').hidden=true;
     if($('#diff-vehicle').value===r.file){
       $('#diff-vehicle').value='';
       await selectCompetitor();
@@ -353,6 +356,7 @@ function handleStageResult(res) {
   $("#stage-candidates").hidden = true;
   $('#raw-inspector').hidden=true; $('#raw-inspector').replaceChildren(); $('#md-preview').hidden=true; $('#stage-export-status').textContent='';
   ST.stage = {trims: res.trims, seriesId: res.series_id, model: res.model};
+  StageDisplaySettings.refresh();
   $("#scrape-status").textContent = `✓ 已读取 ${res.model}：${res.trims.length} 个版型、${res.rows} 行完整配置${res.raw_path ? `\n原始数据：${res.raw_path}` : ""}`;
   $("#scrape-status").className = "status ok";
   renderStageTrimEditor();
@@ -381,8 +385,10 @@ function renderCaptureFilters(filters) {
 }
 
 function renderStageTrimEditor() {
+  stageDisplayRevision++;
   document.querySelector('#ladder-visual')?.remove();
   $("#stage-trims").hidden = false;
+  $('#stage-display-settings').hidden = false;
   const trims = ST.stage.trims;
   if(window.StageEditor) { StageEditor.mount($('#stage-trim-editor'), trims); syncActionButtons(); return; }
   const price = t => {
@@ -415,16 +421,29 @@ function stagePlan() {
   return plan;
 }
 
+let stageDisplayRevision = 0;
+StageDisplaySettings.mount($('#stage-display-settings'), {api, model: () => ST.stage.model, onSaved() {
+  stageDisplayRevision++;
+  document.querySelector('#ladder-visual')?.remove();
+  $('#md-preview').hidden = true;
+  $('#md-preview-text').textContent = '';
+  $('#stage-export-status').textContent = '展示清单已更新，请重新查看或导出配置阶梯。';
+  $('#stage-export-status').className = 'status';
+}});
+
 const previewButton = document.createElement('button');
 previewButton.textContent = '查看配置阶梯图';
 previewButton.id = 'btn-stage-preview';
 $('#btn-stage-export').before(previewButton);
 previewButton.onclick = async () => {
+  const revision = stageDisplayRevision;
   const res = await api('stage_preview', stagePlan());
+  if (revision !== stageDisplayRevision) return;
   if (!res.ok) return toast(res.error, 'err');
   document.querySelector('#ladder-visual')?.remove();
   const panel = document.createElement('section');
   panel.id = 'ladder-visual';
+  panel.className = 'card';
   panel.innerHTML = `<div class="ladder-heading"><h2>配置阶梯</h2><button class="close-ladder">收起</button></div><p class="dim">指导价单位：万元 · 按上方所选比较基准显示；选装单列</p><div class="ladder-scroll"><div class="ladder-sheet"><h3 class="ladder-model">${esc(res.model)}</h3><div class="ladder-columns">${res.columns.map(c => `<article class="ladder-column"><h4>${esc(c.name)}</h4><div class="ladder-price">${c.price == null ? '待核' : Number(c.price).toFixed(2)}</div><strong>${c.base == null ? '基础配置：' : '相对 '+esc(c.base)+'：'}</strong><ul>${(c.items.length ? c.items : ['配置相同，仅价格/续航差异。']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>${c.options.length ? `<details><summary>选装配置</summary><ul>${c.options.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</article>`).join('')}</div></div></div>`;
   panel.querySelector('.ladder-heading h2').textContent = res.model + ' · 配置阶梯';
   panel.querySelector('.ladder-model').textContent = `${res.columns.length} 个版型 · 指导价与配置一览`;
@@ -440,7 +459,7 @@ previewButton.onclick = async () => {
     unit.textContent = c.price == null ? '指导价待核' : '万元';
     price.append(unit);
   });
-  $('#stage-trims').append(panel);
+  $('#stage-display-settings').after(panel);
   panel.querySelector('.close-ladder').onclick = () => panel.remove();
   panel.scrollIntoView({behavior:'smooth', block:'start', inline:'start'});
   panel.querySelector('.ladder-scroll').scrollLeft = 0;
@@ -448,9 +467,11 @@ previewButton.onclick = async () => {
 $('#stage-trim-editor').addEventListener('change', () => { document.querySelector('#ladder-visual')?.remove(); syncActionButtons(); });
 
 $("#btn-stage-export").addEventListener("click", async () => {
+  const revision = stageDisplayRevision;
   const plan = stagePlan();
   const res=await api("stage_export",plan,ST.stage.model+'-配置阶梯',true);
   if (res.cancelled) return;
+  if (revision !== stageDisplayRevision) return toast('已导出：'+res.path+'。展示清单已更新，请重新导出。');
   $('#md-preview').hidden=false; $('#md-preview-text').textContent=res.md;
   $("#stage-export-status").textContent=res.ok?'✓ 已导出：'+res.path:'✕ '+res.error;
   $("#stage-export-status").className=res.ok?'status ok':'status err';
