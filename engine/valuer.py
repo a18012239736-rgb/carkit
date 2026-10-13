@@ -47,7 +47,7 @@ DEFAULT_DYNAMIC_PARAMS = {
     30: {'hud': 1000, 'ar_hud': 2000, 'p_hud': 3000},
     31: {'streaming': 1000},
     32: {'base_count': 3, 'per_port': 50},
-    33: {'per_charger': 350},
+    33: {'per_charger': 350, 'slow_charger': 100},
     34: {'fabric': 0, 'faux': 1500, 'leather': 2500, 'suede': 3000, 'nappa': 3500},
     35: {'per_direction': 50, 'electric_bonus': 400},
     36: {'ventilation': 400, 'heating': 250, 'massage': 600, 'headrest': 100},
@@ -62,7 +62,7 @@ EDITOR_FIELDS = {
     3: [('platform_800v', '800V', '元')],
     4: [('base_inch', '基准轮径', '寸'), ('per_inch', '每增加1寸', '元'), ('alloy_bonus', '铝轮毂加价', '元')],
     5: [('per_airbag', '每个气囊', '元')],
-    6: [('soft_hard', '软硬调节', '元'), ('height_or_air', '高低/空气悬架', '元')],
+    6: [('soft_hard', '软硬调节', '元'), ('height_or_air', '高低调节', '元')],
     7: [('reverse_or_360', '倒车/360影像', '元'), ('image_540', '540影像', '元')],
     9: [('cruise', '定速巡航', '元'), ('l2', '基础L2', '元'), ('highway_noa', '高速NOA', '元'), ('city_noa', '城市NOA', '元')],
     12: [('manual', '手动前备箱', '元'), ('electric', '电动前备箱', '元')],
@@ -78,7 +78,7 @@ EDITOR_FIELDS = {
     30: [('hud', 'HUD', '元'), ('ar_hud', 'AR-HUD', '元'), ('p_hud', 'P-HUD', '元')],
     31: [('streaming', '流媒体后视镜', '元')],
     32: [('base_count', '基础接口数', '个'), ('per_port', '每个接口差', '元')],
-    33: [('per_charger', '每个无线充电', '元')],
+    33: [('per_charger', '快充/个', '元'), ('slow_charger', '慢充/个', '元')],
     34: [('fabric', '织物', '元'), ('faux', '仿皮', '元'), ('leather', '真皮', '元'), ('suede', '翻毛皮', '元'), ('nappa', 'NAPPA', '元')],
     35: [('per_direction', '每个调节方向', '元'), ('electric_bonus', '每个电调座椅加价', '元')],
     36: [('ventilation', '通风/座', '元'), ('heating', '加热/座', '元'), ('massage', '按摩/座', '元'), ('headrest', '头枕音响/座', '元')],
@@ -311,8 +311,8 @@ def explain_rule(valuation, no):
         1: f'续航差小于{p("threshold_km")}km计0，否则续航差×{p("per_km")}元/km',
         3: f'800V：{p("platform_800v")}元；其他平台：0元',
         4: f'R{p("base_inch")}钢轮毂为0元；每增加1寸加{p("per_inch")}元，铝轮毂另加{p("alloy_bonus")}元',
-        5: f'气囊每个{p("per_airbag")}元，侧气帘计2个、中央气囊计1个',
-        6: f'软硬调节{p("soft_hard")}元，高低调节或空气悬架{p("height_or_air")}元；两项可叠加',
+        5: f'气囊每个{p("per_airbag")}元；主副驾各1个，侧气囊前后排各2个，头部气囊前后排各1个，前排中间气囊1个，膝部气囊每个标配项1个；选配不计',
+        6: f'软硬调节{p("soft_hard")}元，高低调节{p("height_or_air")}元；空气/魔毯悬架按两项合计',
         7: f'倒车影像或360影像{p("reverse_or_360")}元，540影像{p("image_540")}元，无配置0元',
         9: f'定速巡航{p("cruise")}元，基础L2 {p("l2")}元，高速NOA {p("highway_noa")}元，城市NOA {p("city_noa")}元',
         12: f'手动前备箱{p("manual")}元、电动前备箱{p("electric")}元',
@@ -328,7 +328,7 @@ def explain_rule(valuation, no):
         30: f'HUD {p("hud")}元，AR-HUD {p("ar_hud")}元，P-HUD {p("p_hud")}元',
         31: f'手动防眩目0元，流媒体后视镜{p("streaming")}元',
         32: f'USB/Type-C默认{p("base_count")}个为0元，每个接口差额{p("per_port")}元',
-        33: f'无线充电每个{p("per_charger")}元，功率不作为数量',
+        33: f'无线充电≥40W为快充，每个{p("per_charger")}元；低于40W为慢充，每个{p("slow_charger")}元；前后排分别计，未标功率沿用快充单价但不补写功率',
         34: f'座椅：织物{p("fabric")}元、仿皮{p("faux")}元、真皮{p("leather")}元、翻毛皮{p("suede")}元、NAPPA {p("nappa")}元',
         35: f'座椅每向{p("per_direction")}元，每个电调座椅另加{p("electric_bonus")}元；主副驾合计',
         36: f'每座：通风{p("ventilation")}元、加热{p("heating")}元、按摩{p("massage")}元、头枕音响{p("headrest")}元；前排含主副驾',
@@ -427,8 +427,8 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
         return abs(wheel(cur) - wheel(prev))
     if no == 5: return abs(num(cur) - num(prev)) * p('per_airbag')
     if no == 6:
-        def suspension(v): return (p('soft_hard') if "软硬" in v else 0) + (p('height_or_air') if "高低" in v or "空气" in v else 0)
-        return abs(suspension(cur) - suspension(prev))
+        from .suspension import amount
+        return abs(amount(cur, params) - amount(prev, params))
     if no == 7: return abs((p('image_540') if "540" in cur else p('reverse_or_360') if "360" in cur or '倒车影像' in cur else 0) - (p('image_540') if "540" in prev else p('reverse_or_360') if "360" in prev or '倒车影像' in prev else 0))
     if no == 9:
         from .differ import normalize_adas
@@ -462,11 +462,8 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
         from .usb import usb_total
         return abs((usb_total(cur) or p('base_count')) - ((usb_total(prev) or p('base_count')) if bits else p('base_count'))) * p('per_port')
     if no == 33:
-        def chargers(v):
-            if v.strip() in ('✕','X','无',''): return 0
-            m = re.search(r'(\d+)\s*(?:个|处)', v)
-            return int(m[1]) if m else 2 if '双' in v else 1
-        return abs(chargers(cur) - chargers(prev)) * p('per_charger')
+        from .wireless import amount
+        return abs(amount(cur, p('per_charger'), p('slow_charger')) - amount(prev, p('per_charger'), p('slow_charger')))
     if no == 34:
         rank = {"织物": p('fabric'), "仿皮": p('faux'), "真皮": p('leather'), "翻毛皮": p('suede'), "NAPPA": p('nappa')}
         return abs(next((v for k,v in reversed(list(rank.items())) if k in cur),0)-next((v for k,v in reversed(list(rank.items())) if k in prev),0))

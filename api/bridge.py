@@ -184,7 +184,7 @@ class Bridge:
                 # Upgrade only untouched source-backed values, in the same cache.
                 # Marketing terms never override a user's different correction.
                 from engine.seat_adjust import from_raw, legacy_summary
-                from engine.mapper import legacy_mapped_item, map_raw_to_ladder, n_high_voltage, n_seat_memory, n_sunroof
+                from engine.mapper import legacy_mapped_item, map_raw_to_ladder, n_high_voltage, n_seat_memory, n_sunroof, n_seat_func
                 mapped = map_raw_to_ladder(raw, self.rules)
                 source_indices = {trim.short: i for i, trim in enumerate(raw.trims)}
                 configs = {item['no']: item for item in self.rules.items}
@@ -212,21 +212,27 @@ class Bridge:
                     for item, normalize in alias_updates:
                         if i < len(item.values) and item.values[i] == '✕':
                             item.values[i] = normalize(raw, source_i, configs[item.no])
-                    for no in (9, 25, 29, 30, 31, 34, 36):
+                    for no in (5, 6, 7, 9, 21, 22, 25, 29, 30, 31, 33, 34, 35, 36, 39):
                         item = lad.item(no)
                         if not item or i >= len(item.values):
                             continue
-                        old = legacy_mapped_item(raw, source_i, no)
-                        if item.values[i] != old['value']:
-                            continue
+                        versions = [legacy_mapped_item(raw, source_i, no)]
+                        if no == 5:
+                            versions.append(legacy_mapped_item(raw, source_i, no, legacy_side=False))
                         if no == 36:
+                            value, _, subs = n_seat_func(raw, source_i, configs[no], assume_front=False)
+                            versions.append({'value': value, 'subs': subs})
                             current_subs = {row['sub']: row['values'][i] for row in item.subs if i < len(row['values'])}
-                            if current_subs != old['subs']:
+                            if not any(item.values[i] == old['value'] and current_subs == old['subs'] for old in versions):
                                 continue  # An explicit seat correction keeps its whole trim authoritative.
                             for row in item.subs:
                                 row['values'][i] = next(sub['values'][source_i] for sub in mapped[no]['subs'] if sub['sub'] == row['sub'])
-                        item.values[i] = mapped[no]['values'][source_i]
-                for item in (roof, seat, lad.item(3), lad.item(30), lad.item(45)):
+                        elif not any(item.values[i] == old['value'] for old in versions):
+                            continue
+                        item.values[i] = (ladder_mod._airbag_display(mapped[5]['values'], mapped[5]['airbag_comps'])[source_i]
+                                          if no == 5 else mapped[no]['values'][source_i])
+                        item.row_absent = mapped[no]['row_absent']
+                for item in (roof, seat, lad.item(3), lad.item(5), lad.item(30), lad.item(45)):
                     if item and raw.row(*configs[item.no]['source_rows']):
                         item.row_absent = False
                 # Existing captures keep hand edits; append only newly defined items.
@@ -342,7 +348,17 @@ class Bridge:
         if not path or not os.path.exists(path):
             return list(stage_one.DEFAULT_EXCLUDED_ROWS)
         with open(path, encoding='utf-8') as source:
-            return self._validate_stage_exclusions(json.load(source))
+            data = json.load(source)
+        if isinstance(data, dict) and data.get('schema') == 'carkit.stage-display/v2':
+            return self._validate_stage_exclusions(data.get('excluded_rows'))
+        rows = self._validate_stage_exclusions(data)
+        # Apply this newly confirmed default once; later explicit restores win.
+        if '激光雷达线数' not in rows:
+            rows.append('激光雷达线数')
+        result = self.save_stage_display_rules(rows)
+        if not result['ok']:
+            raise ValueError(result['error'])
+        return rows
 
     @staticmethod
     def _validate_stage_exclusions(rows):
@@ -376,7 +392,8 @@ class Bridge:
         try:
             rows = self._validate_stage_exclusions(excluded_rows)
             path = os.path.join(self.workdir, '阶梯展示排除清单.json')
-            atomic_write_text(path, json.dumps(rows, ensure_ascii=False, indent=2)+'\n')
+            data = {'schema': 'carkit.stage-display/v2', 'excluded_rows': rows}
+            atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2)+'\n')
             return {'ok': True, 'excluded_rows': rows}
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}

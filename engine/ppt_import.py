@@ -318,11 +318,19 @@ def _apply(text, values, evidence, leftovers):
         m=re.search(r'(\d+)气囊',t)
         previous_evidence=list(evidence.get(5,[]))
         if m:setv(5,m[1]+'气囊')
-        for component, number in [('侧气帘',2),('中央安全气囊',1)]:
-            if component not in t:continue
+        airbag_components = [
+            ('侧气帘', 2, r'侧气帘'),
+            ('前排中间气囊', 1, r'前排中间气囊|前排中央(?:安全)?气囊|(?<!后排)中央安全气囊'),
+            ('主驾膝部气囊', 1, r'主(?:驾驶|驾)膝部气囊'),
+            ('副驾膝部气囊', 1, r'副(?:驾驶|驾)膝部气囊'),
+        ]
+        for component, number, pattern in airbag_components:
+            if not re.search(pattern,t):continue
+            # An explicit total already includes the components described in that line.
+            if m:continue
             previous = re.search(r'(\d+)气囊',str(values.get(5,'')))
-            already_counted = bool(re.search(r'(?:含|包含|包括|已含)'+component,t)) or (
-                not m and any(component in source for source in previous_evidence))
+            already_counted = bool(re.search(r'(?:含|包含|包括|已含)(?:'+pattern+')',t)) or any(
+                re.search(pattern,source) for source in previous_evidence)
             if previous and not already_counted:
                 setv(5,str(int(previous[1])+number)+'气囊')
             elif not previous:

@@ -128,11 +128,25 @@ def n_tire(raw, i, cfg):
 _AIRBAG_COMP = [("主/副驾驶座安全气囊", "主副"), ("前/后排侧气囊", "侧"), ("前/后排头部气囊(气帘)", "气帘")]
 
 
-def n_airbag(raw, i, cfg):
+def n_airbag(raw, i, cfg, *, legacy_side=False):
     """返回 (count, components:list[str])；显示层再拼"""
+    if legacy_side:
+        return _legacy_airbag(raw, i)
+    from .airbags import from_raw
+    return from_raw(raw, i)
+
+
+def _legacy_airbag(raw, i, *, legacy_side=True):
+    """Frozen pre-fix counts, only for identifying untouched historical caches."""
     count, comps = 0, []
     for row_name, comp in _AIRBAG_COMP:
         c = _cell(raw, [row_name], i)
+        if comp == '侧' and not legacy_side:
+            from .airbags import side_positions
+            positions = side_positions(c)
+            count += 2 * len(positions)
+            comps.extend(position + '侧' for position in positions)
+            continue
         if not _solid(c):
             continue
         t = _txt(c)
@@ -151,7 +165,7 @@ def n_airbag(raw, i, cfg):
                 if rear:
                     count += 2
                     comps.append("后侧")
-            else:  # 气帘：物理上左右各1条覆盖前后排，无论标注均计2、统一叫「前气帘」（golden 口径）
+            else:  # Frozen historical output; current counting is in airbags.from_raw.
                 count += 2
                 comps.append("前气帘")
     if any(_solid(_cell(raw, [name], i)) for name in ('中央安全气囊', '前排中央安全气囊')):
@@ -163,20 +177,34 @@ def n_airbag(raw, i, cfg):
 
 
 def n_suspend(raw, i, cfg):
-    for rn in ("魔毯智能悬架", "空气悬架"):
-        c = _cell(raw, [rn], i)
-        if _solid(c):
-            return "●魔毯悬架" if "魔毯" in rn else "●空气悬架"
-    c = _cell(raw, ["可变悬架功能", "可变悬架"], i)
-    if c is None:
-        return ABSENT
-    if _solid(c):
-        core = _txt(c).replace("悬架", "", 1) if _txt(c).startswith("悬架") else _txt(c)
-        return f"●{core or '可变悬架'}"
-    if _optional(c):
-        core = _txt(c).replace("悬架", "", 1) if _txt(c).startswith("悬架") else _txt(c)
-        return f"○{core or '可变悬架'}(选装)"
-    return ABSENT
+    from .stage_one import parts
+    from .suspension import components
+    cells = [(name, _cell(raw, [name], i)) for name in
+             ('魔毯智能悬架', '空气悬架', '可变悬架功能', '可变悬架')]
+
+    def values(optional=False):
+        return [name if text in ('有', '支持', '是', '标配') else text
+                for name, cell in cells for text in parts(cell, optional=optional)
+                if not _pending_part(text)]
+
+    def summary(texts):
+        text = '+'.join(texts)
+        if '魔毯' in text:
+            return '魔毯悬架'
+        if '空气' in text:
+            return '空气悬架'
+        features = components(text)
+        if features:
+            return '+'.join(label for key, label in
+                            (('soft_hard', '软硬调节'), ('height_or_air', '高低调节')) if key in features)
+        return '+'.join(dict.fromkeys(value.removeprefix('悬架') for value in texts))
+
+    standard, optional = summary(values()), summary(values(optional=True))
+    if standard:
+        return '●' + standard + (f'(○{optional}选装)' if optional else '')
+    if optional:
+        return f'○{optional}(选装)'
+    return _pending_value(*(cell for _, cell in cells)) or ABSENT
 
 
 def n_camera540(raw, i, cfg):
@@ -184,16 +212,16 @@ def n_camera540(raw, i, cfg):
     if _solid(c540):
         return "540影像"
     c = _cell(raw, ["驾驶辅助影像"], i)
-    if not _solid(c):
-        return ABSENT
-    t = _txt(c)
-    # 双子项里也可能藏 540
-    all_t = t + " ".join(s.text for s in (c.subs if isinstance(c, Cell) else []))
+    standard = _standard_parts(c)
+    if not standard:
+        return _pending_value(c) or ABSENT
+    # Each subitem has its own standard/optional marker.
+    all_t = " ".join(standard)
     if "540" in all_t:
         return "540影像"
     if "360" in all_t:
         return "360影像"
-    return t or "●"
+    return standard[0] if standard[0] != '有' else "●"
 
 
 _LIDAR_BRAND = {"HESAI禾赛科技": "禾赛", "禾赛": "禾赛", "华为": "华为", "速腾聚创": "速腾聚创", "览沃": "览沃"}
@@ -354,10 +382,20 @@ def _screen_core(t: str) -> str:
     return f"{m.group(1)}寸" if m else (t or "")
 
 
+def _optional_screen(c, name):
+    from .screen_config import normalize_screen
+    text = normalize_screen(_txt(c), 21)
+    if not _pending_part(_txt(c)) and not text.startswith('[待定]') and _num(text) is not None:
+        return f"○{_screen_core(text)}{name}"
+    return _bool_val(c)
+
+
 def n_screen_center(raw, i, cfg):
     c = _cell(raw, ["中控屏幕尺寸"], i)
     if c is None:
         c = _cell(raw, ["中控彩色屏幕"], i)
+    if _optional(c):
+        return _optional_screen(c, '中控')
     if not _solid(c):
         return _bool_val(c)
     base = f"{_screen_core(_txt(c))}中控"
@@ -370,6 +408,8 @@ def n_screen_center(raw, i, cfg):
 
 def n_screen_passenger(raw, i, cfg):
     c = _cell(raw, cfg["source_rows"], i)
+    if _optional(c):
+        return _optional_screen(c, '副驾屏')
     if not _solid(c):
         return _bool_val(c)
     return f"{_screen_core(_txt(c))}副驾屏"
@@ -474,13 +514,14 @@ def n_usb(raw, i, cfg):
 
 
 def n_wireless_charge(raw, i, cfg):
+    from .wireless import source_label
     c = _cell(raw, ["手机无线充电功能"], i)
-    if not _solid(c):
-        return _bool_val(c)
-    pos = _txt(c) or "前排"
+    positions = _standard_parts(c)
+    if not positions:
+        return _pending_value(c) or _bool_val(c)
     p = _cell(raw, ["手机无线充电功率"], i)
-    pw = _txt(p) if _solid(p) else ""
-    return f"●{pos}{pw}"
+    power = '+'.join(_standard_parts(p))
+    return '●' + source_label('+'.join(positions), power, suffix='')
 
 
 def n_seat_adjust(raw, i, cfg):
@@ -491,18 +532,21 @@ def n_seat_adjust(raw, i, cfg):
 _SEAT_FUNCS = ["加热", "通风", "按摩"]
 
 
-def n_seat_func(raw, i, cfg):
+def n_seat_func(raw, i, cfg, *, assume_front=True):
     from .seat_functions import FEATURES, SUBS, from_text
     c = _cell(raw, ["前排座椅功能"], i)
     parts = _standard_parts(c)
     hc = _cell(raw, ["前排座椅头枕扬声器", "头枕音响"], i)
     row2 = _cell(raw, ["第二排座椅功能", "后排座椅功能"], i)
-    sub_map = from_text('+'.join(parts), '+'.join(_standard_parts(row2)), '+'.join(_standard_parts(hc)))
+    sub_map = from_text('+'.join(parts), '+'.join(_standard_parts(row2)), '+'.join(_standard_parts(hc)),
+                        front_scope_known=assume_front,
+                        headrest_scope_known=assume_front and bool(raw.row('前排座椅头枕扬声器')),
+                        previous_mapping=not assume_front)
     for cell, field in ((c, 'front'), (row2, 'rear'), (hc, 'headrest')):
         for text in _pending_parts(cell):
-            unknown = from_text(**{field: text})
+            unknown = from_text(**{field: text}, previous_mapping=not assume_front)
             if not any(value != ABSENT for value in unknown.values()):
-                unknown = from_text(**{field: text + ''.join(FEATURES)})
+                unknown = from_text(**{field: text + ''.join(FEATURES)}, previous_mapping=not assume_front)
             for sub, value in unknown.items():
                 if value != ABSENT and sub_map[sub] != '●':
                     sub_map[sub] = '[待定]' + sub + '：' + text
@@ -529,15 +573,16 @@ def n_speaker(raw, i, cfg):
 
 def n_ambient(raw, i, cfg):
     c = _cell(raw, ["车内环境氛围灯"], i)
-    if not _solid(c):
+    parts = _standard_parts(c)
+    if not parts:
         return _bool_val(c)
-    t = _txt(c)
+    t = ' '.join(parts)
     n = _num(t)
-    if n and n > 1:
-        return f"多色({int(n)}色)"
-    if "单色" in t:
+    if n and (n > 1 or re.search(r'(?:万|亿)\s*色', t)):
+        return "多色"
+    if "单色" in t or n == 1:
         return "单色"
-    if "多色" in t:
+    if "多色" in t or re.search(r'[双两二三四五六七八九十百千]色', t):
         return "多色"
     return "●"
 
@@ -549,8 +594,59 @@ def n_text(raw, i, cfg):
     return _txt(c) or "●"
 
 
-def legacy_mapped_item(raw, i, no):
+def legacy_mapped_item(raw, i, no, *, legacy_side=True):
     """Frozen automatic outputs for upgrading untouched pre-fix caches only."""
+    if no == 5:
+        from .ladder import _airbag_display
+        old = [_legacy_airbag(raw, index, legacy_side=legacy_side) for index in range(len(raw.trims))]
+        return {'value': _airbag_display([value[0] for value in old], [value[1] for value in old])[i]}
+    if no == 6:
+        for name in ('魔毯智能悬架', '空气悬架'):
+            if _solid(_cell(raw, [name], i)):
+                return {'value': '●魔毯悬架' if '魔毯' in name else '●空气悬架'}
+        c = _cell(raw, ['可变悬架功能', '可变悬架'], i)
+        core = _txt(c).removeprefix('悬架') or '可变悬架'
+        value = '●' + core if _solid(c) else f'○{core}(选装)' if _optional(c) else ABSENT
+        return {'value': value}
+    if no == 39:
+        c = _cell(raw, ['车内环境氛围灯'], i)
+        value = _bool_val(c)
+        if _solid(c):
+            text = _txt(c)
+            count = _num(text)
+            value = f'多色({int(count)}色)' if count and count > 1 else '单色' if '单色' in text else '多色' if '多色' in text else '●'
+        return {'value': value}
+    if no == 33:
+        c = _cell(raw, ['手机无线充电功能'], i)
+        p = _cell(raw, ['手机无线充电功率'], i)
+        return {'value': '●' + (_txt(c) or '前排') + (_txt(p) if _solid(p) else '') if _solid(c) else _bool_val(c)}
+    if no == 7:
+        full = _cell(raw, ['透明底盘/540度影像'], i)
+        c = _cell(raw, ['驾驶辅助影像'], i)
+        joined = _txt(c) + ' '.join(sub.text for sub in c.subs) if c else ''
+        if _solid(full):
+            value = '540影像'
+        elif not _solid(c):
+            value = ABSENT
+        else:
+            value = '540影像' if '540' in joined else '360影像' if '360' in joined else _txt(c) or '●'
+        return {'value': value}
+    if no == 21:
+        c = _cell(raw, ['中控屏幕尺寸', '中控彩色屏幕'], i)
+        value = _bool_val(c)
+        if _solid(c):
+            value = f'{_screen_core(_txt(c))}中控'
+            for sub in c.subs:
+                if sub.dot == '○':
+                    number = re.search(r'[\d.]+', sub.text or '')
+                    value += f'(○{number[0] if number else sub.text}选装)'
+        return {'value': value}
+    if no == 22:
+        c = _cell(raw, ['副驾娱乐屏', '副驾驶位屏幕尺寸'], i)
+        return {'value': f'{_screen_core(_txt(c))}副驾屏' if _solid(c) else _bool_val(c)}
+    if no == 35:
+        from .seat_adjust import from_raw
+        return {'value': from_raw(raw, i, legacy_price_notes=True)}
     if no in (25, 34):
         c = _cell(raw, ['方向盘材质' if no == 25 else '座椅材质'], i)
         return {'value': _txt(c) if _solid(c) else _bool_val(c)}

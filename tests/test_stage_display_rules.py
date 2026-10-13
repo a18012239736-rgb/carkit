@@ -129,11 +129,11 @@ def test_confirmed_exclusions_are_defaults_but_empty_list_reveals_raw_rows():
 
 def test_all_confirmed_defaults_hide_standard_and_optional_but_keep_raw_data():
     defaults = stage_one.DEFAULT_EXCLUDED_ROWS
-    assert len(defaults) == len(set(defaults)) == 216
+    assert len(defaults) == len(set(defaults)) == 217
     assert {
         '三电系统质保', '高精定位', '记忆泊车', '循迹倒车', '信号灯识别',
         '隐藏电动门把手', '主动降噪', 'USB/Type-C最大充电功率',
-        '对外直流放电功率(kW)', '陡坡缓降', '起步提醒', '语音免唤醒词', '面部识别',
+        '对外直流放电功率(kW)', '陡坡缓降', '起步提醒', '语音免唤醒词', '面部识别', '激光雷达线数',
     }.issubset(defaults)
     assert not {'樱珞粉主题套装', '牛油果绿主题套装', '罗兰紫主题套装'}.intersection(defaults)
     raw = raw_table([RawRow(name, [Cell(dot='●'), Cell(dot='○')]) for name in defaults] + [
@@ -151,6 +151,23 @@ def test_new_exclusions_match_exact_names_without_hiding_other_usb_rows_or_theme
     visible = ['USB/Type-C接口数量', '其他主题套装', '三电系统质保扩展政策']
     raw = raw_table([RawRow(name, [Cell(), Cell(dot='●')]) for name in visible])
     assert [row.name for row in stage_one.display_raw(raw).rows] == visible
+
+
+def test_lidar_line_count_is_hidden_by_default_but_restorable_without_valuation_changes():
+    raw = raw_table([
+        RawRow('激光雷达数量', [Cell(dot='●', text='1'), Cell(dot='●', text='1')]),
+        RawRow('激光雷达品牌', [Cell(dot='●', text='华为'), Cell(dot='●', text='华为')]),
+        RawRow('激光雷达线数', [Cell(dot='●', text='192'), Cell(dot='●', text='896')]),
+    ])
+    original = raw.to_json()
+    assert '激光雷达线数' not in {feature['key'] for feature in stage_one.features(raw)}
+    assert '激光雷达线数' in {feature['key'] for feature in stage_one.features(raw, excluded_rows=[])}
+    assert stage_one.display_raw(raw, excluded_rows=[]).rows == raw.rows
+    rules = Rules()
+    mapped = map_raw_to_ladder(raw, rules)
+    assert mapped[8]['values'][0] == mapped[8]['values'][1]
+    assert map_raw_to_ladder(stage_one.display_raw(raw), rules) == mapped
+    assert raw.to_json() == original
 
 
 def test_new_data_folder_uses_confirmed_defaults_and_saved_empty_list_overrides_them(tmp_path):

@@ -156,6 +156,12 @@ def test_ladder_matches_golden(rules, comp_ladder):
     mismatches = []
     for it in comp_ladder.items:
         g = SEAT_VALUES if it.no == 35 else golden.get(it.no)
+        if it.no == 5:
+            # Confirmed front/rear head markers each count one; retain both in the trace.
+            g = ['4(主副+前侧)', '6(+前气帘+后气帘)', '6', '6', '6', '6', '6']
+        if it.no == 39:
+            # pjy now wants only single/multicolor, not the historical color count.
+            g = ['✕', '✕', '✕', '多色', '多色', '多色', '多色']
         if g is None:
             continue
         mine = it.values
@@ -214,6 +220,9 @@ def test_displays_match(diff_cells):
         gv, gdisp = golden[key]
         if c['no'] == 35:
             gv, gdisp = SEAT_VERDICTS[key[1]], SEAT_DISPLAYS[key[1]]
+        if c['no'] == 33:
+            # Keep actual scope; do not fabricate a single charger or its power.
+            gdisp = ['少 ✕(前排50W)', '多 前排双50W(前排50W)', '多 前排双50W(前排50W)'][key[1]]
         if gdisp == gv:
             continue    # golden 裸判定词（人工压缩），判定词已单独校验
         md, gd = _norm_display(c["display"]), _norm_display(gdisp)
@@ -239,7 +248,8 @@ def test_backup_rows_match(rules, self_ladder, comp_ladder, diff_cells):
         labels = {'可变悬架(软硬调节)': '悬架软硬调节',
                   '天窗(不可开启全景)': '不可开启全景天窗',
                   '车外扬声器': '1个车外扬声器',
-                  '前排双50W无线充电(单)': '前排双50W无线充电(前排单50W无线充电)'}
+                  '前排单50W无线充电': '前排50W无线充电',
+                  '前排双50W无线充电(单)': '前排双50W无线充电(前排50W无线充电)'}
         gm, gl = [labels.get(v,v) for v in gm], [labels.get(v,v) for v in gl]
         actual_more = [v for n,v in zip(g['more_items'],g['more']) if n != 36]
         expected_more = [v for v in gm if '座椅' not in v]

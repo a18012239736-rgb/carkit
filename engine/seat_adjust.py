@@ -120,13 +120,16 @@ def raw_directions(cell):
     return int(total[1]) if total and int(total[1]) > 0 else None
 
 
-def raw_modes(electric, main=None, passenger=None):
+def raw_modes(electric, main=None, passenger=None, *, legacy_price_notes=False):
     from .stage_one import parts
     modes = [None, None]
     if electric is not None or main is not None or passenger is not None:
         modes = ['手调', '手调']
     for part in ([electric]+list(electric.subs)) if electric else []:
         text = _clean(part.text or '')
+        if not legacy_price_notes:
+            # A price annotation is not an adjustment mode or seat marker.
+            text = re.sub(r'[(（]\d+(?:\.\d+)?(?:万)?元[)）]', '', text)
         if not text and electric.subs:
             continue
         matches = list(re.finditer(POSITION+r'(●|○|✕|×|-)?', text))
@@ -166,37 +169,42 @@ def _cells(raw, i):
             for name in ('主/副驾驶座电动调节', '主座椅调节方式', '副座椅调节方式')]
 
 
-def standard_front_positions(cell):
+def standard_front_positions(cell, *, legacy_scope=False):
     """Explicit front seats only; embedded optional/pending markers stay excluded."""
     from .stage_one import parts
     positions = set()
     for text in parts(cell):
         if '[待' in text:
             continue
-        for match in re.finditer(r'(主副(?:驾)?|前排|主(?:驾(?:驶(?:位|座)?)?)?|副(?:驾(?:驶(?:位|座)?)?)?|驾驶位)([●○✕×-]?)', text):
+        pattern = r'(主副(?:驾)?|前排|第一排|主(?:驾(?:驶(?:位|座)?)?)?|副(?:驾(?:驶(?:位|座)?)?)?|驾驶位)([●○✕×-]?)'
+        if legacy_scope:
+            pattern = pattern.replace('|第一排', '')
+        else:
+            text = re.sub(r'(?:前排|第一排)[(（](?:仅)?(驾驶位|主驾(?:驶(?:位|座)?)?|副驾(?:驶(?:位|座)?)?)[)）]', r'\1', text)
+        for match in re.finditer(pattern, text):
             scope, marker = match.groups()
             if marker in {'○', '✕', '×', '-'}:
                 continue
-            positions.update((0, 1) if scope.startswith(('主副','前排')) else (1,) if scope.startswith('副') else (0,))
+            positions.update((0, 1) if scope.startswith(('主副','前排','第一排')) else (1,) if scope.startswith('副') else (0,))
     return sorted(positions)
 
 
-def zero_gravity_positions(raw, i):
+def zero_gravity_positions(raw, i, *, legacy_scope=False):
     """Never infer a seat position from the presence of a zero-gravity dot alone."""
     row = raw.row('零重力座椅')
-    return standard_front_positions(row.cells[i]) if row and i < len(row.cells) else []
+    return standard_front_positions(row.cells[i], legacy_scope=legacy_scope) if row and i < len(row.cells) else []
 
 
-def raw_details(raw, i, *, include_terms=True):
+def raw_details(raw, i, *, include_terms=True, legacy_price_notes=False):
     electric, main, passenger = _cells(raw, i)
     counts = [raw_directions(cell) for cell in (main, passenger)]
-    positions = zero_gravity_positions(raw, i) if include_terms else []
+    positions = zero_gravity_positions(raw, i, legacy_scope=legacy_price_notes) if include_terms else []
     # pjy confirmed this mapping for MG 07, not every brand's zero-gravity seat.
     if raw.series_id == '8563' or re.sub(r'\s+', '', raw.model).upper() == 'MG07':
         for j in positions:
             if counts[j] is None:
                 counts[j] = 10
-    return counts, raw_modes(electric, main, passenger), positions
+    return counts, raw_modes(electric, main, passenger, legacy_price_notes=legacy_price_notes), positions
 
 
 def _extras(cell, standard=False):
@@ -233,10 +241,10 @@ def legacy_summary(raw, i):
     return base+_suffix(_extras(main), _extras(passenger))
 
 
-def from_raw(raw, i, *, include_terms=True):
+def from_raw(raw, i, *, include_terms=True, legacy_price_notes=False):
     from .stage_one import clean, parts
     electric, main, passenger = _cells(raw, i)
-    counts, modes, positions = raw_details(raw, i, include_terms=include_terms)
+    counts, modes, positions = raw_details(raw, i, include_terms=include_terms, legacy_price_notes=legacy_price_notes)
     gravity = raw.row('零重力座椅') if include_terms else None
     unknown = parts(gravity.cells[i]) if gravity and i < len(gravity.cells) else []
     if unknown and not positions and electric is None and main is None and passenger is None:

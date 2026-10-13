@@ -158,24 +158,11 @@ def cmp_mirror(sv, cv, **kw):
 
 
 def cmp_wireless(sv, cv, **kw):
-    def rank(v):
-        s = _strip_dot(v)
-        if not _has(v):
-            return 0, s or "✕"
-        if "双" in s:
-            return 2, "前排双50W"
-        pw = re.search(r"(\d+)W", s)
-        return 1, f"前排{pw.group(1) if pw else ''}50W".replace("50W50W", "50W") if not pw else f"前排{pw.group(1)}W"
-    sr, ss = rank(sv)
-    cr, cs = rank(cv)
-    # 显示对齐 golden：单50W → 「单50W」/「前排50W」
-    cs_d = "单50W" if cr == 1 else cs
-    if sr > cr:
-        return MORE, ss, cs_d
-    if sr < cr:
-        # 少侧 comp 显示保留原值（前排50W）
-        return LESS, ss or "✕", cs
-    return SAME, ss, cs_d
+    from .wireless import amount, label
+    params = kw.get('params') or {}
+    fast, slow = params.get('per_charger', 350), params.get('slow_charger', 100)
+    sr, cr = amount(sv, fast, slow), amount(cv, fast, slow)
+    return (MORE if sr > cr else LESS if sr < cr else SAME), label(sv, suffix=''), label(cv, suffix='')
 
 
 def cmp_speaker_ext(sv, cv, **kw):
@@ -427,7 +414,7 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
             elif vt == "mirror":
                 v, ss, cs = cmp_mirror(sv, cv)
             elif vt == "wireless_charge":
-                v, ss, cs = cmp_wireless(sv, cv)
+                v, ss, cs = cmp_wireless(sv, cv, params=vitem.get('params') if vitem else None)
             elif vt == "cluster":
                 v, ss, cs = cmp_cluster(sv, cv)
             elif vt == "seat_memory":
@@ -476,8 +463,8 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
             if vitem and vitem.get('rule') == 'dynamic':
                 from .valuer import dynamic_delta
                 amount = dynamic_delta(no, sv, cv, vitem.get('params'))
-                if amount:
-                    verdict = MORE if amount > 0 else LESS
+                if amount or no == 6:
+                    verdict = MORE if amount > 0 else LESS if amount < 0 else SAME
             # ○选装注记：对方仅○ → 按无比较但显示注记
             disp = f"{verdict} {ss}({cs})"
             if screen_optional:
@@ -498,7 +485,6 @@ def _cell(no, pi, verdict, disp, sv, cv, exempt, bm, bl):
 
 
 _RANKS = {
-    6: ["软硬调节", "空气悬架", "魔毯"],       # 可变悬架
     7: ["360", "540"],                          # 影像
     17: ["卤素", "氙气", "LED", "LCD"],          # 灯光（LED<LCD 按 pjy 规则 LCD 更高？保守同档处理）
     30: ["HUD", "AR-HUD", "P-HUD"],
@@ -521,15 +507,22 @@ def normalize_adas(value):
 def ambient_level(value):
     if not _has(value):
         return 0
-    text = str(value)
-    count = re.search(r'(\d+)\s*色', text)
-    if '多色' in text or (count and int(count[1]) > 1):
+    text = re.split(r'[（(]\s*○', str(value), maxsplit=1)[0]
+    if _is_optional(text) or re.fullmatch(r'无(?:车内(?:环境)?)?氛围灯', text.strip()):
+        return 0
+    count = re.search(r'(\d+(?:\.\d+)?)\s*(万|亿)?\s*色', text)
+    if ('多色' in text or re.search(r'[双两二三四五六七八九十百千]色', text)
+            or (count and float(count[1]) * (10000 if count[2] == '万' else 100000000 if count[2] == '亿' else 1) > 1)):
         return 2
     return 1
 
 
 def _cmp_generic(no, item, sv, cv):
     """带枚举序的通用比较；返回 (verdict, self_short, comp_short)"""
+    if no == 6:
+        from .valuer import dynamic_delta
+        amount = dynamic_delta(no, sv, cv)
+        return (MORE if amount > 0 else LESS if amount < 0 else SAME), _short_generic(no, sv), _short_generic(no, cv)
     if no == 18:
         from .valuer import _default_rule_amount
         s = _default_rule_amount(no, str(sv), 'more') if _has(sv) else 0
@@ -690,11 +683,8 @@ def _backup_display(no, verdict, sv, cv, ss, cs, name=''):
     elif no == 37:
         out = f"{number(sv)}扬({number(cv)})" if _num(cv) is not None else f"{number(sv)}扬"
     elif no == 33:
-        def charging(value):
-            power = re.search(r"(\d+(?:\.\d+)?)\s*W", value, re.I)
-            watts = f"{float(power[1]):g}W" if power else ""
-            return f"前排{'双' if '双' in value else '单'}{watts}无线充电"
-        out = f'{charging(s)}({charging(c)})' if _has(cv) else charging(s)
+        from .wireless import label
+        out = f'{label(sv, suffix="无线充电")}({label(cv, suffix="无线充电")})' if _has(cv) else label(sv, suffix='无线充电')
     elif no == 32:
         from .usb import usb_label
         out = f'{usb_label(sv)}（{usb_label(cv)}）'

@@ -5,6 +5,7 @@ from collections import Counter
 from dataclasses import replace
 from decimal import Decimal
 from .models import Cell, RawTable
+from .airbags import SOURCE_ROWS as AIRBAG_ROWS, from_raw as airbag_count
 
 EMPTY = {'', '-', '—', '无', '不支持', '✕'}
 RANGE_ROWS = ('CLTC纯电续航里程(km)', 'WLTC纯电续航里程(km)', 'NEDC纯电续航里程(km)')
@@ -228,6 +229,7 @@ DEFAULT_EXCLUDED_ROWS = (
     '起步提醒',
     '语音免唤醒词',
     '面部识别',
+    '激光雷达线数',
 )
 
 
@@ -350,22 +352,12 @@ def features(raw, excluded_rows=None):
                     values=['激光雷达'] if get('激光雷达数量', i) or get('激光雷达品牌', i) else []
                 v.append(values)
             add('激光雷达', v, True)
-        elif name in {'主/副驾驶座安全气囊','前/后排侧气囊','前/后排头部气囊(气帘)','中央安全气囊','前排中央安全气囊'}:
-            ns=['主/副驾驶座安全气囊','前/后排侧气囊','前/后排头部气囊(气帘)']
-            consumed.update(ns)
-            consumed.update({'中央安全气囊','前排中央安全气囊'})
+        elif name in AIRBAG_ROWS:
+            consumed.update(AIRBAG_ROWS)
             v=[]
             for i in range(count):
-                total=int(any(get(n,i) for n in ('中央安全气囊','前排中央安全气囊')))
-                for n in ns:
-                    text=' '.join(get(n,i))
-                    if not text: continue
-                    if '头部' in n: total+=2 # Left/right curtain, not four front/rear airbags.
-                    elif n.startswith('主'):
-                        total+=sum(1 for pos in ['主','副'] if re.search(pos+r'(?:●|(?=/|$))',text))
-                    else:
-                        total+=sum(2 for pos in ['前','后'] if re.search(pos+r'(?:●|(?=/|$))',text))
-                v.append([f'{total}气囊'] if total else [n for n in ns if get(n, i)])
+                total, _ = airbag_count(raw, i)
+                v.append([f'{total}气囊'] if total else [n for n in AIRBAG_ROWS if get(n, i)])
             add('气囊',v,True)
         elif name in {'驾驶辅助影像','透明底盘/540度影像'}:
             consumed.update({'驾驶辅助影像','透明底盘/540度影像'})
@@ -472,24 +464,28 @@ def features(raw, excluded_rows=None):
                 v.append(values)
             add('电动后备厢', v)
         elif name in {'手机无线充电功能','手机无线充电功率'}:
+            from .wireless import source_label
             consumed.update({'手机无线充电功能','手机无线充电功率'})
             v=[]
             for i in range(count):
                 scope=' '.join(get('手机无线充电功能', i))
                 power=' '.join(get('手机无线充电功率', i))
-                if not scope and not power:
+                if not scope and (not power or raw.row('手机无线充电功能') is not None):
                     v.append([])
                 else:
-                    v.append([f'{_detail(scope)}{_detail(power)}手机无线充电'.strip()])
+                    v.append([source_label(_detail(scope) or '●', _detail(power))])
             add('手机无线充电', v, True)
         elif name in {'车内环境氛围灯','主动式环境氛围灯'}:
+            from .mapper import n_ambient
             consumed.update({'车内环境氛围灯','主动式环境氛围灯'})
             v=[]
             for i in range(count):
                 color=' '.join(get('车内环境氛围灯', i))
                 active=bool(get('主动式环境氛围灯', i))
                 values=[]
-                if color: values.append(_detail(color)+'氛围灯')
+                if color:
+                    label = n_ambient(raw, i, {})
+                    values.append((label if label in {'单色', '多色'} else '')+'氛围灯')
                 if active: values.append('主动式环境氛围灯')
                 v.append(values)
             add('氛围灯', v)
@@ -560,10 +556,11 @@ def features(raw, excluded_rows=None):
                         continue
                     scope=['主驾'] if re.search('仅驾驶位|仅主驾|主驾驶',item) else ['副驾'] if '副驾驶' in item else ['主驾','副驾'] if name.startswith('前') else ['后排']
                     for token in re.split(r'[+/、]', item):
-                        matched = [f for f in ['加热','通风','按摩','头枕扬声器','头枕音响'] if f in token]
+                        matched = [f for f in ['加热','通风','按摩','头枕扬声器','头枕音响'] if f in token.replace('头枕加热', '')]
                         feats.extend(p+'座椅'+f for f in matched for p in scope)
                         remainder=clean(token)
-                        for feature in matched: remainder=remainder.replace(feature, '')
+                        for feature in matched:
+                            remainder=re.sub(r'(?<!头枕)加热', '', remainder) if feature == '加热' else remainder.replace(feature, '')
                         remainder=re.sub(r'\((?:仅驾驶位|仅主驾|主驾驶|副驾驶|主驾|副驾|主副驾|前排|后排)\)', '', remainder).strip()
                         if _detail(remainder):
                             feats.append(name+'：'+(clean(token) if remainder.startswith('(') else remainder))
