@@ -396,7 +396,10 @@ def dynamic_delta(no, self_value, comp_value, custom_params=None):
         return (params['price'] if difference > 0 else -params['price']) if abs(difference) >= params['threshold_inch'] and difference else 0
     if no == 32:
         from .usb import usb_total
-        return ((usb_total(left) or params['base_count']) - (usb_total(right) or params['base_count'])) * params['per_port']
+        left_count = usb_total(left, default=params['base_count'])
+        right_count = usb_total(right, default=params['base_count'])
+        return ((params['base_count'] if left_count is None else left_count)
+                - (params['base_count'] if right_count is None else right_count)) * params['per_port']
     if no == 35:
         ld, le = _seat_adjust_components(left)
         rd, relectric = _seat_adjust_components(right)
@@ -460,7 +463,10 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
     if no == 31: return p('streaming') if "流媒体" in cur and "流媒体" not in prev else 0
     if no == 32:
         from .usb import usb_total
-        return abs((usb_total(cur) or p('base_count')) - ((usb_total(prev) or p('base_count')) if bits else p('base_count'))) * p('per_port')
+        current_count = usb_total(cur, default=p('base_count'))
+        previous_count = usb_total(prev, default=p('base_count')) if bits or values is not None else p('base_count')
+        return abs((p('base_count') if current_count is None else current_count)
+                   - (p('base_count') if previous_count is None else previous_count)) * p('per_port')
     if no == 33:
         from .wireless import amount
         return abs(amount(cur, p('per_charger'), p('slow_charger')) - amount(prev, p('per_charger'), p('slow_charger')))

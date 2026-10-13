@@ -111,7 +111,7 @@ def test_bridge_uses_saved_rule_direction_and_keeps_repeated_results(tmp_path):
 
 def test_incomplete_snapshot_can_add_and_normalize_default_usb_row():
     snapshot = prepare_snapshot(Snapshot(trims=[{'name': '基础版'}]))
-    assert next(cell for cell in snapshot.cells if cell['no'] == 32)['values']['基础版'] == 'USB/Type-C 3个'
+    assert next(cell for cell in snapshot.cells if cell['no'] == 32)['values']['基础版'] == '✕'
 
 
 def test_cli_defaults_keep_history_and_do_not_overwrite_adjacent_rule_json(tmp_path, monkeypatch):

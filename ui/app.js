@@ -58,8 +58,8 @@ function invalidateDiff() {
   return ++ST.diffRevision;
 }
 
-function configurationChoices(no) {
-  const base=['✕','[待定]','不适用'];
+function configurationChoices(no, kind='ladder') {
+  const base=kind==='snapshot' && no===35 ? ['[待定]'] : ['✕','[待定]'];
   const choices={
     3:['400V','800V'],
     4:Array.from({length:8},(_,i)=>i+16).flatMap(n=>[`R${n}钢轮毂`,`R${n}铝轮毂`]),
@@ -117,7 +117,7 @@ function addConfigurationChoices(root, snapshotCells=null) {
       addScreenEditor(field,no,!!snapshotCells);
       return;
     }
-    const options=configurationChoices(no);
+    const options=configurationChoices(no,snapshotCells?'snapshot':'ladder');
     if(!options)return;
     const current=snapshotCells?field.value:field.textContent.trim();
     const container=snapshotCells?field.parentElement:field;
@@ -125,7 +125,7 @@ function addConfigurationChoices(root, snapshotCells=null) {
     const select=document.createElement('select');
     select.style.cssText='width:100%;min-width:190px';
     const values=[...new Set([current,...options])];
-    values.forEach(value=>select.add(new Option(value==='✕'?'无配置':value==='●'?'有':value,value)));
+    values.forEach(value=>select.add(new Option(value==='✕'?(no===32?'未注明（按基础接口数）':'无配置'):value==='●'?'有':value,value)));
     select.add(new Option('自定义填写…','__custom__'));
     const input=snapshotCells?field:document.createElement('input');
     input.value=current;input.hidden=true;

@@ -4,18 +4,26 @@
   const {createApp, ref, computed, watch} = Vue;
   const mounted = new Map();
   const absent = value => /^(✕|×|无|无配置|-|不适用)$/.test(value);
+  const defaultSeatAdjust = '主驾6向手调+副驾4向手调';
   const Cell = {
-    props: ['value', 'no', 'sub', 'choices', 'parseSeatAdjust'],
+    props: ['value', 'no', 'sub', 'kind', 'choices', 'parseSeatAdjust'],
     emits: ['change'],
     setup(props, {emit}) {
       const custom = ref(false);
-      const value = computed(() => String(props.value ?? '✕'));
+      const value = computed(() => {
+        const v = String(props.value ?? '✕');
+        return props.kind==='snapshot' && props.no===35 && /^(✕|×|X|无|-)?$/.test(v) ? defaultSeatAdjust : v;
+      });
       let lastEmitted;
       const screenDraft = ref(null);
       const send = v => {lastEmitted=v;emit('change', v);};
       watch(()=>props.value,v=>{if(v!==lastEmitted)screenDraft.value=null;});
       const options = computed(() => [...new Set([value.value, ...(props.sub ? ['✕','●','[待定]'] : props.choices || [])])]);
-      const label = v => v === '✕' ? '无' : v === '●' ? '有' : v;
+      function label(v) {
+        if(props.kind==='snapshot' && props.no===35 && [defaultSeatAdjust,'主驾手调+副驾手调','主副手调'].includes(v)) return '默认手调（主驾6向＋副驾4向）';
+        if(props.no===32 && v==='✕') return '未注明（按基础接口数）';
+        return v === '✕' ? '无' : v === '●' ? '有' : v;
+      }
       const choose = e => e.target.value === '__custom__' ? custom.value = true : send(e.target.value);
       const count = computed(() => (value.value.match(/\d+(?:\.\d+)?/) || [''])[0]);
       const simpleCount = computed(()=>/^[●]?\s*\d+(?:\.\d+)?\s*(?:km|扬声器|喇叭|个)?$/i.test(value.value));
@@ -170,7 +178,7 @@
         <template v-if="review"><tr v-for="field in [{key:'mix',name:'占比'},{key:'range',name:'续航备注'}]" :key="field.key"><td class="no">—</td><td>{{field.name}}</td><td v-for="(t,i) in trims" :key="i"><input type="text" :aria-label="field.name" :value="t[field.key] || ''" @change="metadata(t,field.key,$event.target.value)"></td><td></td></tr></template>
         <tr v-for="(row,n) in rows" :key="row.key"><td class="no">{{n+1}}</td><td>{{row.name}}</td><td v-for="(t,i) in trims" :key="i">
           <div v-if="row.subs" class="ce-seat-functions" :class="{'ce-rear-functions':row.rear}"><label v-for="sub in row.subs" :key="sub">{{row.rear ? sub.slice(2) : sub.slice(0,2)}}<config-cell :no="row.cell.no" :sub="sub" :value="get(row.cell,i,sub)" @change="change(row.cell,i,sub,$event)"/></label></div>
-          <config-cell v-else :no="row.cell.no" :sub="row.sub" :choices="choices(row.cell.no)" :parse-seat-adjust="parseSeatAdjust" :value="get(row.cell,i,row.sub)" @change="change(row.cell,i,row.sub,$event)"/>
+          <config-cell v-else :no="row.cell.no" :sub="row.sub" :kind="kind" :choices="choices(row.cell.no,kind)" :parse-seat-adjust="parseSeatAdjust" :value="get(row.cell,i,row.sub)" @change="change(row.cell,i,row.sub,$event)"/>
         </td><td v-if="review"><input type="text" aria-label="配置依据" :value="row.cell.basis || ''" @change="metadata(row.cell,'basis',$event.target.value)"></td></tr></tbody></table>`
     });
     root.classList.add('vue-config-editor');

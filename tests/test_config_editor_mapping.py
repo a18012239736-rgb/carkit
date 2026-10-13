@@ -27,9 +27,9 @@ function mountModel(model) {
 }
 mountModel({trims:[],items:[]});
 const Cell=definition.components.ConfigCell;
-function makeCell(value,no=35,parser=async value=>backend[value],onChange=()=>{}) {
+function makeCell(value,no=35,parser=async value=>backend[value],onChange=()=>{},kind='ladder') {
   const watches=[];currentWatches=watches;
-  const props={value,no,choices:[],parseSeatAdjust:parser},emitted=[];
+  const props={value,no,kind,choices:[],parseSeatAdjust:parser},emitted=[];
   const cell=Cell.setup(props,{emit(event,value) {
     assert.strictEqual(event,'change');emitted.push(value);onChange(value);
   }});
@@ -60,6 +60,58 @@ def q05_mapping():
     raw = rawschema.detect_and_load(str(
         Path(__file__).parent / 'golden' / 'raw-Q05-汽车之家全表-2026-09-11.json'))
     return map_raw_to_ladder(raw, Rules())
+
+
+def test_self_seat_default_is_explicit_and_competitor_none_remains_available():
+    run_editor(r"""
+load('function configurationChoices(', 'function addConfigurationChoices(');
+const baseline=values[0],label='默认手调（主驾6向＋副驾4向）';
+assert(definition.template.includes(':kind="kind"'));
+assert(definition.template.includes('choices(row.cell.no,kind)'));
+const selfChoices=context.configurationChoices(35,'snapshot');
+assert(!selfChoices.includes('✕'));
+assert(selfChoices.includes(baseline));
+for(const value of ['[待定]',values[2]])assert(selfChoices.includes(value));
+assert(context.configurationChoices(35,'ladder').includes('✕'));
+assert(context.configurationChoices(35).includes('✕'));
+assert(context.configurationChoices(34,'snapshot').includes('✕'));
+for(let no=1;no<=45;no++) {
+  for(const kind of ['snapshot','ladder'])assert(!context.configurationChoices(no,kind)?.includes('不适用'));
+}
+for(const value of ['✕','×','X','-','无','',null,undefined]) {
+  const self=makeCell(value,35,undefined,undefined,'snapshot');await self.settle();
+  assert.strictEqual(self.cell.value.value,baseline);
+  assert.strictEqual(self.cell.label(self.cell.value.value),label);
+  assert.deepStrictEqual(self.cell.seats.value.map(s=>s.count),[6,4]);
+  assert.deepStrictEqual(self.cell.seats.value.map(s=>s.mode),['手调','手调']);
+  assert.deepStrictEqual(self.emitted,[]);  // Viewing alone does not alter stored data.
+}
+const oldManual=makeCell(values[1],35,undefined,undefined,'snapshot');await oldManual.settle();
+assert.strictEqual(oldManual.cell.value.value,values[1]);
+assert.strictEqual(oldManual.cell.label(values[1]),label);
+for(const value of [values[2],'[待定]','不适用']) {
+  const self=makeCell(value,35,undefined,undefined,'snapshot');await self.settle();
+  assert.strictEqual(self.cell.value.value,value);assert.deepStrictEqual(self.emitted,[]);
+}
+const rival=makeCell('✕');await rival.settle();
+assert.strictEqual(rival.cell.value.value,'✕');assert.strictEqual(rival.cell.label('✕'),'无');
+const other=makeCell('✕',34,undefined,undefined,'snapshot');
+assert.strictEqual(other.cell.value.value,'✕');
+const oldNotApplicable=makeCell('不适用',34);
+assert.strictEqual(oldNotApplicable.cell.value.value,'不适用');
+assert.strictEqual(oldNotApplicable.cell.label('不适用'),'不适用');
+assert(oldNotApplicable.cell.options.value.includes('不适用'));
+for(const kind of ['snapshot','ladder']) {
+  const usb=makeCell('✕',32,undefined,undefined,kind);
+  assert.strictEqual(usb.cell.value.value,'✕');
+  assert.strictEqual(usb.cell.label('✕'),'未注明（按基础接口数）');
+  assert.deepStrictEqual(usb.emitted,[]);
+}
+const self=makeCell('✕',35,undefined,undefined,'snapshot');await self.settle();
+self.cell.choose({target:{value:baseline}});
+assert.deepStrictEqual(self.emitted,[baseline]);
+""", ['主驾6向手调+副驾4向手调', '主驾手调+副驾手调',
+        '主驾6向电调+副驾4向手调', '[待定]', '不适用', '✕'])
 
 
 def test_q05_seven_trim_seat_controls_match_backend_without_changing_data():

@@ -509,8 +509,8 @@ def n_usb(raw, i, cfg):
     from .usb import usb_label
     c = _cell(raw, ["USB/Type-C接口数量"], i)
     if not _solid(c):
-        return usb_label('') if not c or not c.dot else _bool_val(c)
-    return usb_label(_txt(c))
+        return usb_label('', preserve_default=True) if not c or not c.dot else _bool_val(c)
+    return usb_label(_txt(c), preserve_default=True)
 
 
 def n_wireless_charge(raw, i, cfg):

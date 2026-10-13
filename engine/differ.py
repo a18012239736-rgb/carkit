@@ -241,7 +241,7 @@ def cmp_seat36(sv, cv, comp_sub_vals=None, params=None, **kw):
 
 # ---------- 主流程 ----------
 
-def _pair_values(self_ladder, comp_ladder, no, si, ci):
+def _pair_values(self_ladder, comp_ladder, no, si, ci, *, usb_base=3):
     def value(ladder, index):
         entry = ladder.item(no)
         result = entry.values[index] if entry and index < len(entry.values) else "✕"
@@ -258,7 +258,7 @@ def _pair_values(self_ladder, comp_ladder, no, si, ci):
     cv, cit = value(comp_ladder, ci)
     if no == 32:
         from .usb import usb_label
-        sv, cv = usb_label(sv), usb_label(cv)
+        sv, cv = usb_label(sv, default=usb_base), usb_label(cv, default=usb_base)
     return sv, cv, cit
 
 
@@ -289,8 +289,9 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
         ci = find_trim(comp_trims, pair["comp_trim"])
         for item in rules.items:
             no = item["no"]
-            sv, cv, cit = _pair_values(self_ladder, comp_ladder, no, si, ci)
             vitem = valuation.item(no) if valuation is not None else None
+            sv, cv, cit = _pair_values(self_ladder, comp_ladder, no, si, ci,
+                                      usb_base=(vitem.get('params') or {}).get('base_count', 3) if vitem else 3)
             screen_optional = ''
             if no in (21, 22, 29):
                 from .screen_config import normalize_screen

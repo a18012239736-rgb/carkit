@@ -8,9 +8,9 @@ import re
 from .models import Snapshot
 from .rules import display_order_key
 
-# Zero-price tiers explicitly defined by pjy, not unpriced '/' items.
+# Baseline tiers; unspecified USB counts stay rule-backed rather than fixed at three.
 BASE_CONFIG = {4: 'R16钢轮毂', 17: '卤素大灯', 25: '塑料', 26: '手调',
-               31: '手动防眩目', 32: 'USB/Type-C 3个', 34: '织物', 35: '主驾手调+副驾手调'}
+               31: '手动防眩目', 32: '✕', 34: '织物', 35: '主驾手调+副驾手调'}
 
 
 def prepare_snapshot(snap):
@@ -34,7 +34,7 @@ def prepare_snapshot(snap):
                 cell['values'][trim['name']] = default
     from .usb import usb_label
     for name, value in by_no[32]['values'].items():
-        by_no[32]['values'][name] = usb_label(value)
+        by_no[32]['values'][name] = usb_label(value, preserve_default=True)
     snap.cells.sort(key=lambda c: display_order_key(c['no']))
     for cell in snap.cells:
         if 'links' in cell:

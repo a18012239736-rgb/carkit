@@ -164,7 +164,7 @@ class Ladder:
         from .seat_functions import SUBS, normalize
         for item in items:
             if item.no == 32:
-                item.values = [usb_label(value) for value in item.values]
+                item.values = [usb_label(value, preserve_default=True) for value in item.values]
             if item.no == 36 and not item.subs:
                 converted = []
                 for value in item.values:
