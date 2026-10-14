@@ -204,7 +204,9 @@ class Bridge:
                     if roof and i < len(roof.values) and roof.values[i] == n_sunroof(raw, source_i, configs[18], include_terms=False):
                         roof.values[i] = n_sunroof(raw, source_i, configs[18])
                     if seat and i < len(seat.values):
-                        old_values = [from_raw(raw, source_i, include_terms=False)]
+                        old_values = [from_raw(raw, source_i, include_terms=False),
+                                      from_raw(raw, source_i, include_terms=False, legacy_display=True),
+                                      from_raw(raw, source_i, legacy_display=True)]
                         if raw.row('主座椅调节方式', '副座椅调节方式'):
                             old_values.append(legacy_summary(raw, source_i))
                         if seat.values[i] in old_values:

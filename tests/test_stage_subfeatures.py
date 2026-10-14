@@ -19,16 +19,16 @@ def lines(raw, target=1, base=0, excluded=None):
     return stage_one._compact_items(stage_one._change_items(features, target, base), base)
 
 
-def test_real_q05_standard_lumbar_is_visible_without_changing_direction_totals():
+def test_real_q05_standard_lumbar_is_omitted_without_changing_direction_totals():
     raw = rawschema.detect_and_load(str(Path(__file__).parent / 'golden' / 'raw-Q05-汽车之家全表-2026-09-11.json'))
     original = raw.to_json()
     result = lines(raw)
-    assert any('主驾腰部支撑(4向)' in line for line in result)
+    assert not any('腰部支撑' in line for line in result)
     assert not any('主驾10向' in line for line in result)
     assert raw.to_json() == original
 
 
-def test_seat_supports_and_unknown_adjustments_preserve_standard_and_optional_separation():
+def test_seat_supports_are_omitted_and_optional_information_is_preserved_separately():
     raw = table([RawRow('主座椅调节方式', [
         Cell(text='前后调节靠背调节'),
         Cell(text='前后调节靠背调节腰部支撑(4向)', subs=[
@@ -37,8 +37,7 @@ def test_seat_supports_and_unknown_adjustments_preserve_standard_and_optional_se
     ])])
     original = raw.to_json()
     result = lines(raw)
-    assert any('主驾腰部支撑(4向)' in line for line in result)
-    assert any('主驾头枕调节(2向)' in line for line in result)
+    assert result == []  # Supports do not alter the seat direction/mode summary.
     assert not any('侧翼' in line for line in result)
     assert stage_one._option_lines(raw, 1, []) == ['主座椅调节方式：侧翼支撑(2000元)']
     assert lines(raw, excluded=['主座椅调节方式']) == []
@@ -46,11 +45,11 @@ def test_seat_supports_and_unknown_adjustments_preserve_standard_and_optional_se
     assert raw.to_json() == original
 
 
-def test_removed_standard_seat_support_uses_absent_with_old_description():
+def test_removed_standard_seat_support_does_not_create_absent_adjustment_description():
     raw = table([RawRow('主座椅调节方式', [
         Cell(text='前后调节靠背调节腰部支撑(4向)'), Cell(text='前后调节靠背调节'),
     ])])
-    assert '无（主驾腰部支撑(4向)）' in lines(raw)
+    assert lines(raw) == []
 
 
 def test_flattened_unknown_seat_and_mirror_functions_reach_preview_and_markdown(tmp_path):

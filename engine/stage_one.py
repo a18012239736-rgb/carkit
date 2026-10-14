@@ -379,26 +379,11 @@ def features(raw, excluded_rows=None):
                     if directions:
                         value = f'{pos}{directions}向'+(mode or '调节')
                     elif get(source, i) or mode == '电调':
-                        if re.fullmatch(r'(?:主驾|副驾|座椅)?(?:电动|手动|电调|手调)(?:调节)?', text):
-                            text = ''
-                        value = pos+(mode or '座椅调节')+('（'+text+'）' if text else '')
+                        value = pos+(mode or '座椅调节')
                     else:
                         value = ''
                     totals.append([value] if value else [])
                 add(pos+'座椅调节', totals, True)
-                extras=[]
-                for i in range(count):
-                    values=[]
-                    if details[i][0][j] is not None:
-                        for value in get(source, i):
-                            # Direction totals deliberately exclude lumbar/headrest
-                            # supports; keep those source details in the display.
-                            remainder=re.sub(r'(?:前后调节|靠背调节|高低调节)(?:\(\d+向\))?', '', clean(value))
-                            remainder=re.sub(r'^(?:主驾|副驾|座椅)?(?:手调|电调|手动(?:调节)?|电动(?:调节)?)?\d+向(?:手调|电调|手动|电动|调节)*', '', remainder)
-                            remainder=remainder.strip(' +/、')
-                            if _detail(remainder): values.append(pos+remainder)
-                    extras.append(list(dict.fromkeys(values)))
-                add(pos+'支撑', extras)
         elif name in {'高压平台','800V高压平台','高压平台（V）','高压平台(V)','高压快充'}:
             sources = ['高压平台','800V高压平台','高压平台（V）','高压平台(V)','高压快充']
             consumed.update(sources)

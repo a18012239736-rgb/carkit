@@ -34,12 +34,12 @@ def test_seat_modes_and_directions_share_one_summary_without_repeating_electric_
     result = lines(raw)
     assert '仿皮座椅' in result
     assert '主驾6向电调，副驾4向手调' in result
-    assert '主驾腰部支撑(4向)' in result
+    assert not any('腰' in value for value in result)
     assert not any(value in result for value in ['前排电调', '主驾电调', '主驾座椅电调'])
     raw.row('主座椅调节方式').cells[0] = Cell(text='6向电动(腰部支撑(4向))')
     result = lines(raw)
     assert '主驾6向电调，副驾4向手调' in result
-    assert any('腰部支撑(4向)' in value for value in result)
+    assert not any('腰' in value for value in result)
     assert not any('6向电动' in value for value in result)
 
 
@@ -72,7 +72,7 @@ def test_hiding_seat_source_does_not_leak_direction_or_infer_mode_from_hidden_he
     raw.row('主座椅调节方式').cells[0] = Cell(text='前后调节靠背调节高低调节(2向)电动腰托')
     features = {feature['key']: feature['values'] for feature in stage_one.features(raw, ['主/副驾驶座电动调节'])}
     assert features['主驾座椅调节'] == [['主驾6向调节']]
-    assert lines(raw, excluded=['主/副驾驶座电动调节']) == ['主驾6向调节，副驾4向调节', '主驾电动腰托']
+    assert lines(raw, excluded=['主/副驾驶座电动调节']) == ['主驾6向调节，副驾4向调节']
 
 
 def test_only_changed_seat_is_shown_and_display_does_not_change_raw_mapper_or_valuation():

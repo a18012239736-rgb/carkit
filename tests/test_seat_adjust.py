@@ -46,13 +46,14 @@ def test_noneditable_states_preserve_original_and_never_fill_manual(value):
     assert parsed['hint']
 
 
-def test_support_suffix_and_prefix_are_preserved_without_counting_lumbar():
+def test_support_notes_remain_parseable_but_are_not_displayed_or_counted():
     value = '●主驾10向电动（主含腰撑4向）+副驾4向手动(副含腿托(2向))'
     parsed = seat_adjust.parse(value)
     assert parsed['prefix'] == '●'
     assert parsed['suffix'] == '（主含腰撑4向）(副含腿托(2向))'
     assert seat_adjust.components(value) == (14, 1)
-    assert seat_adjust.label(value) == '●主驾10向电调+副驾4向手调（主含腰撑4向）(副含腿托(2向))'
+    assert seat_adjust.label(value) == '●主驾10向电调+副驾4向手调'
+    assert seat_adjust.label(value, include_notes=True) == '●主驾10向电调+副驾4向手调（主含腰撑4向）(副含腿托(2向))'
 
 
 def test_manual_default_hint_only_names_counts_that_were_defaulted():
@@ -105,6 +106,75 @@ def test_raw_direction_count_uses_only_standard_motion_not_lumbar():
     assert seat_adjust.raw_directions(cell) == 8
     assert seat_adjust.raw_directions(Cell(dot='○', text='10向电动')) is None
     assert seat_adjust.raw_directions(Cell(dot='●', text='腰部支撑(4向)')) is None
+
+
+@pytest.mark.parametrize('height,legrest,expected', [(4, '●', 10), (2, '○', 6), (2, '●', 8)])
+def test_confirmed_directions_ignore_support_and_optional_legrest(height, legrest, expected):
+    cell = Cell(dot='●', text='前后调节', subs=[
+        Cell(dot='●', text='靠背调节'), Cell(dot='●', text=f'高低调节({height}向)'),
+        Cell(dot=legrest, text='腿托调节'), Cell(dot='●', text='腰部支撑(4向)'),
+        Cell(dot='●', text='侧翼支撑(主动)'), Cell(dot='●', text='座垫侧翼'),
+        Cell(dot='●', text='头枕调节(4向)'),
+    ])
+    assert seat_adjust.raw_directions(cell) == expected
+
+
+def test_motion_axes_are_fixed_deduplicated_and_height_requires_actual_annotation():
+    assert seat_adjust.raw_directions(Cell(dot='●', text='前后调节(4向)+靠背调节(4向)+腿托调节(4向)')) == 6
+    assert seat_adjust.raw_directions(Cell(dot='●', text='前后调节', subs=[
+        Cell(dot='●', text='前后调节(2向)'), Cell(dot='●', text='腿托调节'),
+        Cell(dot='●', text='腿部支撑调节(2向)'),
+    ])) == 4
+    for height in ('高低调节', '高低调节(0向)', '[待定]高低调节(2向)'):
+        assert seat_adjust.raw_directions(Cell(dot='●', text='前后调节+靠背调节+'+height)) is None
+    assert seat_adjust.raw_directions(Cell(dot='●', text='高低调节(2向)', subs=[Cell(dot='●', text='高低调节(4向)')])) is None
+    assert seat_adjust.raw_directions(Cell(dot='●', text='前后调节+靠背调节+○腿托调节')) == 4
+
+
+def test_screenshot_mapping_keeps_direction_and_electric_valuation_without_notes():
+    raw = RawTable(trims=[Trim(0, 'A')], rows=[
+        RawRow(name='主/副驾驶座电动调节', cells=[Cell(dot='●', text='主/副')]),
+        RawRow(name='主座椅调节方式', cells=[Cell(dot='●', text='前后调节', subs=[
+            Cell(dot='●', text='靠背调节'), Cell(dot='●', text='高低调节(4向)'),
+            Cell(dot='●', text='腿托调节'), Cell(dot='●', text='腰部支撑(4向)'),
+            Cell(dot='●', text='侧翼支撑(主动)'), Cell(dot='●', text='座垫侧翼'),
+        ])]),
+        RawRow(name='副座椅调节方式', cells=[Cell(dot='●', text='前后调节', subs=[
+            Cell(dot='●', text='靠背调节'), Cell(dot='●', text='高低调节(2向)'),
+            Cell(dot='○', text='腿托调节'), Cell(dot='●', text='腰部支撑(4向)'),
+        ])]),
+    ])
+    source = raw.to_dict()
+    assert seat_adjust.from_raw(raw, 0) == '主驾10向电调+副驾6向电调'
+    assert map_raw_to_ladder(raw, Rules())[35]['values'] == ['主驾10向电调+副驾6向电调']
+    features = {f['key']: f['values'] for f in stage_one.features(raw, excluded_rows=[])}
+    assert features['主驾座椅调节'] == [['主驾10向电调']]
+    assert features['副驾座椅调节'] == [['副驾6向电调']]
+    assert not any('支撑' in key for key in features)
+    assert '副座椅调节方式：腿托调节' in stage_one._option_lines(raw, 0)
+    assert dynamic_delta(35, seat_adjust.from_raw(raw, 0), '主副手调') == 1100
+    assert raw.to_dict() == source
+
+
+@pytest.mark.parametrize('electric', [Cell(text='主-/副-'), Cell(dot='●', text='主/副')])
+@pytest.mark.parametrize('height', ['高低调节', '高低调节(0向)', '高低调节(2向)+高低调节(4向)'])
+def test_unknown_height_is_not_indirectly_defaulted_even_for_manual_seats(electric, height):
+    raw = RawTable(trims=[Trim(0, 'A')], rows=[
+        RawRow(name='主/副驾驶座电动调节', cells=[electric]),
+        RawRow(name='主座椅调节方式', cells=[Cell(dot='●', text='前后调节+靠背调节+'+height)]),
+        RawRow(name='副座椅调节方式', cells=[Cell(dot='●', text='前后调节+靠背调节')]),
+    ])
+    assert seat_adjust.raw_details(raw, 0)[0] == [None, 4]
+    value = seat_adjust.from_raw(raw, 0)
+    if electric.dot == '●':
+        assert value == '主驾电调+副驾4向电调'
+        assert seat_adjust.components(value) == (None, 2)
+        assert dynamic_delta(35, value, '主副手调') == 800
+    else:
+        assert value == '[待定]座椅调节方向数未说明或冲突'
+        assert seat_adjust.components(value) == (None, None)
+    # Only the frozen old auto output may still have the historical default.
+    assert '[待定]' not in seat_adjust.from_raw(raw, 0, legacy_display=True)
 
 
 def test_q05_raw_map_stage_and_calculation_share_the_same_evidence():

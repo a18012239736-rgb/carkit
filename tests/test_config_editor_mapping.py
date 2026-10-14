@@ -164,7 +164,10 @@ def test_seat_edit_keeps_lumbar_leg_support_suffix_in_saved_model():
 const model={trims:[{name:'A'}],items:[{no:35,values:[values[0]]}]};
 const editor=mountModel(model),row=model.items[0];
 const instance=makeCell(editor.get(row,0),35,undefined,value=>editor.change(row,0,'',value));
-await instance.settle();instance.cell.seatChange(0,'count','12');
+await instance.settle();
+assert.strictEqual(instance.cell.label(values[0]),'主驾10向电调，副驾4向手调');
+assert.strictEqual(row.values[0],values[0]); // Display alone never changes the manual notes.
+instance.cell.seatChange(0,'count','12');
 const expected='●主驾12向电调+副驾4向手调'+backend[values[0]].suffix;
 assert.deepStrictEqual(instance.emitted,[expected]);assert.strictEqual(changes,1);
 const saved=JSON.parse(JSON.stringify(model));

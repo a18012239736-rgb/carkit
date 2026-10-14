@@ -21,6 +21,7 @@
       const options = computed(() => [...new Set([value.value, ...(props.sub ? ['✕','●','[待定]'] : props.choices || [])])]);
       function label(v) {
         if(props.kind==='snapshot' && props.no===35 && [defaultSeatAdjust,'主驾手调+副驾手调','主副手调'].includes(v)) return '默认手调（主驾6向＋副驾4向）';
+        if(props.no===35 && v===value.value && seatDetail.value.editable) return seats.value.filter(s=>s.count || s.mode).map(s=>s.name+(s.count?s.count+'向':'')+(s.mode || '')).join('，');
         if(props.no===32 && v==='✕') return '未注明（按基础接口数）';
         return v === '✕' ? '无' : v === '●' ? '有' : v;
       }

@@ -44,7 +44,7 @@ def _configuration_label(no, value):
     if no == 35:
         parsed = parse(value)
         if parsed['editable']:
-            return '，'.join(_seat_label(seat) for seat in parsed['seats'] if seat['count'] is not None or seat['mode']) + parsed['suffix']
+            return '，'.join(_seat_label(seat) for seat in parsed['seats'] if seat['count'] is not None or seat['mode'])
     return text
 
 
@@ -69,8 +69,6 @@ def _configuration_difference(no, left, right):
                 if previous['count'] is not None or previous['mode']:
                     label += '（'+_seat_label(previous)+'）'
                 changes.append(label)
-            if s['suffix'] != c['suffix']:
-                changes.append((s['suffix'] or '无') + ('（'+c['suffix']+'）' if c['suffix'] else ''))
             return '，'.join(changes)
     if _has(str(left)) and _has(str(right)):
         return a+'('+b+')'

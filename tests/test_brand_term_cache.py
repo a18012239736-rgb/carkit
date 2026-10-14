@@ -38,7 +38,7 @@ def _seed_cache(tmp_path, raw):
     path = tmp_path/'阶梯'/('compare-'+key+'.json')
     cached = build_ladder(raw, bridge.rules)
     cached.item(18).values = [n_sunroof(raw, i, {}, include_terms=False) for i in range(3)]
-    cached.item(35).values = [from_raw(raw, i, include_terms=False) for i in range(3)]
+    cached.item(35).values = [from_raw(raw, i, include_terms=False, legacy_display=True) for i in range(3)]
     # Freeze the actual pre-alias state: the old mapper did not see this row.
     # Calling the new high-voltage mapper here would hide a migration regression.
     cached.item(3).values = ['✕']*3
@@ -85,7 +85,7 @@ def test_cache_upgrades_untouched_terms_and_legacy_seats_without_losing_edits(tm
             assert migrated.item(18).values[i] == n_sunroof(raw, source_i, configs[18])
             assert '光感天幕' in migrated.item(18).values[i]
             assert migrated.item(35).values[i] == from_raw(raw, source_i)
-            assert '零重力' in migrated.item(35).values[i]
+            assert migrated.item(35).values[i] == '主驾6向电调+副驾10向电调'
             assert migrated.item(3).values[i] == n_high_voltage(raw, source_i, configs[3])
             assert migrated.item(3).values[i] == f'●{700+source_i*100}V'
             assert migrated.item(45).values[i] == n_seat_memory(raw, source_i, configs[45])

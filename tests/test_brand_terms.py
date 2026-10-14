@@ -31,7 +31,7 @@ def test_live_roof_and_seat_terms_are_visible_but_never_double_priced():
         flagship = i in (4, 6)
         roof, seat = mapped[18]['values'][i], mapped[35]['values'][i]
         assert ('光感天幕' in roof) == flagship
-        assert ('副驾零重力座椅' in seat) == flagship
+        assert '零重力' not in seat  # Adjustment summary is count/mode only; the source row stays separate.
         assert features['天窗类型'][i] == ['不可开启全景天窗']
         assert features['光感天幕'][i] == (['光感天幕'] if flagship else [])
         assert features['零重力座椅'][i] == (['副驾驶零重力座椅'] if flagship else [])
@@ -41,7 +41,7 @@ def test_live_roof_and_seat_terms_are_visible_but_never_double_priced():
         assert parsed['seats'][0]['count'] == 6
         assert parsed['seats'][1]['count'] == (10 if flagship else 4)
         assert [s['mode'] for s in parsed['seats']] == ['电调', '电调']
-        # Labels explain the source; the existing direction and roof rules still apply.
+        # Separate source labels retain the term; existing direction/roof rules still apply.
         assert dynamic_delta(18, roof, n_sunroof(raw, i, {}, include_terms=False)) == 0
         assert dynamic_delta(35, seat, seat_adjust.from_raw(raw, i, include_terms=False)) == 0
     assert dynamic_delta(35, mapped[35]['values'][4], mapped[35]['values'][3]) == 300
@@ -181,7 +181,8 @@ def test_unknown_gravity_scope_does_not_erase_other_confirmed_adjustments():
                   '零重力座椅': Cell(dot='●')}, model='其他车型', series='other')
     value = seat_adjust.from_raw(raw, 0)
     assert seat_adjust.components(value) == (10, 2)
-    assert '零重力座椅座位未说明' in value
+    assert value == '主驾6向电调+副驾4向电调'
+    assert '零重力座椅座位未说明' in seat_adjust.from_raw(raw, 0, legacy_display=True)
 
 
 @pytest.mark.parametrize('cell', [Cell(dot='○', text='800'), Cell(text='[待定]800'), Cell(text='-')])

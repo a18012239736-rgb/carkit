@@ -741,7 +741,7 @@ def _backup_display(no, verdict, sv, cv, ss, cs, name=''):
 
 
 def _merge_seat_labels(labels):
-    """Combine display labels only; valuation keeps the original item mapping."""
+    """Merge functions per seat, one seat summary per line; never change valuation."""
     grouped = {}
     pattern = r'(前排|主驾|副驾|二排)座椅((?:通风|加热|记忆|按摩|头枕音响)+)'
     for label in labels:
@@ -761,7 +761,10 @@ def _merge_seat_labels(labels):
                 parts.append(seat+'座椅'+''.join(f for f in ('通风','加热','按摩','头枕音响','记忆') if f in grouped[seat]))
                 emitted.add(seat)
         if parts:
-            result.append('、'.join(parts))
+            if all(re.fullmatch(pattern, part) for part in label.split('、')):
+                result.extend(parts)
+            else:
+                result.append('、'.join(parts))
     return result
 
 

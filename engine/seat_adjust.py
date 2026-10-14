@@ -85,14 +85,14 @@ def parse(value):
     return result
 
 
-def label(value):
+def label(value, *, include_notes=False):
     parsed = parse(value)
     if not parsed['editable']:
         return str(value or '')
     return parsed['prefix'] + '+'.join(
         seat['name'] + (str(seat['count'])+'向' if seat['count'] is not None else '') + (seat['mode'] or '')
         for seat in parsed['seats'] if seat['count'] is not None or seat['mode'] is not None
-    ) + parsed['suffix']
+    ) + (parsed['suffix'] if include_notes else '')
 
 
 def components(value):
@@ -109,6 +109,31 @@ def components(value):
 
 
 def raw_directions(cell):
+    """Count only standard whole-seat motions; support adjustments are not axes."""
+    from .stage_one import parts
+    motions = {}
+    for text in parts(cell):
+        if '[待' in text:
+            return None
+        for match in re.finditer(r'([○✕×-]?)\s*(前后调节|靠背调节|高低调节|腿托调节|腿部支撑调节)(?:\s*[(（](\d+)向[)）])?', text):
+            if match[1]:
+                continue
+            motion = match[2].replace('腿部支撑', '腿托')
+            count = (int(match[3]) if match[3] else None) if motion == '高低调节' else 2
+            if motion in motions and motions[motion] != count:
+                return None  # Conflicting height annotations need review, not addition.
+            motions[motion] = count
+    if motions:
+        return sum(motions.values()) if all(count and count > 0 for count in motions.values()) else None
+    # Explicit totals (including manual corrections) remain authoritative.
+    from .stage_one import clean
+    body, _ = _notes(_clean(clean(' '.join(parts(cell)))))
+    total = re.fullmatch(r'(?:主驾|副驾|座椅)?(?:手调|电调)?(\d+)向(?:手调|电调|调节)*', body)
+    return int(total[1]) if total and int(total[1]) > 0 else None
+
+
+def _legacy_raw_directions(cell):
+    """Frozen previous auto value, used only to recognize untouched caches."""
     from .stage_one import clean, parts
     text = clean(' '.join(parts(cell)))
     # Existing stage-one convention: lumbar/headrest support is not counted.
@@ -195,9 +220,10 @@ def zero_gravity_positions(raw, i, *, legacy_scope=False):
     return standard_front_positions(row.cells[i], legacy_scope=legacy_scope) if row and i < len(row.cells) else []
 
 
-def raw_details(raw, i, *, include_terms=True, legacy_price_notes=False):
+def raw_details(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_display=False):
     electric, main, passenger = _cells(raw, i)
-    counts = [raw_directions(cell) for cell in (main, passenger)]
+    count_directions = _legacy_raw_directions if legacy_display or legacy_price_notes else raw_directions
+    counts = [count_directions(cell) for cell in (main, passenger)]
     positions = zero_gravity_positions(raw, i, legacy_scope=legacy_price_notes) if include_terms else []
     # pjy confirmed this mapping for MG 07, not every brand's zero-gravity seat.
     if raw.series_id == '8563' or re.sub(r'\s+', '', raw.model).upper() == 'MG07':
@@ -241,22 +267,34 @@ def legacy_summary(raw, i):
     return base+_suffix(_extras(main), _extras(passenger))
 
 
-def from_raw(raw, i, *, include_terms=True, legacy_price_notes=False):
+def from_raw(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_display=False):
     from .stage_one import clean, parts
     electric, main, passenger = _cells(raw, i)
-    counts, modes, positions = raw_details(raw, i, include_terms=include_terms, legacy_price_notes=legacy_price_notes)
+    counts, modes, positions = raw_details(raw, i, include_terms=include_terms, legacy_price_notes=legacy_price_notes, legacy_display=legacy_display)
     gravity = raw.row('零重力座椅') if include_terms else None
     unknown = parts(gravity.cells[i]) if gravity and i < len(gravity.cells) else []
     if unknown and not positions and electric is None and main is None and passenger is None:
         return '[待定]零重力座椅：'+ '+'.join(unknown) + '（请确认座位和方向数）'
     if electric is None and main is None and passenger is None and not positions:
         return '✕'
+    if modes == ['手调', '手调'] and not (legacy_display or legacy_price_notes) and any(
+        count is None and any('高低调节' in text for text in parts(cell))
+        for count, cell in zip(counts, (main, passenger))
+    ):
+        # Do not guess the manual default; known electric modes still price below.
+        return '[待定]座椅调节方向数未说明或冲突'
     if any(mode is None for mode in modes):
+        if not (legacy_display or legacy_price_notes):
+            return '[待定]座椅调节：' + '+'.join(
+                name+(str(count)+'向' if count is not None else '')+(mode or '调节方式未说明')
+                for name, count, mode in zip(NAMES, counts, modes))
         evidence = '/'.join(clean(' '.join(parts(cell))) for cell in (electric, main, passenger))
         if positions:
             evidence += '/' + '+'.join(NAMES[j]+(str(counts[j])+'向' if counts[j] else '')+'零重力座椅' for j in positions)
         return '[待定]座椅调节：'+evidence
     values = [name+(str(count)+'向' if count is not None else '')+mode for name, count, mode in zip(NAMES, counts, modes)]
+    if not (legacy_display or legacy_price_notes):
+        return label('+'.join(values))
     extras = [_extras(cell, standard=True) for cell in (main, passenger)]
     for i, (name, cell) in enumerate(zip(NAMES, (main, passenger))):
         text = clean(' '.join(parts(cell)))
@@ -267,4 +305,4 @@ def from_raw(raw, i, *, include_terms=True, legacy_price_notes=False):
         suffix += '(' + '+'.join(NAMES[j]+'零重力座椅' for j in positions) + ')'
     elif unknown:
         suffix += '(零重力座椅座位未说明)'
-    return label('+'.join(values)+suffix)
+    return label('+'.join(values)+suffix, include_notes=True)
