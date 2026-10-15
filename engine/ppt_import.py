@@ -335,7 +335,7 @@ def _apply(text, values, evidence, leftovers):
                 setv(5,str(int(previous[1])+number)+'气囊')
             elif not previous:
                 setv(5,'[待定]'+component+'已配置，气囊基础数量未明确')
-        if '540' in t and ('影像' in t or '全景' in t):setv(7,'540影像')
+        if '540' in t and any(word in t for word in ('影像','全景','透明底盘')):setv(7,'540影像')
         elif '360' in t and '影像' in t:setv(7,'360影像')
         for value, pattern in [('城市NOA',r'城市\s*NOA'),('高速NOA',r'高速\s*NOA'),
                                ('基础L2',r'基础\s*L2|L2\s*(?:驾驶辅助|辅助驾驶)'),('定速巡航',r'定速巡航')]:
@@ -407,6 +407,45 @@ def _apply(text, values, evidence, leftovers):
         excluded=all(re.fullmatch(ignored,p.strip(),re.I) for p in re.split(r'[+＋、；;]',t))
         if (not matched and not excluded) or re.search(r'芯片|怀挡|Carmind|自动空调',t):leftovers.append(line)
 
+
+def _split_options(text):
+    """Separate explicit options before mapping standard equipment; never price them."""
+    standard, options = [], []
+    option_section = False
+    marker = r'(?:(?:可)?选[装配](?:配置|项目|内容)?|[○◯])'
+    for line in str(text or '').splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if re.fullmatch(r'(?:选装|选配)(?:配置|项目|内容)?\s*[:：]?', line):
+            option_section = True
+            continue
+        if re.fullmatch(r'(?:标配|基础|标准)配置\s*[:：]?', line):
+            option_section = False
+            continue
+        # A standard tier can coexist with an optional upgrade in parentheses.
+        def inline(match):
+            options.append(match[1].strip())
+            return ''
+        line = re.sub(r'[（(]\s*'+marker+r'\s*[:：]?\s*([^()（）]+)[)）]', inline, line)
+        for part in re.split(r'[+＋、，,；;](?=\s*(?:'+marker+r'|标配))', line):
+            part = part.strip()
+            if not part:
+                continue
+            explicit = re.match(r'^(?:[^:：]{1,40}[:：]\s*)?'+marker+r'\s*[:：]?\s*(.*)$', part)
+            trailing = re.search(r'\s*[（(](?:选装|选配)[)）]\s*$', part)
+            if explicit and not re.search(r'不支持|不可|不提供', part[:explicit.start(1)]):
+                # Table cells may contain only ○; keep their row label as the option.
+                options.append(explicit[1].strip() or re.sub(marker+r'\s*[:：]?\s*$', '', part).strip(' :：'))
+            elif trailing:
+                options.append(part[:trailing.start()].strip())
+            elif option_section:
+                options.append(part)
+            else:
+                standard.append(part)
+    return '\n'.join(standard), list(dict.fromkeys(option for option in options if option))
+
+
 def make_snapshot(draft):
     columns=draft.get('columns',[])
     if not columns:raise ValueError('至少需要一个版型')
@@ -414,7 +453,7 @@ def make_snapshot(draft):
     if any(not n for n in names) or len(set(names))!=len(names):raise ValueError('版型名称不能为空或重复')
     model=str(draft.get('model','')).strip()
     if not model:raise ValueError('请填写本品车型名称')
-    lookup=dict(zip(names,columns)); expanded={}; traces={}; remaining={}; declared={}
+    lookup=dict(zip(names,columns)); expanded={}; traces={}; remaining={}; declared={}; options={}
     def expand(name,stack):
         if name in expanded:return
         if name in stack:raise ValueError('继承关系存在循环')
@@ -427,11 +466,15 @@ def make_snapshot(draft):
             from .seat_functions import empty
             vals[36]=empty();ev={}
         before={no:len(lines) for no,lines in ev.items()}
-        rest=[];_apply(str(col.get('text','')),vals,ev,rest)
+        standard_text, detected_options = _split_options(col.get('text', ''))
+        from .models import normalize_product_options
+        manual_options = normalize_product_options({name: col.get('options', '')}, names)[name]
+        options[name] = list(dict.fromkeys(detected_options + manual_options))
+        rest=[];_apply(standard_text,vals,ev,rest)
         declared[name]={no for no,lines in ev.items() if len(lines)>before.get(no,0)}
         # A range in an upgrade column may be a delta, not the absolute range.
-        if base and re.search(r'\d+\s*km续航', str(col.get('text', '')), re.I):
-            stated = re.search(r'(\d+)\s*km续航', str(col.get('text', '')), re.I)
+        if base and re.search(r'\d+\s*km续航', standard_text, re.I):
+            stated = re.search(r'(\d+)\s*km续航', standard_text, re.I)
             named_range = re.match(r'(\d{3,4})', name)
             if named_range and stated[1] != named_range[1]:
                 vals[1] = '[待定]续航原文' + stated[0] + '，请确认总续航或增量'
@@ -458,7 +501,7 @@ def make_snapshot(draft):
         cells.append({'no':no,'values':{name:expanded[name][no] for name in names},
                       'basis':f"{draft.get('source','PPT')} P{draft.get('page','')} / "+(' | '.join(ev) or '本页未说明')})
     snap=Snapshot(model=model,version='ppt-import-v2',date=datetime.date.today().isoformat(),status='待确认',
-        trims=trims,cells=cells,
+        trims=trims,cells=cells,options=options,
         pending=[],
         rulings=[{'type':'ppt_import','source':draft.get('source'),'page':draft.get('page'),
                   'draft':copy.deepcopy(draft),'remaining':remaining}])

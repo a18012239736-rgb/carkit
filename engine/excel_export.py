@@ -47,6 +47,10 @@ def export_report(path, kind, data):
         for key, label in [('config_adv','配置优势（元）'), ('flat_adv','拉平指导价优势（元）'), ('overall','综合竞争力（元）')]:
             rows.append([label] + [g.get('valuation', {}).get(key) if g.get('valuation', {}).get(key) is not None else
                                   missing_metric_reason(g, key) for g in groups])
+        for field, model in (('self_options', left), ('comp_options', right)):
+            if any(g.get(field) for g in groups):
+                rows.append([model+'选装（仅展示，不参与赋值）'] + [
+                    '\n'.join(g.get(field, []) or []) or '—' for g in groups])
         sheet('对比汇总', rows)
         ws = book['对比汇总']
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(groups)+1)
@@ -66,7 +70,7 @@ def export_report(path, kind, data):
                 cell.alignment = Alignment(vertical='center' if cell.row<=2 or cell.column==1 else 'top', horizontal='center' if cell.row<=2 else 'left', wrap_text=True)
         ws.row_dimensions[1].height = 32
         ws.row_dimensions[2].height = 72
-        for index in (3,4):
+        for index in (3, 4, *range(8, ws.max_row + 1)):
             lines = max((sum(max(1,(len(line)+24)//25) for line in str(c.value).split('\n')) for c in ws[index]), default=1)
             ws.row_dimensions[index].height = min(409, max(60, lines*17+16))
         for index in (5,6,7): ws.row_dimensions[index].height = 30

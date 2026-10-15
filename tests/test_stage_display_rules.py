@@ -129,7 +129,7 @@ def test_confirmed_exclusions_are_defaults_but_empty_list_reveals_raw_rows():
 
 def test_all_confirmed_defaults_hide_standard_and_optional_but_keep_raw_data():
     defaults = stage_one.DEFAULT_EXCLUDED_ROWS
-    assert len(defaults) == len(set(defaults)) == 217
+    assert len(defaults) == len(set(defaults)) == 209
     assert {
         '三电系统质保', '高精定位', '记忆泊车', '循迹倒车', '信号灯识别',
         '隐藏电动门把手', '主动降噪', 'USB/Type-C最大充电功率',

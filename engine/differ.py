@@ -769,7 +769,7 @@ def _merge_seat_labels(labels):
 
 
 def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_prices,
-                    valuation=None):
+                    valuation=None, self_options=None, comp_options=None):
     """按 BACKUP_MORE/LESS_ORDER 汇总每组的多/少栏；valuation 为 None 时金额行占位"""
     groups = []
     for pi, pair in enumerate(pairs):
@@ -794,6 +794,9 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
                 less.append(less_map[no])
         g = {"pair": pair, "more": _merge_seat_labels(more), "less": _merge_seat_labels(less),
              "more_items": [n for n in more_map], "less_items": [n for n in less_map]}
+        for side, options, key in (('self', self_options, 'self_trim'), ('comp', comp_options, 'comp_trim')):
+            if options and options.get(pair[key]):
+                g[side+'_options'] = list(options[pair[key]])
         sp, cp = self_prices.get(pair["self_trim"]), comp_prices.get(pair["comp_trim"])
         g["self_price"], g["comp_price"] = sp, cp
         g['self_floor_price'], g['comp_floor_price'] = pair['self_floor_price'], pair['comp_floor_price']

@@ -10,7 +10,8 @@ from .airbags import SOURCE_ROWS as AIRBAG_ROWS, from_raw as airbag_count
 EMPTY = {'', '-', '—', '无', '不支持', '✕'}
 RANGE_ROWS = ('CLTC纯电续航里程(km)', 'WLTC纯电续航里程(km)', 'NEDC纯电续航里程(km)')
 
-# pjy's saved selection (2026-10-12), matched by exact source row name only.
+# pjy's saved selection, with core display sources restored (2026-10-15).
+# Match exact source row names only.
 # New equipment is visible by default; these preferences never enter valuation.
 DEFAULT_EXCLUDED_ROWS = (
     '电池容量(kWh)',
@@ -75,7 +76,6 @@ DEFAULT_EXCLUDED_ROWS = (
     '扬声器品牌名称',
     '主动式环境氛围灯',
     '触摸式阅读灯',
-    '手机无线充电功率',
     '多媒体/充电接口',
     '发动机型号',
     '排量(mL)',
@@ -118,7 +118,6 @@ DEFAULT_EXCLUDED_ROWS = (
     '自动驻车',
     '上坡辅助',
     '前/后驻车雷达',
-    '驾驶辅助影像',
     '芯片总算力',
     '前方感知摄像头',
     '摄像头数量',
@@ -139,7 +138,6 @@ DEFAULT_EXCLUDED_ROWS = (
     '辅助变道',
     '辅助匝道自动驶出(入)',
     '方向盘离手检测',
-    '辅助驾驶路段',
     '发动机电子防盗',
     '车内中控锁',
     '钥匙类型',
@@ -147,7 +145,6 @@ DEFAULT_EXCLUDED_ROWS = (
     '无钥匙进入功能',
     '远程启动功能',
     '电池预加热',
-    '近光灯光源',
     '远光灯光源',
     'LED日间行车灯',
     '自适应远近光',
@@ -159,7 +156,6 @@ DEFAULT_EXCLUDED_ROWS = (
     '车窗一键升降功能',
     '车窗防夹手功能',
     '后排侧隐私玻璃',
-    '中控屏幕尺寸',
     '中控屏幕类型',
     '蓝牙/车载电话',
     '语音识别控制系统',
@@ -179,11 +175,8 @@ DEFAULT_EXCLUDED_ROWS = (
     '多功能方向盘',
     '行车电脑显示屏幕',
     'HUD抬头尺寸',
-    '内后视镜功能',
     'ETC装置',
     '运动风格座椅',
-    '前排座椅功能',
-    '电动座椅记忆功能',
     '副驾驶位后排可调节按钮',
     '第二排座椅调节',
     '后排座椅放倒形式',

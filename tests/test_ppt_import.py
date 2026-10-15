@@ -73,7 +73,8 @@ def test_uncertain_or_removed_upgrade_does_not_inherit_as_standard():
     snap=make_snapshot(d)
     cells={c['no']:c['values'] for c in snap.cells}
     assert _is_pending(cells[40]['舒适型'])
-    assert _is_pending(cells[1]['舒适型'])
+    assert cells[1]['舒适型'] == '500km'  # Optional range must not erase the inherited standard range.
+    assert snap.options['舒适型'] == ['600km续航']
     assert cells[40]['基础型']=='●'
 
 def test_xml_run_fragments_and_presentation_page_order(tmp_path):

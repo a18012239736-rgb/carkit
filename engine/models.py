@@ -11,6 +11,22 @@ from typing import Optional
 from .storage import atomic_write_text
 
 
+def normalize_product_options(options, trim_names):
+    """Display-only per-trim equipment, kept outside the priced configuration cells."""
+    if options is None:
+        return {}
+    if not isinstance(options, dict) or set(options) - set(trim_names):
+        raise ValueError('选装配置必须按现有版型填写')
+    normalized = {}
+    for name, lines in options.items():
+        if isinstance(lines, str):
+            lines = lines.splitlines()
+        if not isinstance(lines, list) or any(not isinstance(line, str) for line in lines):
+            raise ValueError('选装配置应为逐行文本')
+        normalized[name] = list(dict.fromkeys(line.strip() for line in lines if line.strip()))
+    return normalized
+
+
 def _merge_central_airbag(total, central):
     """Upgrade the old separate row once; new files have no row 42."""
     central = str(central or '').strip()
@@ -144,6 +160,8 @@ class Ladder:
     source: str = ""
     trims: list = field(default_factory=list)    # [{name, price_guide}]
     items: list = field(default_factory=list)    # list[LadderItem]
+    evidence: dict = field(default_factory=dict)  # 原始配置；旧文件无此字段仍可读取
+    options: dict = field(default_factory=dict)   # {trim: [仅展示的选装描述]}
 
     def item(self, no) -> Optional[LadderItem]:
         for it in self.items:
@@ -159,6 +177,8 @@ class Ladder:
 
     @classmethod
     def from_dict(cls, d):
+        d = dict(d)
+        d['options'] = normalize_product_options(d.get('options', {}), [t['name'] for t in d.get('trims', [])])
         items = [LadderItem(**it) for it in d.get("items", [])]
         from .usb import usb_label
         from .seat_functions import SUBS, normalize
@@ -219,6 +239,7 @@ class Snapshot:
     cells: list = field(default_factory=list)    # [{no, values:{trim:value}, basis}]
     pending: list = field(default_factory=list)  # [{no, reason, handling}]
     rulings: list = field(default_factory=list)  # deck 差异裁决记录
+    options: dict = field(default_factory=dict)   # {trim: [仅展示的选装描述]}，不进入 cells
 
     def to_ladder(self, checklist_items) -> Ladder:
         """展开成 Ladder（side=self），values 按 trims 顺序"""
@@ -247,7 +268,7 @@ class Snapshot:
                       date=self.date, source=f"snapshot {self.version}",
                       trims=[{"name": t["name"], "price_guide": t.get("price_guide")}
                              for t in self.trims],
-                      items=items)
+                      items=items, options=copy.deepcopy(self.options))
 
     def to_json(self, **kw):
         return json.dumps(asdict(self), ensure_ascii=False, **kw)
@@ -255,6 +276,7 @@ class Snapshot:
     @classmethod
     def from_dict(cls, d):
         d = copy.deepcopy(d)
+        d['options'] = normalize_product_options(d.get('options', {}), [t['name'] for t in d.get('trims', [])])
         cells = d.get('cells', [])
         central = next((c for c in cells if c['no'] == 42), None)
         if central:

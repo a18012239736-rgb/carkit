@@ -162,7 +162,17 @@
             }
           }
           for(const t of model.trims)if(t.base===old)t.base=name;
+          if(kind==='snapshot' && model.options && old in model.options) {model.options[name]=model.options[old];delete model.options[old];}
           trim.name=name;revision.value++;onChange();
+        }
+        function optionText(i) {
+          revision.value;
+          return (model.options?.[model.trims[i].name] || []).join('\n');
+        }
+        function options(i,value) {
+          model.options ||= {};
+          model.options[model.trims[i].name]=[...new Set(value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];
+          revision.value++;onChange();
         }
         function metadata(t,key,value) {t[key]=value;revision.value++;onChange();}
         function priceSource(t) {
@@ -171,7 +181,7 @@
           if(t.price_source==='TP价格') return `TP价格：${reference}，仅作参考；指导价请另填。`;
           return `原页价格：${reference}，口径未确定；请确认后填写指导价。`;
         }
-        return {rows,trims:model.trims,kind,get,change,choices,parseSeatAdjust,price,review,rename,metadata,priceSource};
+        return {rows,trims:model.trims,kind,get,change,choices,parseSeatAdjust,price,review,rename,metadata,priceSource,optionText,options};
       },
       template: `<table class="grid ce-table"><thead><tr><th>#</th><th>配置项</th><th v-for="(t,i) in trims" :key="i">{{t.name}}</th><th v-if="review">依据</th></tr></thead><tbody>
         <tr v-if="review"><td class="no">—</td><td>版型名称</td><td v-for="(t,i) in trims" :key="i"><input type="text" aria-label="版型名称" :value="t.name" @change="rename(i,$event)"></td><td></td></tr>
@@ -180,7 +190,8 @@
         <tr v-for="(row,n) in rows" :key="row.key"><td class="no">{{n+1}}</td><td>{{row.name}}</td><td v-for="(t,i) in trims" :key="i">
           <div v-if="row.subs" class="ce-seat-functions" :class="{'ce-rear-functions':row.rear}"><label v-for="sub in row.subs" :key="sub">{{row.rear ? sub.slice(2) : sub.slice(0,2)}}<config-cell :no="row.cell.no" :sub="sub" :value="get(row.cell,i,sub)" @change="change(row.cell,i,sub,$event)"/></label></div>
           <config-cell v-else :no="row.cell.no" :sub="row.sub" :kind="kind" :choices="choices(row.cell.no,kind)" :parse-seat-adjust="parseSeatAdjust" :value="get(row.cell,i,row.sub)" @change="change(row.cell,i,row.sub,$event)"/>
-        </td><td v-if="review"><input type="text" aria-label="配置依据" :value="row.cell.basis || ''" @change="metadata(row.cell,'basis',$event.target.value)"></td></tr></tbody></table>`
+        </td><td v-if="review"><input type="text" aria-label="配置依据" :value="row.cell.basis || ''" @change="metadata(row.cell,'basis',$event.target.value)"></td></tr>
+        <tr v-if="kind==='snapshot'"><td class="no">—</td><td>选装配置<small>每行一项，仅本版型展示，不参与赋值</small></td><td v-for="(t,i) in trims" :key="i"><textarea :aria-label="t.name+'选装配置'" :value="optionText(i)" @change="options(i,$event.target.value)"></textarea></td><td v-if="review"></td></tr></tbody></table>`
     });
     root.classList.add('vue-config-editor');
     app.mount(root); mounted.set(root,app);

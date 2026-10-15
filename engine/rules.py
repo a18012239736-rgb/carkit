@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import os
+import copy
 
 RULES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules")
 
@@ -24,6 +25,9 @@ class Rules:
         self.checklist = _load("checklist_v1.json")
         self.exemptions = _load("exemptions.json")
         self.aliases = _load("aliases.json")
+        self._index()
+
+    def _index(self):
         self.items = [it for it in self.checklist["items"] if not it.get("merged_into")]
         self.items_by_no = {it["no"]: it for it in self.checklist["items"]}
         self.row_to_item = dict(self.aliases["row_to_item"])
@@ -32,6 +36,18 @@ class Rules:
             for rn in it.get("source_rows", []):
                 self.row_to_item.setdefault(rn, it["no"])
         self.exempt_by_id = {r["id"]: r for r in self.exemptions["rules"]}
+
+    def to_snapshot(self):
+        return copy.deepcopy({"checklist": self.checklist, "exemptions": self.exemptions,
+                              "aliases": self.aliases})
+
+    @classmethod
+    def from_snapshot(cls, data):
+        rules = cls.__new__(cls)
+        for key in ('checklist', 'exemptions', 'aliases'):
+            setattr(rules, key, copy.deepcopy(data[key]))
+        rules._index()
+        return rules
 
     @property
     def version(self) -> str:

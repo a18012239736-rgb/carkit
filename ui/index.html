@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>产品小工具 — 车型配置对比</title>
 <link rel="stylesheet" href="style.css?v=stage-options-20261012">
-<link rel="stylesheet" href="config-editor.css?v=seat-mapping-20261009">
+<link rel="stylesheet" href="config-editor.css?v=product-options-20261015">
 <link rel="stylesheet" href="valuation-editor.css?v=ux-20261009-2">
-<link rel="stylesheet" href="ppt-draft-editor.css?v=ux-20261009">
+<link rel="stylesheet" href="ppt-draft-editor.css?v=product-options-20261015">
 <script src="vendor/vue/vue.global.prod.js"></script>
 <script src="stage-editor.js?v=vue-stage8"></script>
 </head>
@@ -124,6 +124,14 @@
     <!-- ⑤ 对比 -->
     <section id="page-diff" class="page">
       <h1>竞争力对比</h1><p class="intro">选择本品与历史竞品，指定版型配对，检查差配并导出结果。</p><div class="steps">01 准备本品与规则　→　02 选择竞品与配对　→　03 检查并导出</div><p class="notice">当前可检查配置差异；金额规则仍需按你的业务口径完成校准。</p>
+      <details class="card comparison-plans">
+        <summary>保存或打开对比方案</summary>
+        <p class="dim">保存本次配置、配对、底价、规则和结果。重新打开使用独立工作副本，不覆盖原始数据或全局规则。</p>
+        <div class="row"><label for="comparison-plan-name">方案名称</label><input id="comparison-plan-name" type="text" maxlength="100" placeholder="如 项目A－10月竞品对比"><button id="btn-save-plan" disabled>保存当前方案</button></div>
+        <div class="row"><label for="comparison-plan-list">已保存方案</label><select id="comparison-plan-list"></select><button id="btn-open-plan">打开方案</button><button id="btn-refresh-plans">刷新</button></div>
+        <p id="comparison-plan-status" class="dim" role="status"></p>
+      </details>
+      <div id="comparison-plan-banner" class="notice" hidden><span id="comparison-plan-context"></span><button id="btn-leave-plan">退出方案，开始新对比</button></div>
       <div class="card">
         <div class="row">
           <label>对比模式</label><select id="diff-mode"><option value="self">本品 vs 竞品</option><option value="competitor">竞品 vs 竞品</option></select>
@@ -146,6 +154,12 @@
         <div id="diff-status" class="status"></div>
       </div>
       <div id="diff-result" class="card" hidden>
+        <details id="comparison-review" class="comparison-review" hidden>
+          <summary id="comparison-review-summary">待核清单</summary>
+          <p class="dim">这里只提示需要检查的内容，不自动补配置、不改变计算金额。</p>
+          <label><input id="comparison-review-info" type="checkbox">同时查看来源提示</label>
+          <div id="comparison-review-list" class="table-wrap"></div>
+        </details>
         <h2>竞争力对比表</h2>
         <div class="table-wrap" id="backup-table"></div>
         <h2>配置项判定明细</h2>
@@ -196,10 +210,15 @@
   </main>
 </div>
 <div id="toast"></div>
-<script src="config-editor.js?v=seat-mapping-20261009"></script>
+<dialog id="comparison-evidence" aria-labelledby="comparison-evidence-title">
+  <div class="evidence-heading"><h2 id="comparison-evidence-title">原文与计算依据</h2><button id="comparison-evidence-close" aria-label="关闭原文与计算依据">关闭</button></div>
+  <div id="comparison-evidence-content"></div>
+</dialog>
+<script src="config-editor.js?v=product-options-20261015"></script>
 <script src="valuation-editor.js?v=ux-20261009-2"></script>
-<script src="ppt-draft-editor.js?v=ux-20261009"></script>
-<script src="stage-display-settings.js?v=stage-options-20261012"></script>
-<script src="app.js?v=stage-display-layout-20261012"></script>
+<script src="ppt-draft-editor.js?v=product-options-20261015"></script>
+<script src="stage-display-settings.js?v=checked-visible-20261015"></script>
+<script src="app.js?v=product-options-20261015"></script>
+<script src="comparison-tools.js?v=comparison-workflow-20261014"></script>
 </body>
 </html>

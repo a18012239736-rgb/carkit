@@ -36,3 +36,5 @@
 #main .vue-config-editor input[type=checkbox] { flex:0 0 17px; width:17px !important; height:17px; min-height:0 !important; padding:0 !important; }
 #main .vue-config-editor input:focus,
 #main .vue-config-editor select:focus { outline:none; border-color:#5e9e9b; box-shadow:0 0 0 3px #8fd9d43b; }
+#main .vue-config-editor textarea { box-sizing:border-box; width:100%; min-width:220px; min-height:90px; resize:vertical; padding:8px 10px; font-size:12px; line-height:1.65; }
+.vue-config-editor td > small { display:block; margin-top:6px; color:#6f8488; font-weight:400; }

@@ -37,7 +37,7 @@ def build_ladder(raw, rules, model: str = "", date: str = "", series_id: str = "
                   checklist=rules.version,
                   date=date or datetime.date.today().isoformat(),
                   source=f"汽车之家 config/series/{series_id or raw.series_id}.html 现抓",
-                  trims=trims, items=items)
+                  trims=trims, items=items, evidence={"raw": raw.to_dict()})
 
 
 def _airbag_display(counts, comps):

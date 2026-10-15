@@ -93,7 +93,8 @@ def cmd_diff(args):
     for c in cells:
         c["name"] = name_by_no.get(c["no"], str(c["no"]))
     groups = differ.assemble_backup(cells, pairs, snap.model, comp_lad.model,
-                                    self_prices, comp_prices, valuation)
+                                    self_prices, comp_prices, valuation,
+                                    self_options=self_lad.options, comp_options=comp_lad.options)
     notes = [f"[暂定/待定]：{p.get('reason')}（{p.get('handling')}）" for p in snap.pending]
     md = render_backup.render_md(snap.model or "自产品", comp_lad.model or "竞品",
                                  groups, cells, rules_version=rules.version,

@@ -10,6 +10,8 @@ import os
 import sys
 import traceback
 import re
+import copy
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,8 +38,10 @@ class Bridge:
         # through one stable owner thread.
         self._acquire_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='carkit-browser')
         self.stage_raw = None
+        self._comparison_records = {}
+        self._plan_sessions = {}
         os.makedirs(workdir, exist_ok=True)
-        for sub in ("raw", "阶梯", "快照", "赋值", "结果"):
+        for sub in ("raw", "阶梯", "快照", "赋值", "结果", "方案"):
             os.makedirs(os.path.join(workdir, sub), exist_ok=True)
 
     def shutdown(self):
@@ -262,6 +266,7 @@ class Bridge:
                     for item in lad.items:
                         if i < len(item.values) and not_applicable(energies[source_i], item.no):
                             item.values[i] = '不适用'
+                lad.evidence = {'raw': raw.to_dict()}
                 lad.save(output)
             else:
                 lad = ladder_mod.build_ladder(raw, self.rules, model=raw.model,
@@ -696,9 +701,22 @@ class Bridge:
     # ---------- ⑤ 对比 ----------
 
     def run_diff(self, snapshot_path: str, ladder_path: str, pairs: list,
-                 valuation_path: str = "", left_is_competitor: bool = False):
+                 valuation_path: str = "", left_is_competitor: bool = False, plan_session: str = ""):
         """pairs: [{"self_trim":..,"comp_trim":..}] —— 必须由使用者指定（铁律）"""
         try:
+            rules = self.rules
+            if plan_session:
+                session = self._plan_sessions.get(plan_session)
+                if not session:
+                    raise ValueError('方案工作副本已失效，请重新打开方案')
+                if (os.path.abspath(snapshot_path), os.path.abspath(ladder_path), os.path.abspath(valuation_path), left_is_competitor) != (
+                    session['paths']['left'], session['paths']['right'], session['paths']['valuation'], session['left_kind'] == 'ladder'):
+                    raise ValueError('方案输入已变更，请重新打开方案')
+                directory = session['directory']
+                if any(os.path.islink(path) or os.path.dirname(os.path.realpath(path)) != directory
+                       for path in session['paths'].values()):
+                    raise ValueError('方案工作副本路径无效，请重新打开方案')
+                rules = Rules.from_snapshot(session['rules'])
             if not pairs:
                 return {"ok": False, "error": "请先指定版型配对（程序不自动配对）"}
             pairs = [dict(pair) for pair in pairs]
@@ -709,13 +727,15 @@ class Bridge:
                 from types import SimpleNamespace
                 self_lad = Ladder.load(snapshot_path)
                 snap = SimpleNamespace(model=self_lad.model, pending=[])
+                left_input = self_lad.to_dict()
             else:
                 snap = resolve(Snapshot.load(snapshot_path))
                 if snap.status == '待确认':
                     raise ValueError('PPT解析草稿尚未确认，请先到本品配置核对并保存')
-                self_lad = snap.to_ladder(self.rules.checklist["items"])
+                self_lad = snap.to_ladder(rules.checklist["items"])
+                left_input = json.loads(snap.to_json())
             comp_lad = Ladder.load(ladder_path)
-            missing_items = {it['no'] for it in self.rules.items} - {it.no for it in comp_lad.items}
+            missing_items = {it['no'] for it in rules.items} - {it.no for it in comp_lad.items}
             if missing_items:
                 raise ValueError('右侧竞品阶梯缺少新配置项，请重新抓取或从历史车型重新生成后再对比。')
             self_trims = [t["name"] for t in self_lad.trims]
@@ -725,23 +745,25 @@ class Bridge:
                     return {"ok": False, "error": f"自产品版型不存在: {p['self_trim']}"}
                 if p["comp_trim"] not in comp_trims and p["comp_trim"] + "版" not in comp_trims:
                     return {"ok": False, "error": f"竞品版型不存在: {p['comp_trim']}"}
+                if p['comp_trim'] not in comp_trims:
+                    p['comp_trim'] += '版'
             valuation = None
             if valuation_path:
                 vd = valuer.load_xlsx(valuation_path) if valuation_path.endswith(".xlsx") \
                     else json.load(open(valuation_path, encoding="utf-8"))
-                vd = valuer.normalize_valuation(vd, self.rules)
+                vd = valuer.normalize_valuation(vd, rules)
                 valuation = ValuationTable(version=vd.get("version", ""),
                                            source=vd.get("source", ""),
                                            items=[ValuationItem(**it) for it in vd["items"]])
             else:
                 path = self._current_valuation_path()
                 saved = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
-                vd = valuer.normalize_valuation(saved, self.rules)
+                vd = valuer.normalize_valuation(saved, rules)
                 valuation = ValuationTable(version=vd["version"], source=vd["source"],
                                            items=[ValuationItem(**it) for it in vd["items"]])
-            cells = differ.diff(self_lad, comp_lad, pairs, self.rules, valuation=valuation)
+            cells = differ.diff(self_lad, comp_lad, pairs, rules, valuation=valuation)
             name_by_no = {it["no"]: (it.get("md_name") or it["name"])
-                          for it in self.rules.checklist["items"]}
+                          for it in rules.checklist["items"]}
             for c in cells:
                 c["name"] = name_by_no.get(c["no"], str(c["no"]))
             excluded = {it.no for it in valuation.items if it.rule == 'excluded'}
@@ -749,21 +771,95 @@ class Bridge:
             self_prices = {t["name"]: t.get("price_guide") for t in self_lad.trims}
             comp_prices = {t["name"]: t.get("price_guide") for t in comp_lad.trims}
             groups = differ.assemble_backup(cells, pairs, snap.model, comp_lad.model,
-                                            self_prices, comp_prices, valuation)
+                                            self_prices, comp_prices, valuation,
+                                            self_options=self_lad.options, comp_options=comp_lad.options)
             render_backup.format_configurations(cells, groups)
             notes = [f"[暂定/待定]：{p.get('reason')}（{p.get('handling')}）" for p in snap.pending]
             md = render_backup.render_md(snap.model, comp_lad.model, groups, cells,
-                                         rules_version=self.rules.version,
-                                         checklist=self.rules.version, date=_today(),
+                                         rules_version=rules.version,
+                                         checklist=rules.version, date=_today(),
                                          notes=notes)
             out = self._new_output_path('结果', f'赋值对比-{snap.model}vs{comp_lad.model}', '.md')
             atomic_write_text(out, md)
             missing = sorted({n for g in groups for n in (g.get("valuation") or {}).get("missing", [])})
-            return {"ok": True, "md_path": out, "md": md,
+            from engine.comparison_review import build_review
+            review = build_review(self_lad, comp_lad, pairs, rules, valuation, cells, groups)
+            result = {"ok": True, "md_path": out, "md": md,
                     "self_model": snap.model, "comp_model": comp_lad.model,
-                    "cells": cells, "groups": groups, "missing_valuation": missing}
+                    "cells": cells, "groups": groups, "missing_valuation": missing, **review}
+            preference_path = os.path.join(self.workdir, '阶梯展示排除清单.json')
+            if plan_session:
+                excluded_rows = session['excluded_rows']
+            else:
+                preferences = list(stage_one.DEFAULT_EXCLUDED_ROWS)
+                if os.path.isfile(preference_path):
+                    with open(preference_path, encoding='utf-8') as source:
+                        preferences = json.load(source)
+                excluded_rows = preferences.get('excluded_rows', []) if isinstance(preferences, dict) else preferences
+            inputs = {'left_kind': 'ladder' if left_is_competitor else 'snapshot',
+                      'left': left_input, 'right': comp_lad.to_dict(), 'pairs': pairs,
+                      'valuation': vd, 'rules': rules.to_snapshot(),
+                      'excluded_rows': excluded_rows}
+            return self._remember_comparison(inputs, result)
         except Exception as e:
             return {"ok": False, "error": str(e), "trace": traceback.format_exc(limit=5)}
+
+    def _remember_comparison(self, inputs, result):
+        token = uuid.uuid4().hex
+        result = copy.deepcopy(result)
+        result['comparison_id'] = token
+        self._comparison_records[token] = {'inputs': copy.deepcopy(inputs), 'result': copy.deepcopy(result)}
+        while len(self._comparison_records) > 8:
+            self._comparison_records.pop(next(iter(self._comparison_records)))
+        return result
+
+    def save_comparison_plan(self, name, comparison_id):
+        try:
+            from engine.comparison_plan import save_plan
+            record = self._comparison_records.get(comparison_id)
+            if not record:
+                raise ValueError('该结果已失效，请重新运行对比后保存方案')
+            return {'ok': True, **save_plan(os.path.join(self.workdir, '方案'), name,
+                                          record['inputs'], record['result'], __version__)}
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
+
+    def comparison_plans(self):
+        from engine.comparison_plan import load_plan
+        records = []
+        for filename in self.list_files('方案'):
+            if not filename.endswith('.json'):
+                continue
+            try:
+                plan = load_plan(os.path.join(self.workdir, '方案'), filename)
+                records.append({'file': filename, 'name': plan['name'], 'created_at': plan['created_at']})
+            except Exception:
+                records.append({'file': filename, 'name': filename+'（无法读取）', 'created_at': ''})
+        return {'ok': True, 'plans': sorted(records, key=lambda record: record['created_at'], reverse=True)}
+
+    def open_comparison_plan(self, filename):
+        try:
+            from engine.comparison_plan import load_plan
+            plan = load_plan(os.path.join(self.workdir, '方案'), filename)
+            inputs = plan['inputs']
+            rules = Rules.from_snapshot(inputs['rules'])
+            token = uuid.uuid4().hex
+            directory = os.path.join(self.workdir, '方案', '工作副本', token)
+            os.makedirs(directory)
+            paths = {key: os.path.join(directory, key+'.json') for key in ('left', 'right', 'valuation')}
+            for key, path in paths.items():
+                atomic_write_text(path, json.dumps(inputs[key], ensure_ascii=False, indent=2)+'\n')
+            self._plan_sessions[token] = {'paths': paths, 'rules': rules.to_snapshot(),
+                                          'directory': os.path.realpath(directory),
+                                          'left_kind': inputs['left_kind'], 'excluded_rows': inputs['excluded_rows']}
+            while len(self._plan_sessions) > 8:
+                self._plan_sessions.pop(next(iter(self._plan_sessions)))
+            result = self._remember_comparison(inputs, plan['result'])
+            return {'ok': True, 'name': plan['name'], 'created_at': plan['created_at'],
+                    'app_version': plan['app_version'], 'session': token, 'paths': paths,
+                    'inputs': inputs, 'result': result}
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
 
     def build_ladder_md_only(self, ladder_path: str):
         """由已存阶梯 JSON 重新渲染 md（GUI 编辑后导出用）"""

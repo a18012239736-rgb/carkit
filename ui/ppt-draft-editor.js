@@ -20,12 +20,13 @@
           changed();
         };
         const set = (i,key,value) => {columns.value[i][key]=value;changed();};
-        const add = () => {columns.value.push({name:'',base:null,price:null,text:''});changed();};
+        const cleanOptions = (i,value) => set(i,'options',[...new Set(value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean))].join('\n'));
+        const add = () => {columns.value.push({name:'',base:null,price:null,text:'',options:''});changed();};
         const remove = i => {
           if(columns.value.length===1){window.toast?.('至少保留一个版型','err');return;}
           const old=columns.value.splice(i,1)[0];columns.value.forEach(c=>{if(c.base===old.name)c.base=null;});changed();
         };
-        return {columns,bases,rename,set,add,remove};
+        return {columns,bases,rename,set,cleanOptions,add,remove};
       },
       template:`<div class="ppt-draft-grid"><article v-for="(col,i) in columns" :key="i" class="ppt-column">
         <div class="ppt-column-head"><span class="ppt-column-index">版型 {{i+1}}</span><button v-if="columns.length>1" type="button" class="ppt-remove" @click="remove(i)">删除版型</button></div>
@@ -33,6 +34,7 @@
         <label>比较基准<select class="ppt-base" :value="col.base||''" @change="set(i,'base',$event.target.value||null)"><option value="">独立基础配置</option><option v-for="base in bases(i)" :key="base.name" :value="base.name">{{base.name}}</option></select></label>
         <label>价格（万元）<input class="ppt-price" type="number" min="0" step="0.01" :value="col.price??''" @input="set(i,'price',$event.target.value)"></label>
         <label>配置内容（每行一项，也可稍后在完整表格填写）<textarea class="ppt-text" :value="col.text||''" @input="set(i,'text',$event.target.value)"></textarea></label>
+        <label>选装配置（每行一项，仅本版型展示，不参与赋值）<textarea class="ppt-options" :value="col.options||''" @input="set(i,'options',$event.target.value)" @change="cleanOptions(i,$event.target.value)"></textarea></label>
       </article></div><div class="ppt-draft-toolbar"><button type="button" class="ppt-add-column" @click="add">＋ 添加版型</button></div>`
     });
     root.classList.add('vue-ppt-draft');

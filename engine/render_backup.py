@@ -1,6 +1,7 @@
 """render_backup — DiffResult → deck BACKUP 页表格式 md（对齐 golden 输出）"""
 from __future__ import annotations
 import datetime
+import html
 import re
 from .rules import display_order_key
 
@@ -165,6 +166,13 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
     money_row("config_adv", "配置优势（元）")
     money_row("flat_adv", "拉平指导价优势（元）")
     money_row("overall", "综合竞争力（元）")
+    for field, model in (('self_options', self_model), ('comp_options', comp_model)):
+        if any(g.get(field) for g in groups):
+            def safe(text):
+                text = html.escape(str(text)).replace('|', '&#124;')
+                return re.sub(r'([\\`*_\[\]~])', r'\\\1', text).replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br>')
+            lines.append(f"| {safe(model)}选装（仅展示，不参与赋值） | " + " | ".join(
+                '<br>'.join(safe(option) for option in g.get(field, []) or []) or '—' for g in groups) + " |")
     lines.append("")
     lines.append("## 底价与价格计算依据")
     lines.append("")

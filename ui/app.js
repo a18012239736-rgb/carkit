@@ -8,6 +8,7 @@ const ST = {
   valuation: null, valuationPath: "",
   diff: null, diffRevision: 0, pairsRevision: 0, competitorRevision: 0, selfEditorRevision: 0,
   competitorFile: "",
+  plan: null,
   leftLadder: null, leftLadderPath: "",
   stage: {trims: [], seriesId: "", model: ""},
 };
@@ -47,6 +48,7 @@ function syncActionButtons() {
     ready(id, !!ST.diff?.ok, '请先完成对比；配置或配对变更后需重新对比');
   $('#comparison-action-hint').textContent = !left || !right ? '请选择左右两侧车型，再指定版型配对。' : !paired ? '请添加至少一组有效版型配对。' : ST.diff?.ok ? '结果已生成，可导出 Markdown 或 Excel。' : '版型配对已就绪，点击“开始对比”生成结果。';
   ready('#ppt-save', !$('#ppt-review').hidden && ST.snapshot?.status === '待确认' && $('#ppt-confirm').checked, '请展开完整配置，核对后勾选确认');
+  if (window.ComparisonTools) window.ComparisonTools.sync();
 }
 
 function invalidateDiff() {
@@ -444,7 +446,7 @@ previewButton.onclick = async () => {
   const panel = document.createElement('section');
   panel.id = 'ladder-visual';
   panel.className = 'card';
-  panel.innerHTML = `<div class="ladder-heading"><h2>配置阶梯</h2><button class="close-ladder">收起</button></div><p class="dim">指导价单位：万元 · 按上方所选比较基准显示；选装单列</p><div class="ladder-scroll"><div class="ladder-sheet"><h3 class="ladder-model">${esc(res.model)}</h3><div class="ladder-columns">${res.columns.map(c => `<article class="ladder-column"><h4>${esc(c.name)}</h4><div class="ladder-price">${c.price == null ? '待核' : Number(c.price).toFixed(2)}</div><strong>${c.base == null ? '基础配置：' : '相对 '+esc(c.base)+'：'}</strong><ul>${(c.items.length ? c.items : ['配置相同，仅价格/续航差异。']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>${c.options.length ? `<details><summary>选装配置</summary><ul>${c.options.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</article>`).join('')}</div></div></div>`;
+  panel.innerHTML = `<div class="ladder-heading"><h2>配置阶梯</h2><button class="close-ladder">收起</button></div><p class="dim">指导价单位：万元 · 按上方所选比较基准显示；选装单列。卡片可左移／右移，仅调整当前展示位置，不改变比较基准和导出顺序。</p><div class="ladder-scroll"><div class="ladder-sheet"><h3 class="ladder-model">${esc(res.model)}</h3><div class="ladder-columns">${res.columns.map(c => `<article class="ladder-column"><h4>${esc(c.name)}</h4><div class="ladder-price">${c.price == null ? '待核' : Number(c.price).toFixed(2)}</div><strong>${c.base == null ? '基础配置：' : '相对 '+esc(c.base)+'：'}</strong><ul>${(c.items.length ? c.items : ['配置相同，仅价格/续航差异。']).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>${c.options.length ? `<details><summary>选装配置</summary><ul>${c.options.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>` : ''}</article>`).join('')}</div></div></div>`;
   panel.querySelector('.ladder-heading h2').textContent = res.model + ' · 配置阶梯';
   panel.querySelector('.ladder-model').textContent = `${res.columns.length} 个版型 · 指导价与配置一览`;
   panel.querySelectorAll('.ladder-column').forEach((card, i) => {
@@ -459,11 +461,55 @@ previewButton.onclick = async () => {
     unit.textContent = c.price == null ? '指导价待核' : '万元';
     price.append(unit);
   });
+  enableLadderCardMoves(panel);
   $('#stage-display-settings').after(panel);
   panel.querySelector('.close-ladder').onclick = () => panel.remove();
   panel.scrollIntoView({behavior:'smooth', block:'start', inline:'start'});
   panel.querySelector('.ladder-scroll').scrollLeft = 0;
 };
+
+function enableLadderCardMoves(panel) {
+  const cards = [...panel.querySelectorAll('.ladder-column')];
+  if (cards.length < 2) return;
+  const buttons = new Map();
+  function refresh() {
+    const ordered = [...panel.querySelectorAll('.ladder-column')];
+    ordered.forEach((card, i) => {
+      const [left, right] = buttons.get(card);
+      left.disabled = i === 0;
+      right.disabled = i === ordered.length - 1;
+    });
+  }
+  cards.forEach(card => {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'ladder-card-tools';
+    toolbar.append(card.querySelector('.ladder-badge'));
+    const controls = document.createElement('div');
+    controls.className = 'ladder-card-actions';
+    const moves = [-1, 1].map(direction => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = direction < 0 ? '← 左移' : '右移 →';
+      button.title = button.ariaLabel = `${card.querySelector('h4').textContent}${direction < 0 ? '左移' : '右移'}一个位置`;
+      button.onclick = () => {
+        const neighbor = direction < 0 ? card.previousElementSibling : card.nextElementSibling;
+        if (!neighbor) return;
+        if (direction < 0) card.parentElement.insertBefore(card, neighbor);
+        else card.parentElement.insertBefore(neighbor, card);
+        refresh();
+        const focus = button.disabled ? moves[direction < 0 ? 1 : 0] : button;
+        focus.focus({preventScroll:true});
+        focus.scrollIntoView({behavior:'smooth', block:'nearest', inline:'nearest'});
+      };
+      controls.append(button);
+      return button;
+    });
+    buttons.set(card, moves);
+    toolbar.append(controls);
+    card.prepend(toolbar);
+  });
+  refresh();
+}
 $('#stage-trim-editor').addEventListener('change', () => { document.querySelector('#ladder-visual')?.remove(); syncActionButtons(); });
 
 $("#btn-stage-export").addEventListener("click", async () => {
@@ -704,6 +750,7 @@ $("#diff-close-valuation").addEventListener("click", async () => {
 });
 
 async function loadCurrentValuation(force=false) {
+  if(ST.plan)return toast('当前使用方案保存的规则；请先退出方案再修改全局规则。','err');
   if (ST.valuation && !force) return renderValuation();
   const res = await api("current_valuation");
   if (!res.ok) return;
@@ -715,6 +762,7 @@ async function loadCurrentValuation(force=false) {
 }
 
 $("#btn-make-template").addEventListener("click", async () => {
+  if(ST.plan)return toast('请先退出方案再修改全局规则。','err');
   if (ST.valuation) {
     if (!collectValuationEdits()) return;
     const saved = await api("save_current_valuation", ST.valuation);
@@ -730,6 +778,7 @@ $("#btn-make-template").addEventListener("click", async () => {
 });
 
 $("#btn-load-valuation").addEventListener("click", async () => {
+  if(ST.plan)return toast('请先退出方案再修改全局规则。','err');
   const path = await api("open_file_dialog", ["赋值表 (*.xlsx;*.json)"]);
   if (!path || path.error) return;
   const res = await api("load_valuation", path);
@@ -742,6 +791,7 @@ $("#btn-load-valuation").addEventListener("click", async () => {
 });
 
 $("#btn-save-valuation").addEventListener("click", async () => {
+  if(ST.plan)return toast('请先退出方案再修改全局规则。','err');
   if (!ST.valuation) return toast("赋值规则尚未载入", "err");
   if (!collectValuationEdits()) return;
   const res = await api("save_current_valuation", ST.valuation);
@@ -755,6 +805,7 @@ $("#btn-save-valuation").addEventListener("click", async () => {
 });
 
 $("#btn-reset-valuation").addEventListener("click", async () => {
+  if(ST.plan)return toast('请先退出方案再修改全局规则。','err');
   if (!window.confirm("恢复所有内置默认赋值？已保存的自定义规则将被移除。")) return;
   const res = await api("reset_current_valuation");
   if (!res.ok) return;
@@ -788,15 +839,18 @@ function collectValuationEdits() {
 
 /* ---------- ⑤ 对比 ---------- */
 async function refreshDiffSelects() {
+  if (ST.plan) { syncActionButtons(); return; }
   const previousSelf = $('#diff-snapshot').value;
   const previousLeft = $('#diff-left-vehicle').value;
   const previousValuation = $('#diff-valuation').value;
   const [snaps, lads, vals] = await Promise.all([
     api("list_files", "快照"), api("list_files", "阶梯"), api("list_files", "赋值"),
   ]);
+  if(ST.plan)return;
   fillSelect("#diff-snapshot", snaps.filter(f=>f.endsWith('.json')));
   fillSelect("#diff-valuation", vals.filter(f=>(f.endsWith('.json') || f.endsWith('.xlsx')) && f !== '当前赋值规则.json'), "当前已保存赋值规则（默认）");
   const history = await api('vehicle_history');
+  if(ST.plan)return;
   const sel = $('#diff-vehicle'); const previous = sel.value;
   sel.innerHTML = '<option value="">请选择已抓取的竞品</option>'+history.map(r=>`<option value="${esc(r.file)}">${esc(r.label)}</option>`).join('');
   if ([...sel.options].some(o=>o.value===previous)) sel.value=previous;
@@ -845,9 +899,9 @@ async function rebuildPairs() {
   const competitor=$('#diff-mode').value==='competitor';
   const [sn, ld] = [competitor ? $('#diff-left-vehicle').value : $("#diff-snapshot").value, $("#diff-ladder").value];
   if (!sn || !ld) return;
-  const sp = await api("workdir_path", "快照", sn);
-  const lp = await api("workdir_path", "阶梯", ld);
-  const [sres, lres] = [competitor ? await api('prepare_competitor',sn) : await api("load_snapshot", sp), await api("load_ladder", lp)];
+  const sp = ST.plan ? ST.plan.paths.left : await api("workdir_path", "快照", sn);
+  const lp = ST.plan ? ST.plan.paths.right : await api("workdir_path", "阶梯", ld);
+  const [sres, lres] = [competitor ? await api(ST.plan ? 'load_ladder' : 'prepare_competitor',ST.plan ? sp : sn) : await api("load_snapshot", sp), await api("load_ladder", lp)];
   if (revision !== ST.pairsRevision) return;
   const st = (competitor ? sres.ladder : sres.snapshot).trims.map((t) => t.name);
   const ct = lres.ladder.trims.map((t) => t.name);
@@ -914,13 +968,13 @@ $("#btn-run-diff").addEventListener("click", async () => {
   button.textContent = '正在对比…';
   const revision = invalidateDiff();
   try {
-    const sp = competitor ? (await api('prepare_competitor',sn)).path : await api("workdir_path", "快照", sn);
-    const lp = await api("workdir_path", "阶梯", ld);
+    const sp = ST.plan ? ST.plan.paths.left : competitor ? (await api('prepare_competitor',sn)).path : await api("workdir_path", "快照", sn);
+    const lp = ST.plan ? ST.plan.paths.right : await api("workdir_path", "阶梯", ld);
     const vv = $("#diff-valuation").value;
-    const vp = vv ? await api("workdir_path", "赋值", vv) : "";
+    const vp = ST.plan ? ST.plan.paths.valuation : vv ? await api("workdir_path", "赋值", vv) : "";
     if (revision !== ST.diffRevision) return;
     $("#diff-status").textContent = "计算中…";
-    const res = await api("run_diff", sp, lp, pairs, vp, competitor);
+    const res = await api("run_diff", sp, lp, pairs, vp, competitor, ST.plan?.session || '');
     if (revision !== ST.diffRevision) return;
     if (res.ok) {
       ST.diff = res;
@@ -964,6 +1018,12 @@ function renderDiff(res) {
       return `<td>${v == null ? `<span class="dim">${esc(reason(g,k))}</span>` : fmtMoney(v)}</td>`;
     }).join("") + "</tr>";
   h += money("config_adv", "配置优势（元）") + money("flat_adv", "拉平指导价优势（元）") + money("overall", "综合竞争力（元）");
+  for (const [field, model] of [['self_options', res.self_model || '本品'], ['comp_options', res.comp_model || '竞品']]) {
+    if (groups.some(g => g[field]?.length)) {
+      h += `<tr><th class="backup-label">${esc(model)}选装<br><span class="dim">仅展示，不参与赋值</span></th>` + groups.map(g =>
+        `<td>${g[field]?.length ? g[field].map(option => esc(option).replace(/\r\n?|\n/g, '<br>')).join('<br>') : '—'}</td>`).join('') + '</tr>';
+    }
+  }
   h += "</tbody></table>";
   $("#backup-table").innerHTML = '<p class="dim">金额正值表示左侧车型占优，负值表示左侧车型落后；指导价单位为万元。</p>' + h;
   $("#backup-table").innerHTML += groups.map(g=>{
@@ -984,12 +1044,14 @@ function renderDiff(res) {
       const c = res.cells.find((x) => x.no === no && x.pair === pi);
       if (!c) { d += "<td></td>"; continue; }
       const cls = { "多": "v-more", "少": "v-less", "同": "v-same", "豁免": "v-exempt", "不计": "v-na" }[c.verdict] || "";
-      d += `<td class="${cls}">${esc(c.display)}</td>`;
+      const evidence = (res.evidence || []).some(entry=>entry.no===no && entry.pair===pi);
+      d += `<td class="${cls}">${esc(c.display)}${evidence?`<button class="evidence-link" data-evidence-no="${no}" data-evidence-pair="${pi}">查看依据</button>`:''}</td>`;
     }
     d += "</tr>";
   }
   d += "</tbody></table>";
   $("#detail-table").innerHTML = d;
+  if (window.ComparisonTools) window.ComparisonTools.render(res);
   syncActionButtons();
 }
 
@@ -1128,7 +1190,7 @@ $('#diff-edit-self').onclick=async()=>{
   if(!file)return toast(competitor?'请先选择左侧竞品':'请先选择本品配置','err');
   const isCurrent=()=>revision===ST.selfEditorRevision && competitor===($('#diff-mode').value==='competitor') && $(competitor?'#diff-left-vehicle':'#diff-snapshot').value===file;
   if(competitor){
-    const r=await api('prepare_competitor',file);
+    const r=await api(ST.plan?'load_ladder':'prepare_competitor',ST.plan?ST.plan.paths.left:file);
     if(!isCurrent())return;
     ST.leftLadder=r.ladder; ST.leftLadderPath=r.path;
     $('#diff-self-editor h3').textContent='修改左侧竞品配置';
@@ -1137,7 +1199,7 @@ $('#diff-edit-self').onclick=async()=>{
     $('#diff-self-editor').hidden=false;
     return;
   }
-  const path=await api('workdir_path','快照',file);
+  const path=ST.plan?ST.plan.paths.left:await api('workdir_path','快照',file);
   if(!isCurrent())return;
   const r=await api('load_snapshot',path);
   if(!isCurrent())return;
@@ -1156,7 +1218,7 @@ $('#diff-save-self').onclick=async()=>{
     if(!ST.leftLadder||!ST.leftLadderPath)return toast('请先选择左侧竞品','err');
     collectLadderEdits('#diff-self-table',ST.leftLadder);
     const r=await api('save_ladder_edit',ST.leftLadderPath,ST.leftLadder);
-    if(r&&r.ok){invalidateDiff();await rebuildPairs();toast('左侧竞品修正已保存，请运行对比','ok');}
+    if(r&&r.ok){invalidateDiff();if(!ST.plan)await rebuildPairs();toast('左侧竞品修正已保存，请运行对比','ok');}
     return;
   }
   if(!comparisonSelf)return;
@@ -1281,7 +1343,8 @@ $('#ppt-expand').onclick=async()=>{
   const rename=Object.fromEntries(previous.map((n,i)=>[n,names[i]]));
   const draft={...ST.pptDraft,model:$('#ppt-model').value.trim(),price_kind:$('#ppt-price-kind').value,
     columns:rows.map((r,i)=>({name:names[i],base:rename[r.querySelector('.ppt-base').value]||null,
-      price:r.querySelector('.ppt-price').value||null,text:r.querySelector('.ppt-text').value}))};
+      price:r.querySelector('.ppt-price').value||null,text:r.querySelector('.ppt-text').value,
+      options:r.querySelector('.ppt-options')?.value || ''}))};
   const res=await api('ppt_preview',draft);
   ST.snapshot=res.snapshot;ST.snapshotPath='';
   $('#snapshot-info').textContent='本品配置草稿 · 尚未保存';

@@ -5,6 +5,7 @@
 .vue-ppt-draft .ppt-column label { display:flex; flex-direction:column; gap:6px; margin:0; color:#5c7378; font-size:12px; font-weight:700; }
 .vue-ppt-draft .ppt-column input, .vue-ppt-draft .ppt-column select, .vue-ppt-draft .ppt-column textarea { width:100%; margin:0; }
 .vue-ppt-draft .ppt-column textarea { min-height:180px; resize:vertical; line-height:1.65; }
+.vue-ppt-draft .ppt-column .ppt-options { min-height:90px; }
 .vue-ppt-draft .ppt-remove { min-height:30px; padding:5px 9px; color:#a8544d; border-color:transparent; background:transparent; font-size:11px; }
 .vue-ppt-draft .ppt-draft-toolbar { display:flex; margin-top:12px; }
 .vue-ppt-draft .ppt-add-column { height:42px; min-height:42px; }

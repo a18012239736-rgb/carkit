@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 import re
-from .models import Snapshot
+from .models import Snapshot, normalize_product_options
 from .rules import display_order_key
 
 # Baseline tiers; unspecified USB counts stay rule-backed rather than fixed at three.
@@ -15,6 +15,7 @@ BASE_CONFIG = {4: 'R16钢轮毂', 17: '卤素大灯', 25: '塑料', 26: '手调'
 
 def prepare_snapshot(snap):
     """Fill baseline tiers and establish links once; edited overrides keep no link."""
+    snap.options = normalize_product_options(snap.options, [t['name'] for t in snap.trims])
     by_no = {c['no']: c for c in snap.cells}
     seat = by_no.get(36)
     if seat:

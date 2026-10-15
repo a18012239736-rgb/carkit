@@ -5,6 +5,7 @@
   function mount(element, {api, model, onSaved}) {
     root = element;
     current = createApp({setup() {
+      // Keep saved/selected as excluded names so existing display preferences do not invert.
       const source = ref([]), sourceGroups = ref([]), optionStatus = ref({}), saved = ref([]), selected = ref([]);
       const search = ref(''), excludedOnly = ref(false), currentModel = ref('');
       const loading = ref(false), saving = ref(false), status = ref(''), failed = ref(false);
@@ -64,6 +65,7 @@
         } finally { saving.value = false; }
       }
       function selectedCount(names) { return names.filter(name => selected.value.includes(name)).length; }
+      function shownCount(names) { return names.length - selectedCount(names); }
       function optionLabel(name) { return optionStatus.value[name] === 'optional' ? '选配' : optionStatus.value[name] === 'mixed' ? '含选配' : ''; }
       function setGroup(names, hidden) {
         if (saving.value || loading.value) return;
@@ -72,15 +74,15 @@
         status.value = ''; failed.value = false;
       }
       function undo() { selected.value = [...saved.value]; status.value = ''; failed.value = false; }
-      return {source, saved, selected, search, excludedOnly, currentModel, loading, saving, status, failed, dirty, visible, groups, visibleGroups, hasUnclassified, optionStatus, optionLabel, selectedCount, setGroup, load, save, undo};
+      return {source, rows, saved, selected, search, excludedOnly, currentModel, loading, saving, status, failed, dirty, visible, groups, visibleGroups, hasUnclassified, optionStatus, optionLabel, selectedCount, shownCount, setGroup, load, save, undo};
     }, template: `<details class="card stage-display-settings" @toggle="$event.target === $event.currentTarget && $event.target.open && load()">
-      <summary>不展示的配置 <span class="dim">勾选隐藏，取消恢复</span></summary>
+      <summary>展示的配置 <span class="dim">勾选显示，取消隐藏</span></summary>
       <p class="dim">只影响配置阶梯图、Markdown 和 Excel；不删除原始数据，不改变赋值计算。按汽车之家配置行名称保存，并应用于其他车型。选配在阶梯图下方单列；隐藏配置也会隐藏对应选配。</p>
       <div class="row stage-display-toolbar">
         <input type="text" v-model="search" placeholder="搜索配置名称" aria-label="搜索配置名称">
-        <label><input type="checkbox" v-model="excludedOnly"> 仅查看已勾选</label>
+        <label><input type="checkbox" v-model="excludedOnly"> 仅查看隐藏项</label>
       </div>
-      <p class="dim stage-display-count">{{currentModel ? '当前车型：' + currentModel : '尚未打开车型；可恢复之前隐藏的配置'}} · 已勾选 {{selected.length}} 项<span v-if="dirty">（尚未保存）</span></p>
+      <p class="dim stage-display-count">{{currentModel ? '当前车型：' + currentModel : '尚未打开车型；可恢复之前隐藏的配置'}} · 已勾选显示 {{shownCount(rows)}} 项<span v-if="dirty">（尚未保存）</span></p>
       <p class="dim stage-display-hint">沿用汽车之家分类；分类按钮仅作用于当前筛选结果。</p>
       <p class="dim" v-if="hasUnclassified">部分历史数据未保存分类；重新抓取车型后，可按原分类查看。</p>
       <div class="stage-display-list" :aria-busy="loading" v-if="loading">正在读取配置名称…</div>
@@ -88,19 +90,19 @@
         <details v-for="(group, index) in visibleGroups" :key="index + ':' + group.name" class="stage-display-group" open>
           <summary>
             <span class="stage-display-group-name">{{group.name}}</span>
-            <span class="stage-display-group-count">已隐藏 {{selectedCount(group.rows)}} / {{group.rows.length}} 项</span>
+            <span class="stage-display-group-count">已显示 {{shownCount(group.rows)}} / {{group.rows.length}} 项</span>
             <span class="stage-display-group-actions" @click.stop @keydown.stop>
-              <button type="button" @click="setGroup(group.rows, true)" :disabled="saving || selectedCount(group.rows) === group.rows.length" :aria-label="group.name + '：全选隐藏当前筛选结果'" title="仅作用于本分类当前筛选结果">全选隐藏</button>
-              <button type="button" @click="setGroup(group.rows, false)" :disabled="saving || !selectedCount(group.rows)" :aria-label="group.name + '：全部恢复当前筛选结果'" title="仅作用于本分类当前筛选结果">全部恢复</button>
+              <button type="button" @click="setGroup(group.rows, false)" :disabled="saving || !selectedCount(group.rows)" :aria-label="group.name + '：全选显示当前筛选结果'" title="仅作用于本分类当前筛选结果">全选显示</button>
+              <button type="button" @click="setGroup(group.rows, true)" :disabled="saving || selectedCount(group.rows) === group.rows.length" :aria-label="group.name + '：全部隐藏当前筛选结果'" title="仅作用于本分类当前筛选结果">全部隐藏</button>
             </span>
           </summary>
           <div class="stage-display-group-rows">
             <label v-for="name in group.rows" :key="name" :class="{'is-excluded': selected.includes(name)}">
-              <input type="checkbox" v-model="selected" :value="name" :disabled="saving"><span>{{name}}</span><span v-if="optionLabel(name)" class="stage-display-option">{{optionLabel(name)}}</span>
+              <input type="checkbox" :checked="!selected.includes(name)" @change="setGroup([name], !$event.target.checked)" :value="name" :disabled="saving"><span>{{name}}</span><span v-if="optionLabel(name)" class="stage-display-option">{{optionLabel(name)}}</span>
             </label>
           </div>
         </details>
-        <p class="dim" v-if="!visible.length">{{source.length || saved.length ? '没有符合筛选条件的配置。' : '打开历史车型或抓取车型后，可从实际配置中选择不展示的项目。'}}</p>
+        <p class="dim" v-if="!visible.length">{{source.length || saved.length ? '没有符合筛选条件的配置。' : '打开历史车型或抓取车型后，可从实际配置中勾选要展示的项目。'}}</p>
       </div>
       <div class="row stage-display-actions">
         <button type="button" class="primary" @click="save" :disabled="loading || saving || !dirty">{{saving ? '正在保存…' : '保存展示清单'}}</button>
