@@ -97,7 +97,7 @@ def test_snapshot_plan_round_trip_after_restart_preserves_result_pairs_and_evide
     archive = load_plan(Path(bridge.workdir) / '方案', record['file'])
     assert archive['inputs']['pairs'] == state['pairs']
     assert archive['inputs']['excluded_rows'] == ['腰部支撑']
-    assert archive['inputs']['right']['evidence']['raw'] == json.loads(state['raw'].read_text())
+    assert archive['inputs']['right']['evidence']['raw'] == json.loads(state['raw'].read_text(encoding='utf-8'))
     assert archive['result'] == {key: value for key, value in report.items()
                                  if key not in ('md_path', 'comparison_id')}
     bridge.shutdown()
@@ -154,7 +154,7 @@ def test_editable_work_copy_recalculates_then_saves_new_plan_without_changing_ar
     opened = bridge.open_comparison_plan(record['file'])
     assert opened['ok'], opened.get('error')
     left_path = Path(opened['paths']['left'])
-    left = json.loads(left_path.read_text())
+    left = json.loads(left_path.read_text(encoding='utf-8'))
     next(cell for cell in left['cells'] if cell['no'] == 40)['values']['左版'] = '✕'
     atomic_write_text(left_path, json.dumps(left, ensure_ascii=False))
     changed = _rerun(bridge, opened)
