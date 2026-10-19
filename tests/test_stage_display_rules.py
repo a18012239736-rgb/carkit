@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import re
 
 from openpyxl import load_workbook
@@ -15,6 +16,10 @@ from engine.valuer import default_valuation
 
 
 PLAN = [{'target': 0, 'base': None}, {'target': 1, 'base': 0}]
+
+
+def effective_exclusions(*extra):
+    return list(dict.fromkeys((*stage_one.DEFAULT_EXCLUDED_ROWS, *extra)))
 
 
 def raw_table(rows):
@@ -128,12 +133,12 @@ def test_confirmed_exclusions_are_defaults_but_empty_list_reveals_raw_rows():
 
 
 def test_all_confirmed_defaults_hide_standard_and_optional_but_keep_raw_data():
-    defaults = stage_one.DEFAULT_EXCLUDED_ROWS
-    assert len(defaults) == len(set(defaults)) == 209
+    defaults = effective_exclusions()
     assert {
         '三电系统质保', '高精定位', '记忆泊车', '循迹倒车', '信号灯识别',
         '隐藏电动门把手', '主动降噪', 'USB/Type-C最大充电功率',
         '对外直流放电功率(kW)', '陡坡缓降', '起步提醒', '语音免唤醒词', '面部识别', '激光雷达线数',
+        '系统综合马力(Ps)',
     }.issubset(defaults)
     assert not {'樱珞粉主题套装', '牛油果绿主题套装', '罗兰紫主题套装'}.intersection(defaults)
     raw = raw_table([RawRow(name, [Cell(dot='●'), Cell(dot='○')]) for name in defaults] + [
@@ -170,17 +175,108 @@ def test_lidar_line_count_is_hidden_by_default_but_restorable_without_valuation_
     assert raw.to_json() == original
 
 
-def test_new_data_folder_uses_confirmed_defaults_and_saved_empty_list_overrides_them(tmp_path):
+def test_saved_empty_list_clears_extras_but_never_overrides_code_exclusions(tmp_path):
     bridge = Bridge(str(tmp_path))
     try:
-        assert bridge.stage_display_rules()['excluded_rows'] == list(stage_one.DEFAULT_EXCLUDED_ROWS)
-        assert not (tmp_path / '阶梯展示排除清单.json').exists()
-        assert bridge.save_stage_display_rules([])['ok']
+        rules = bridge.stage_display_rules()
+        assert rules['excluded_rows'] == effective_exclusions()
+        assert rules['default_excluded_rows'] == effective_exclusions()
+        saved = bridge.save_stage_display_rules([])
+        assert saved['ok'] and saved['excluded_rows'] == effective_exclusions()
+        data = json.loads((tmp_path / '阶梯展示排除清单.json').read_text(encoding='utf-8'))
+        assert data == {'schema': 'carkit.stage-display/v4', 'excluded_rows': []}
     finally:
         bridge.shutdown()
     restarted = Bridge(str(tmp_path))
     try:
-        assert restarted.stage_display_rules()['excluded_rows'] == []
+        assert restarted.stage_display_rules()['excluded_rows'] == effective_exclusions()
+    finally:
+        restarted.shutdown()
+
+
+@pytest.mark.parametrize('legacy', [
+    ['个人隐藏项', '三电系统质保', '个人隐藏项'],
+    {'schema': 'carkit.stage-display/v2', 'excluded_rows': ['个人隐藏项'], 'defaults_applied': []},
+    {'schema': 'carkit.stage-display/v3', 'excluded_rows': ['个人隐藏项'],
+     'defaults_applied': ['三电系统质保']},
+    {'excluded_rows': ['个人隐藏项', '三电系统质保']},
+])
+def test_old_lists_immediately_apply_all_code_exclusions_and_keep_only_extras(tmp_path, monkeypatch, legacy):
+    path = tmp_path / '阶梯展示排除清单.json'
+    path.write_text(json.dumps(legacy, ensure_ascii=False), encoding='utf-8')
+    # A code addition works even before the old directory has ever been upgraded.
+    added = '升级前新增默认隐藏配置'
+    monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', (*stage_one.DEFAULT_EXCLUDED_ROWS, added))
+    bridge = Bridge(str(tmp_path))
+    try:
+        bridge.stage_raw = raw_table([
+            RawRow(name, [Cell(), Cell(dot='●')])
+            for name in ['个人隐藏项', '三电系统质保', added, '保持展示项']
+        ])
+        rules = bridge.stage_display_rules()
+        assert rules['ok'] and rules['excluded_rows'] == effective_exclusions('个人隐藏项')
+        assert rules['default_excluded_rows'] == effective_exclusions()
+        assert bridge.stage_preview(PLAN)['columns'][1]['items'] == ['保持展示项']
+        saved = json.loads(path.read_text(encoding='utf-8'))
+        assert saved == {'schema': 'carkit.stage-display/v4', 'excluded_rows': ['个人隐藏项']}
+        migrated = path.read_bytes(), path.stat().st_mtime_ns
+        assert bridge.stage_display_rules() == rules
+        assert (path.read_bytes(), path.stat().st_mtime_ns) == migrated
+        # Saving an attempted restore only clears user extras; code defaults stay hidden.
+        assert bridge.save_stage_display_rules([])['excluded_rows'] == effective_exclusions()
+        assert bridge.stage_preview(PLAN)['columns'][1]['items'] == ['个人隐藏项', '保持展示项']
+    finally:
+        bridge.shutdown()
+
+
+def test_code_exclusions_apply_additions_deletions_and_duplicates_without_sticky_saved_defaults(tmp_path, monkeypatch):
+    defaults = stage_one.DEFAULT_EXCLUDED_ROWS
+    first, second = '后续新增默认隐藏配置', '再次新增默认隐藏配置'
+    hidden = ['个人隐藏项']
+    raw = raw_table([
+        RawRow(name, [Cell(), Cell(dot='●')])
+        for name in [*hidden, first, second, '保持展示项']
+    ])
+    path = tmp_path / '阶梯展示排除清单.json'
+    bridge = Bridge(str(tmp_path))
+    try:
+        bridge.stage_raw = raw
+        assert bridge.save_stage_display_rules(hidden)['ok']
+        monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', (*defaults, first, first))
+        rules = bridge.stage_display_rules()
+        assert rules['excluded_rows'] == effective_exclusions(*hidden)
+        assert rules['excluded_rows'].count(first) == 1
+        assert rules['default_excluded_rows'].count(first) == 1
+        assert bridge.stage_preview(PLAN)['columns'][1]['items'] == [second, '保持展示项']
+        before = path.read_bytes(), path.stat().st_mtime_ns
+        assert bridge.stage_display_rules()['excluded_rows'] == effective_exclusions(*hidden)
+        assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+        saved = bridge.save_stage_display_rules([*effective_exclusions(*hidden), first, ' 个人隐藏项 '])
+        assert saved['ok'] and saved['excluded_rows'] == effective_exclusions(*hidden)
+        data = json.loads(path.read_text(encoding='utf-8'))
+        assert data == {'schema': 'carkit.stage-display/v4', 'excluded_rows': hidden}
+    finally:
+        bridge.shutdown()
+
+    restarted = Bridge(str(tmp_path))
+    try:
+        restarted.stage_raw = raw
+        assert restarted.stage_display_rules()['excluded_rows'] == effective_exclusions(*hidden)
+        assert restarted.stage_preview(PLAN)['columns'][1]['items'] == [second, '保持展示项']
+        monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', (second, *defaults, first))
+        assert restarted.stage_display_rules()['excluded_rows'] == effective_exclusions(*hidden)
+        assert restarted.stage_preview(PLAN)['columns'][1]['items'] == ['保持展示项']
+        monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', (*defaults, second))
+        assert first not in restarted.stage_display_rules()['excluded_rows']
+        assert restarted.stage_preview(PLAN)['columns'][1]['items'] == [first, '保持展示项']
+        assert json.loads(path.read_text(encoding='utf-8'))['excluded_rows'] == hidden
+    finally:
+        restarted.shutdown()
+
+    restarted = Bridge(str(tmp_path))
+    try:
+        assert restarted.stage_display_rules()['excluded_rows'] == effective_exclusions(*hidden)
+        assert first not in restarted.stage_display_rules()['excluded_rows']
     finally:
         restarted.shutdown()
 
@@ -200,7 +296,7 @@ def test_saved_exclusions_apply_to_history_survive_restart_and_can_be_restored(t
         initial = bridge.stage_display_rules()
         assert initial['ok'] and initial['rows'] == ['智能香氛', '自动遮阳帘']
         assert bridge.save_stage_display_rules([' 智能香氛 ', '智能香氛'])['ok']
-        assert bridge.stage_display_rules()['excluded_rows'] == ['智能香氛']
+        assert bridge.stage_display_rules()['excluded_rows'] == effective_exclusions('智能香氛')
         preview = bridge.stage_preview(PLAN)
         assert preview['ok'] and preview['columns'][1]['items'] == ['自动遮阳帘']
         assert preview['columns'][1]['options'] == []
@@ -208,7 +304,7 @@ def test_saved_exclusions_apply_to_history_survive_restart_and_can_be_restored(t
         bridge.shutdown()
     restarted = Bridge(str(workdir))
     try:
-        assert restarted.stage_display_rules()['excluded_rows'] == ['智能香氛']
+        assert restarted.stage_display_rules()['excluded_rows'] == effective_exclusions('智能香氛')
         assert restarted.open_history(capture.name)['ok']
         assert restarted.stage_preview(PLAN)['columns'][1]['items'] == ['自动遮阳帘']
         assert restarted.save_stage_display_rules([])['ok']
@@ -218,7 +314,7 @@ def test_saved_exclusions_apply_to_history_survive_restart_and_can_be_restored(t
         # Display preferences belong to the selected data folder, not a global setting.
         other = Bridge(str(tmp_path / 'other'))
         try:
-            assert other.stage_display_rules()['excluded_rows'] != ['智能香氛']
+            assert '智能香氛' not in other.stage_display_rules()['excluded_rows']
         finally:
             other.shutdown()
     finally:
@@ -233,7 +329,7 @@ def test_invalid_exclusion_input_preserves_last_saved_configuration(tmp_path, in
         saved = {path.relative_to(tmp_path): path.read_bytes() for path in tmp_path.rglob('*.json')}
         result = bridge.save_stage_display_rules(invalid)
         assert result['ok'] is False and result.get('error')
-        assert bridge.stage_display_rules()['excluded_rows'] == ['智能香氛']
+        assert bridge.stage_display_rules()['excluded_rows'] == effective_exclusions('智能香氛')
         assert {path.relative_to(tmp_path): path.read_bytes() for path in tmp_path.rglob('*.json')} == saved
     finally:
         bridge.shutdown()
@@ -247,6 +343,7 @@ def test_preview_markdown_excel_share_full_data_and_saved_exclusions(tmp_path):
         RawRow('光感遮阳帘', [Cell(dot='●'), Cell()]),
         RawRow('自动遮阳帘', [Cell(), Cell(dot='○')]),
         RawRow('隐藏的额外功能', [Cell(), Cell(dot='●')]),
+        RawRow('三电系统质保', [Cell(), Cell(dot='●', text='终身', subs=[Cell(dot='○', text='延保包')])]),
     ])
     bridge.save_file_dialog = lambda name, *_: str(tmp_path / name)
     try:
@@ -256,9 +353,10 @@ def test_preview_markdown_excel_share_full_data_and_saved_exclusions(tmp_path):
         excel = bridge.export_excel('ladder', PLAN)
         assert preview['ok'] and markdown['ok'] and excel['ok']
         assert Path(markdown['path']).read_text(encoding='utf-8') == markdown['md']
-        assert '隐藏的额外功能' not in markdown['md']
+        assert not any(name in markdown['md'] for name in ['隐藏的额外功能', '三电系统质保', '延保包'])
         for column in preview['columns']:
-            assert not any('隐藏的额外功能' in value for value in column['items'])
+            assert not any(name in value for name in ['隐藏的额外功能', '三电系统质保', '延保包']
+                           for value in [*column['items'], *column['options']])
             for value in column['items']:
                 assert value in markdown['md']
             for value in column['options']:

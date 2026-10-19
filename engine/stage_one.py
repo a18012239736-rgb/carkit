@@ -10,9 +10,9 @@ from .airbags import SOURCE_ROWS as AIRBAG_ROWS, from_raw as airbag_count
 EMPTY = {'', '-', '—', '无', '不支持', '✕'}
 RANGE_ROWS = ('CLTC纯电续航里程(km)', 'WLTC纯电续航里程(km)', 'NEDC纯电续航里程(km)')
 
-# pjy's saved selection, with core display sources restored (2026-10-15).
-# Match exact source row names only.
-# New equipment is visible by default; these preferences never enter valuation.
+# 阶梯不展示配置只维护此处：每行填写汽车之家原始配置行名，保留引号和逗号。
+# 清单内始终不展示，旧的显示选择不会覆盖；同名条目重复添加按一项处理。
+# 修改后重启程序，再重新查看或导出阶梯即可，无需先升级清单；不影响赋值计算。
 DEFAULT_EXCLUDED_ROWS = (
     '电池容量(kWh)',
     '电池快充时间(小时)',
@@ -30,6 +30,12 @@ DEFAULT_EXCLUDED_ROWS = (
     '后轮距(mm)',
     '最大功率(kW)',
     '最大扭矩(N·m)',
+    '缸径(mm)',
+    '行程(mm)',
+    '电动机(kW)',
+    '系统综合功率(kW)',
+    '最大功率转速(rpm)',
+    '最大扭矩转速(rpm)',
     '电动机(Ps)',
     '电动机总功率(kW)',
     '电动机总马力(Ps)',
@@ -209,7 +215,6 @@ DEFAULT_EXCLUDED_ROWS = (
     '前备厢容积(L)',
     '后备厢容积(L)',
     '风阻系数(Cd)',
-    '三电系统质保',
     '高精定位',
     '记忆泊车',
     '循迹倒车',
@@ -223,6 +228,11 @@ DEFAULT_EXCLUDED_ROWS = (
     '语音免唤醒词',
     '面部识别',
     '激光雷达线数',
+    '系统综合马力(Ps)',
+    '发动机启停技术',
+    '发动机特有技术',
+    '三电系统质保',
+    '备胎放置方式',
 )
 
 

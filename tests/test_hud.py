@@ -45,16 +45,18 @@ def test_screenshot_ar_hud_flows_through_mapping_comparison_preview_and_exports(
         assert bridge.save_stage_display_rules([])['ok']
         preview = bridge.stage_preview(PLAN)
         assert preview['ok'], preview
-        assert preview['columns'][1]['items'] == [AR_ROW, 'HUD抬头尺寸49寸']
+        # Clearing extra exclusions cannot reveal the code-excluded size row.
+        assert preview['columns'][1]['items'] == [AR_ROW]
         markdown = bridge.stage_export(PLAN, choose_path=True)
         assert markdown['ok'], markdown
         assert Path(markdown['path']).read_text(encoding='utf-8') == markdown['md']
         assert AR_ROW in markdown['md']
+        assert 'HUD抬头尺寸' not in markdown['md']
         excel = bridge.export_excel('ladder', PLAN)
         assert excel['ok'], excel
         book = load_workbook(excel['path'])
         try:
-            assert book['配置阶梯'].cell(3, 5).value == AR_ROW+'\nHUD抬头尺寸49寸'
+            assert book['配置阶梯'].cell(3, 5).value == AR_ROW
         finally:
             book.close()
     finally:

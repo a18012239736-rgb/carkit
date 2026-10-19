@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from api.bridge import Bridge
-from engine import valuer
+from engine import stage_one, valuer
 from engine.comparison_plan import load_plan
 from engine.models import Cell, RawRow, RawTable, Snapshot, Trim
 from engine.storage import atomic_write_text
@@ -96,7 +96,7 @@ def test_snapshot_plan_round_trip_after_restart_preserves_result_pairs_and_evide
     assert bridge.comparison_plans()['plans'][0]['file'] == record['file']
     archive = load_plan(Path(bridge.workdir) / '方案', record['file'])
     assert archive['inputs']['pairs'] == state['pairs']
-    assert archive['inputs']['excluded_rows'] == ['腰部支撑']
+    assert archive['inputs']['excluded_rows'] == list(dict.fromkeys((*stage_one.DEFAULT_EXCLUDED_ROWS, '腰部支撑')))
     assert archive['inputs']['right']['evidence']['raw'] == json.loads(state['raw'].read_text(encoding='utf-8'))
     assert archive['result'] == {key: value for key, value in report.items()
                                  if key not in ('md_path', 'comparison_id')}
@@ -293,9 +293,11 @@ def test_work_copy_parent_directory_symlink_cannot_escape_plan_session(setup, tm
     assert archive.read_bytes() == archive_before
 
 
-def test_recalculated_plan_keeps_saved_display_preferences_not_changed_global_defaults(setup):
+def test_recalculated_plan_keeps_saved_display_preferences_not_changed_global_defaults(setup, monkeypatch):
     state, bridge = setup, setup['bridge']
     record = _save(bridge, _run(state))
+    saved_exclusions = list(dict.fromkeys((*stage_one.DEFAULT_EXCLUDED_ROWS, '腰部支撑')))
+    monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', (*stage_one.DEFAULT_EXCLUDED_ROWS, '当前新增默认隐藏项'))
     atomic_write_text(state['preferences'], json.dumps({'excluded_rows': ['新全局隐藏项']}))
     preferences_before = state['preferences'].read_bytes()
     opened = bridge.open_comparison_plan(record['file'])
@@ -303,5 +305,5 @@ def test_recalculated_plan_keeps_saved_display_preferences_not_changed_global_de
     recalculated = _rerun(bridge, opened)
     second = _save(bridge, recalculated)
     plan = load_plan(Path(bridge.workdir) / '方案', second['file'])
-    assert plan['inputs']['excluded_rows'] == ['腰部支撑']
+    assert plan['inputs']['excluded_rows'] == saved_exclusions
     assert state['preferences'].read_bytes() == preferences_before

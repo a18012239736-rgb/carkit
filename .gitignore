@@ -5,6 +5,10 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.pytest_tmp/
+
+# 编辑器
+.idea/
 
 # 构建产物
 dist/

@@ -350,22 +350,22 @@ class Bridge:
         return {"ok": True, "raw": self.stage_raw.to_dict()}
 
     def _stage_excluded_rows(self):
+        defaults = self._validate_stage_exclusions(list(stage_one.DEFAULT_EXCLUDED_ROWS))
         workdir = getattr(self, 'workdir', None)
         path = os.path.join(workdir, '阶梯展示排除清单.json') if workdir else ''
         if not path or not os.path.exists(path):
-            return list(stage_one.DEFAULT_EXCLUDED_ROWS)
+            return defaults
         with open(path, encoding='utf-8') as source:
             data = json.load(source)
-        if isinstance(data, dict) and data.get('schema') == 'carkit.stage-display/v2':
-            return self._validate_stage_exclusions(data.get('excluded_rows'))
-        rows = self._validate_stage_exclusions(data)
-        # Apply this newly confirmed default once; later explicit restores win.
-        if '激光雷达线数' not in rows:
-            rows.append('激光雷达线数')
+        rows = self._validate_stage_exclusions(data.get('excluded_rows') if isinstance(data, dict) else data)
+        if isinstance(data, dict) and data.get('schema') == 'carkit.stage-display/v4':
+            return list(dict.fromkeys([*defaults, *rows]))
+        # Old files mixed defaults with custom exclusions. Store only the extra
+        # exclusions so removing a code default can reveal that row again.
         result = self.save_stage_display_rules(rows)
         if not result['ok']:
             raise ValueError(result['error'])
-        return rows
+        return result['excluded_rows']
 
     @staticmethod
     def _validate_stage_exclusions(rows):
@@ -389,6 +389,7 @@ class Bridge:
                 if any(stage_one.parts(cell, optional=True) for cell in row.cells):
                     optional.add(row.name)
             return {'ok': True, 'excluded_rows': self._stage_excluded_rows(),
+                    'default_excluded_rows': self._validate_stage_exclusions(list(stage_one.DEFAULT_EXCLUDED_ROWS)),
                     'rows': list(dict.fromkeys(row.name for row in self.stage_raw.rows)) if self.stage_raw else [],
                     'groups': [{'name': name, 'rows': rows} for name, rows in groups.items()],
                     'option_status': {name: 'mixed' if name in standard else 'optional' for name in optional}}
@@ -398,10 +399,13 @@ class Bridge:
     def save_stage_display_rules(self, excluded_rows):
         try:
             rows = self._validate_stage_exclusions(excluded_rows)
+            defaults = self._validate_stage_exclusions(list(stage_one.DEFAULT_EXCLUDED_ROWS))
+            extra = [name for name in rows if name not in defaults]
             path = os.path.join(self.workdir, '阶梯展示排除清单.json')
-            data = {'schema': 'carkit.stage-display/v2', 'excluded_rows': rows}
+            # Code exclusions always apply; the saved list only adds exclusions.
+            data = {'schema': 'carkit.stage-display/v4', 'excluded_rows': extra}
             atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2)+'\n')
-            return {'ok': True, 'excluded_rows': rows}
+            return {'ok': True, 'excluded_rows': [*defaults, *extra]}
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
 
@@ -787,15 +791,10 @@ class Bridge:
             result = {"ok": True, "md_path": out, "md": md,
                     "self_model": snap.model, "comp_model": comp_lad.model,
                     "cells": cells, "groups": groups, "missing_valuation": missing, **review}
-            preference_path = os.path.join(self.workdir, '阶梯展示排除清单.json')
             if plan_session:
                 excluded_rows = session['excluded_rows']
             else:
-                preferences = list(stage_one.DEFAULT_EXCLUDED_ROWS)
-                if os.path.isfile(preference_path):
-                    with open(preference_path, encoding='utf-8') as source:
-                        preferences = json.load(source)
-                excluded_rows = preferences.get('excluded_rows', []) if isinstance(preferences, dict) else preferences
+                excluded_rows = self._stage_excluded_rows()
             inputs = {'left_kind': 'ladder' if left_is_competitor else 'snapshot',
                       'left': left_input, 'right': comp_lad.to_dict(), 'pairs': pairs,
                       'valuation': vd, 'rules': rules.to_snapshot(),

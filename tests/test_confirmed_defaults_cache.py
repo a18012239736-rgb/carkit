@@ -39,21 +39,26 @@ def test_latest_mapping_cache_updates_untouched_cells_preserves_manual_changes(t
         bridge.shutdown()
 
 
-def test_old_display_list_adds_lidar_default_once_and_explicit_restore_wins(tmp_path):
+def test_old_display_list_keeps_code_exclusions_and_allows_restoring_only_extras(tmp_path):
+    from engine import stage_one
     path=tmp_path/'阶梯展示排除清单.json'
     path.write_text(json.dumps(['个人隐藏项']),encoding='utf-8')
     bridge=Bridge(str(tmp_path))
     try:
-        assert bridge.stage_display_rules()['excluded_rows']==['个人隐藏项','激光雷达线数']
+        migrated=bridge.stage_display_rules()['excluded_rows']
+        defaults=list(dict.fromkeys(stage_one.DEFAULT_EXCLUDED_ROWS))
+        assert migrated==[*defaults,'个人隐藏项']
+        data=json.loads(path.read_text(encoding='utf-8'))
+        assert data=={'schema':'carkit.stage-display/v4','excluded_rows':['个人隐藏项']}
         saved=path.read_bytes()
-        assert bridge.stage_display_rules()['excluded_rows']==['个人隐藏项','激光雷达线数']
+        assert bridge.stage_display_rules()['excluded_rows']==migrated
         assert path.read_bytes()==saved
-        assert bridge.save_stage_display_rules(['个人隐藏项'])['ok']
-        assert bridge.stage_display_rules()['excluded_rows']==['个人隐藏项']
+        assert bridge.save_stage_display_rules([])['excluded_rows']==defaults
+        assert bridge.stage_display_rules()['excluded_rows']==defaults
     finally:
         bridge.shutdown()
     restarted=Bridge(str(tmp_path))
     try:
-        assert restarted.stage_display_rules()['excluded_rows']==['个人隐藏项']
+        assert restarted.stage_display_rules()['excluded_rows']==defaults
     finally:
         restarted.shutdown()

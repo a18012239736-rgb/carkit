@@ -429,7 +429,7 @@ StageDisplaySettings.mount($('#stage-display-settings'), {api, model: () => ST.s
   document.querySelector('#ladder-visual')?.remove();
   $('#md-preview').hidden = true;
   $('#md-preview-text').textContent = '';
-  $('#stage-export-status').textContent = '展示清单已更新，请重新查看或导出配置阶梯。';
+  $('#stage-export-status').textContent = '不展示清单已更新，请重新查看或导出配置阶梯。';
   $('#stage-export-status').className = 'status';
 }});
 
@@ -517,7 +517,7 @@ $("#btn-stage-export").addEventListener("click", async () => {
   const plan = stagePlan();
   const res=await api("stage_export",plan,ST.stage.model+'-配置阶梯',true);
   if (res.cancelled) return;
-  if (revision !== stageDisplayRevision) return toast('已导出：'+res.path+'。展示清单已更新，请重新导出。');
+  if (revision !== stageDisplayRevision) return toast('已导出：'+res.path+'。不展示清单已更新，请重新导出。');
   $('#md-preview').hidden=false; $('#md-preview-text').textContent=res.md;
   $("#stage-export-status").textContent=res.ok?'✓ 已导出：'+res.path:'✕ '+res.error;
   $("#stage-export-status").className=res.ok?'status ok':'status err';
