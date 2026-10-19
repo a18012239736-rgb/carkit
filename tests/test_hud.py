@@ -42,10 +42,10 @@ def test_screenshot_ar_hud_flows_through_mapping_comparison_preview_and_exports(
     bridge.stage_raw = raw
     bridge.save_file_dialog = lambda name, *_: str(tmp_path/name)
     try:
-        assert bridge.save_stage_display_rules([])['ok']
+        assert bridge.save_stage_display_rules(list(stage_one.DEFAULT_EXCLUDED_ROWS))['ok']
         preview = bridge.stage_preview(PLAN)
         assert preview['ok'], preview
-        # Clearing extra exclusions cannot reveal the code-excluded size row.
+        # Keep the default size exclusion selected while displaying the HUD type.
         assert preview['columns'][1]['items'] == [AR_ROW]
         markdown = bridge.stage_export(PLAN, choose_path=True)
         assert markdown['ok'], markdown

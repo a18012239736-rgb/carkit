@@ -358,11 +358,12 @@ class Bridge:
         with open(path, encoding='utf-8') as source:
             data = json.load(source)
         rows = self._validate_stage_exclusions(data.get('excluded_rows') if isinstance(data, dict) else data)
-        if isinstance(data, dict) and data.get('schema') == 'carkit.stage-display/v4':
-            return list(dict.fromkeys([*defaults, *rows]))
+        if isinstance(data, dict) and data.get('schema') in ('carkit.stage-display/v4', 'carkit.stage-display/v5'):
+            included = self._validate_stage_exclusions(data.get('included_rows', [])) if data['schema'] == 'carkit.stage-display/v5' else []
+            return list(dict.fromkeys([name for name in defaults if name not in included] + rows))
         # Old files mixed defaults with custom exclusions. Store only the extra
-        # exclusions so removing a code default can reveal that row again.
-        result = self.save_stage_display_rules(rows)
+        # exclusions; missing defaults in old files are not manual overrides.
+        result = self.save_stage_display_rules(list(dict.fromkeys([*defaults, *rows])))
         if not result['ok']:
             raise ValueError(result['error'])
         return result['excluded_rows']
@@ -401,11 +402,12 @@ class Bridge:
             rows = self._validate_stage_exclusions(excluded_rows)
             defaults = self._validate_stage_exclusions(list(stage_one.DEFAULT_EXCLUDED_ROWS))
             extra = [name for name in rows if name not in defaults]
+            included = [name for name in defaults if name not in rows]
             path = os.path.join(self.workdir, '阶梯展示排除清单.json')
-            # Code exclusions always apply; the saved list only adds exclusions.
-            data = {'schema': 'carkit.stage-display/v4', 'excluded_rows': extra}
+            # Keep manual restores separate so future code defaults still apply.
+            data = {'schema': 'carkit.stage-display/v5', 'excluded_rows': extra, 'included_rows': included}
             atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2)+'\n')
-            return {'ok': True, 'excluded_rows': [*defaults, *extra]}
+            return {'ok': True, 'excluded_rows': [name for name in defaults if name in rows] + extra}
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
 

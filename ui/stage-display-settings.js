@@ -65,16 +65,15 @@
         } finally { saving.value = false; }
       }
       function selectedCount(names) { return names.filter(name => selected.value.includes(name)).length; }
-      function editableCount(names) { return names.filter(name => selected.value.includes(name) && !defaults.value.includes(name)).length; }
       function optionLabel(name) { return optionStatus.value[name] === 'optional' ? '选配' : optionStatus.value[name] === 'mixed' ? '含选配' : ''; }
       function setGroup(names, hidden) {
         if (saving.value || loading.value) return;
         const targets = new Set(names);
-        selected.value = hidden ? [...new Set([...selected.value, ...targets])] : selected.value.filter(name => !targets.has(name) || defaults.value.includes(name));
+        selected.value = hidden ? [...new Set([...selected.value, ...targets])] : selected.value.filter(name => !targets.has(name));
         status.value = ''; failed.value = false;
       }
       function undo() { selected.value = [...saved.value]; status.value = ''; failed.value = false; }
-      return {source, rows, defaults, saved, selected, search, excludedOnly, currentModel, loading, saving, status, failed, dirty, visible, groups, visibleGroups, hasUnclassified, optionStatus, optionLabel, selectedCount, editableCount, setGroup, load, save, undo};
+      return {source, rows, defaults, saved, selected, search, excludedOnly, currentModel, loading, saving, status, failed, dirty, visible, groups, visibleGroups, hasUnclassified, optionStatus, optionLabel, selectedCount, setGroup, load, save, undo};
     }, template: `<details class="card stage-display-settings" @toggle="$event.target === $event.currentTarget && $event.target.open && load()">
       <summary>不展示的配置 <span class="dim">勾选即不展示</span></summary>
       <p class="dim">只影响配置阶梯图、Markdown 和 Excel；不删除原始数据，不改变赋值计算。按汽车之家配置行名称保存，并应用于其他车型。选配在阶梯图下方单列；隐藏配置也会隐藏对应选配。</p>
@@ -84,7 +83,7 @@
       </div>
       <p class="dim stage-display-count">{{currentModel ? '当前车型：' + currentModel : '尚未打开车型；可管理之前保存的不展示配置'}} · 已勾选不展示 {{selectedCount(rows)}} 项<span v-if="dirty">（尚未保存）</span></p>
       <p class="dim stage-display-hint">沿用汽车之家分类；分类按钮仅作用于当前筛选结果。</p>
-      <p class="dim" v-if="defaults.length">标有“默认不展示”的项目固定勾选；如需展示，请从默认不展示清单中删除。</p>
+      <p class="dim" v-if="defaults.length">标有“默认不展示”的项目已预先勾选；可取消勾选并保存，以恢复展示。</p>
       <p class="dim" v-if="hasUnclassified">部分历史数据未保存分类；重新抓取车型后，可按原分类查看。</p>
       <div class="stage-display-list" :aria-busy="loading" v-if="loading">正在读取配置名称…</div>
       <div class="stage-display-list" v-else>
@@ -94,12 +93,12 @@
             <span class="stage-display-group-count">不展示 {{selectedCount(group.rows)}} / {{group.rows.length}} 项</span>
             <span class="stage-display-group-actions" @click.stop @keydown.stop>
               <button type="button" @click="setGroup(group.rows, true)" :disabled="saving || selectedCount(group.rows) === group.rows.length" :aria-label="group.name + '：全部不展示当前筛选结果'" title="仅作用于本分类当前筛选结果">全部不展示</button>
-              <button type="button" @click="setGroup(group.rows, false)" :disabled="saving || !editableCount(group.rows)" :aria-label="group.name + '：取消不展示当前筛选结果（默认项除外）'" title="仅作用于本分类当前筛选结果，默认项除外">取消不展示</button>
+              <button type="button" @click="setGroup(group.rows, false)" :disabled="saving || !selectedCount(group.rows)" :aria-label="group.name + '：取消不展示当前筛选结果'" title="仅作用于本分类当前筛选结果">取消不展示</button>
             </span>
           </summary>
           <div class="stage-display-group-rows">
             <label v-for="name in group.rows" :key="name" :class="{'is-excluded': selected.includes(name)}">
-              <input type="checkbox" :checked="selected.includes(name)" @change="setGroup([name], $event.target.checked)" :value="name" :disabled="saving || defaults.includes(name)"><span>{{name}}</span><span v-if="defaults.includes(name)" class="stage-display-option">默认不展示</span><span v-if="optionLabel(name)" class="stage-display-option">{{optionLabel(name)}}</span>
+              <input type="checkbox" :checked="selected.includes(name)" @change="setGroup([name], $event.target.checked)" :value="name" :disabled="saving"><span>{{name}}</span><span v-if="defaults.includes(name)" class="stage-display-option">默认不展示</span><span v-if="optionLabel(name)" class="stage-display-option">{{optionLabel(name)}}</span>
             </label>
           </div>
         </details>

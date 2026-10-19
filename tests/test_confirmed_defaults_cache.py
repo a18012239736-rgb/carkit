@@ -39,7 +39,7 @@ def test_latest_mapping_cache_updates_untouched_cells_preserves_manual_changes(t
         bridge.shutdown()
 
 
-def test_old_display_list_keeps_code_exclusions_and_allows_restoring_only_extras(tmp_path):
+def test_old_display_list_keeps_defaults_until_user_restores_them(tmp_path):
     from engine import stage_one
     path=tmp_path/'阶梯展示排除清单.json'
     path.write_text(json.dumps(['个人隐藏项']),encoding='utf-8')
@@ -49,16 +49,16 @@ def test_old_display_list_keeps_code_exclusions_and_allows_restoring_only_extras
         defaults=list(dict.fromkeys(stage_one.DEFAULT_EXCLUDED_ROWS))
         assert migrated==[*defaults,'个人隐藏项']
         data=json.loads(path.read_text(encoding='utf-8'))
-        assert data=={'schema':'carkit.stage-display/v4','excluded_rows':['个人隐藏项']}
+        assert data=={'schema':'carkit.stage-display/v5','excluded_rows':['个人隐藏项'],'included_rows':[]}
         saved=path.read_bytes()
         assert bridge.stage_display_rules()['excluded_rows']==migrated
         assert path.read_bytes()==saved
-        assert bridge.save_stage_display_rules([])['excluded_rows']==defaults
-        assert bridge.stage_display_rules()['excluded_rows']==defaults
+        assert bridge.save_stage_display_rules([])['excluded_rows']==[]
+        assert bridge.stage_display_rules()['excluded_rows']==[]
     finally:
         bridge.shutdown()
     restarted=Bridge(str(tmp_path))
     try:
-        assert restarted.stage_display_rules()['excluded_rows']==defaults
+        assert restarted.stage_display_rules()['excluded_rows']==[]
     finally:
         restarted.shutdown()

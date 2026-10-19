@@ -111,30 +111,51 @@ assert.strictEqual(state.dirty.value,false);
 """)
 
 
-def test_default_exclusions_remain_checked_when_clearing_a_category():
+def test_default_exclusions_can_be_unchecked_saved_rechecked_and_cleared_by_category():
     run_node(SETTINGS_HARNESS + CHECKBOX_BINDINGS + r"""
 let stored=['三电系统质保','备胎规格'];
 settingsApi=async(method,names)=>{
   if(method==='stage_display_rules')return {ok:true,
     rows:['三电系统质保','备胎规格','续航'],
     groups:[{name:'基本参数',rows:['三电系统质保','备胎规格','续航']}],
-    default_excluded_rows:['三电系统质保'],excluded_rows:stored};
+    default_excluded_rows:['三电系统质保','备胎规格'],excluded_rows:stored};
   assert.strictEqual(method,'save_stage_display_rules');stored=plain(names);
   return {ok:true,excluded_rows:stored};
 };
 await state.load();
 assert.strictEqual(checked('三电系统质保'),true);
-assert.strictEqual(state.editableCount(state.rows.value),1);
-assert(settingsTemplate.includes(':disabled="saving || defaults.includes(name)"'));
+const disabledExpression=checkbox.match(/:disabled="([^"]+)"/)[1];
+const disabled = name => Function('saving', 'defaults', 'name', 'return (' + disabledExpression + ');')(
+  state.saving.value, state.defaults.value, name);
+assert.strictEqual(disabled('三电系统质保'),false);
+assert.strictEqual(disabled('备胎规格'),false);
+state.saving.value=true;
+assert.strictEqual(disabled('三电系统质保'),true);
+state.saving.value=false;
 assert(settingsTemplate.includes('默认不展示'));
+assert(!settingsTemplate.includes('固定勾选'));
 change('三电系统质保',false);
+assert.strictEqual(checked('三电系统质保'),false);
+assert.strictEqual(state.dirty.value,true);
+await state.save();await state.load();
+assert.deepStrictEqual(stored,['备胎规格']);
+assert.strictEqual(checked('三电系统质保'),false);
+assert.strictEqual(state.dirty.value,false);
+change('三电系统质保',true);
+await state.save();await state.load();
 assert.strictEqual(checked('三电系统质保'),true);
+const clearButton=[...settingsTemplate.matchAll(/<button\b[^>]*>[^<]*<\/button>/g)]
+  .map(match=>match[0]).find(html=>html.endsWith('>取消不展示</button>'));
+const clearDisabledExpression=clearButton.match(/:disabled="([^"]+)"/)[1];
+assert.strictEqual(Function('saving','selectedCount','group','return (' + clearDisabledExpression + ');')(
+  false,state.selectedCount,state.groups.value[0]),false);
 state.setGroup(state.rows.value,false);
-assert.deepStrictEqual(plain(state.selected.value),['三电系统质保']);
-assert.strictEqual(state.editableCount(state.rows.value),0);
+assert.deepStrictEqual(plain(state.selected.value),[]);
+assert.strictEqual(checked('三电系统质保'),false);
 assert.strictEqual(checked('备胎规格'),false);
 await state.save();await state.load();
-assert.deepStrictEqual(stored,['三电系统质保']);
-assert.strictEqual(checked('三电系统质保'),true);
+assert.deepStrictEqual(stored,[]);
+assert.strictEqual(checked('三电系统质保'),false);
+assert.strictEqual(checked('备胎规格'),false);
 assert.strictEqual(state.dirty.value,false);
 """)
