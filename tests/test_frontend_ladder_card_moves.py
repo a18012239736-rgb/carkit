@@ -61,7 +61,7 @@ function preview(count = 3) {
     card.name = ['甲','乙','丙','丁'][i];
     const badge = element('span','ladder-badge', i === 0 ? '基础版型' : '差异配置');
     const heading = element('h4','',card.name), price = element('div','ladder-price',String(10+i));
-    const basis = element('strong','',i === 0 ? '基础配置：' : '相对 ' + ['甲','乙'][i-1] + '：');
+    const basis = element('strong','',i === 0 ? '基本配置：' : ['甲','乙'][i-1] + '+：');
     const item = element('li','',card.name + '配置'), list = element('ul');list.append(item);
     const details = element('details');details.open = i === 1;
     details.append(element('summary','','选装配置'), element('ul','','选配原文'));
@@ -103,6 +103,7 @@ assert.deepStrictEqual(order(columns),['甲','乙','丙'],'disabled edges do not
 def test_card_content_optional_expansion_and_comparison_basis_are_not_rebuilt():
     run_node(r"""
 const {columns,cards} = preview();
+assert.deepStrictEqual(cards.map(card => card.original.basis.textContent),['基本配置：','甲+：','乙+：']);
 const original = cards.map(card => ({children:card.children.slice(),basis:card.original.basis.textContent,
   price:card.original.price.textContent,open:card.original.details.open,className:card.className}));
 controls(cards[1])[0].click();controls(cards[1])[1].click();controls(cards[0])[1].click();
@@ -117,6 +118,30 @@ cards.forEach((card,i) => {
 assert.deepStrictEqual(plain(context.ST.stage),{model:'测试车',trims:['甲','乙','丙']});
 assert.deepStrictEqual(plain(plan),[{target:0,base:null},{target:1,base:0},{target:2,base:1}]);
 assert.deepStrictEqual(plain(context.res),{columns:['甲','乙','丙']});
+""")
+
+
+def test_preview_uses_compact_basis_labels_and_escapes_trim_names_without_mutation():
+    run_node(r"""
+const renderStart = source.indexOf('previewButton.onclick = async () => {');
+const template = source.slice(renderStart).match(/  panel\.innerHTML = ([^\n]+);/)[1];
+const escapeDefinition = source.match(/^const esc = .*;$/m)[0];
+vm.runInContext(escapeDefinition,context);
+const columns = [
+  {name:'基本型',base:null,price:7.48,items:[],options:[]},
+  {name:'未指定基准',price:null,items:[],options:[]},
+  {name:'升级型',base:'650 舒享版',price:8.48,items:['座椅通风'],options:[]},
+  {name:'<新款> & "限定"',base:'<基础> & "版型"',price:9.48,items:[],options:[]},
+];
+context.res = {model:'测试车',columns};
+const before = JSON.stringify(context.res);
+const html = vm.runInContext(template,context);
+const labels = [...html.matchAll(/<strong(?:\s[^>]*)?>(.*?)<\/strong>/g)].map(match => match[1]);
+assert.deepStrictEqual(labels,['基本配置：','基本配置：','650 舒享版+：','&lt;基础&gt; &amp; &quot;版型&quot;+：']);
+assert(html.includes('&lt;新款&gt; &amp; &quot;限定&quot;'));
+assert(!html.includes('相对 '));
+assert(!html.includes('<基础>'));assert(!html.includes('<新款>'));
+assert.strictEqual(JSON.stringify(context.res),before,'labels do not change comparison bases or export data');
 """)
 
 
