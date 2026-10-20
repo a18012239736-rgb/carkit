@@ -27,7 +27,7 @@ assert.deepStrictEqual(plain(state.selected.value),['厂商','其他车型隐藏
 assert.strictEqual(state.selectedCount(state.visible.value),2);
 assert.strictEqual(state.dirty.value,false);
 assert(settingsTemplate.includes('不展示的配置'));
-assert(settingsTemplate.includes('勾选即不展示'));
+assert(settingsTemplate.includes('× 表示不展示'));
 assert(settingsTemplate.includes('仅查看不展示项'));
 assert(settingsTemplate.includes('保存不展示清单'));
 assert(!settingsTemplate.includes('勾选显示'));
@@ -158,4 +158,56 @@ assert.deepStrictEqual(stored,[]);
 assert.strictEqual(checked('三电系统质保'),false);
 assert.strictEqual(checked('备胎规格'),false);
 assert.strictEqual(state.dirty.value,false);
+""")
+
+
+def test_new_default_exclusions_are_checked_while_preserving_unsaved_manual_choices():
+    run_node(SETTINGS_HARNESS + CHECKBOX_BINDINGS + r"""
+const added='NEDC综合油耗(L/100km)';
+let defaults=['厂商'],stored=['厂商','用户原隐藏项'];
+settingsApi=async(method,names)=>{
+  if(method==='stage_display_rules')return {ok:true,
+    rows:['厂商',added,'用户原隐藏项','手动额外隐藏'],
+    default_excluded_rows:defaults,excluded_rows:stored};
+  assert.strictEqual(method,'save_stage_display_rules');
+  stored=plain(names);return {ok:true,excluded_rows:stored};
+};
+await state.load();change('厂商',false);change('手动额外隐藏',true);
+assert.strictEqual(state.dirty.value,true);
+defaults=['厂商',added];stored=['厂商','用户原隐藏项',added];
+await state.load();
+assert.strictEqual(checked(added),true);
+assert.strictEqual(checked('厂商'),false);
+assert.strictEqual(checked('手动额外隐藏'),true);
+assert.deepStrictEqual(plain(state.saved.value),stored);
+assert.strictEqual(state.dirty.value,true);
+await state.load();
+assert.strictEqual(checked(added),true);
+assert.strictEqual(checked('厂商'),false);
+state.undo();
+assert.deepStrictEqual(plain(state.selected.value),stored);
+assert.strictEqual(state.dirty.value,false);
+change(added,false);await state.save();await state.load();
+assert.strictEqual(checked(added),false);
+assert.strictEqual(state.dirty.value,false);
+""")
+
+
+def test_new_defaults_do_not_override_manual_restores_in_draft_or_saved_preferences():
+    run_node(SETTINGS_HARNESS + CHECKBOX_BINDINGS + r"""
+const added='NEDC综合油耗(L/100km)';
+for(const wasHidden of [true,false]) {
+  state.selected.value=[];state.saved.value=[];
+  let defaults=[],stored=wasHidden?[added]:[];
+  settingsApi=async()=>({ok:true,rows:[added,'手动额外隐藏'],
+    default_excluded_rows:defaults,excluded_rows:stored});
+  await state.load();
+  if(wasHidden)change(added,false);
+  change('手动额外隐藏',true);
+  defaults=[added];
+  await state.load();
+  assert.strictEqual(checked(added),false);
+  assert.strictEqual(checked('手动额外隐藏'),true);
+  assert.strictEqual(state.dirty.value,true);
+}
 """)

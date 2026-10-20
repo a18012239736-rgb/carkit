@@ -21,6 +21,7 @@ from engine import rawschema, ladder as ladder_mod, differ, render_backup, value
 from engine.models import Snapshot, Ladder, ValuationTable, ValuationItem
 from engine.snapshot import resolve
 from engine import acquire, stage_one, __version__
+from engine.autohome_categories import display_groups
 from engine.storage import atomic_write_text, unique_filename
 
 
@@ -376,23 +377,19 @@ class Bridge:
 
     def stage_display_rules(self):
         try:
-            groups = {}
+            rows = self.stage_raw.rows if self.stage_raw else []
+            excluded = self._stage_excluded_rows()
+            defaults = self._validate_stage_exclusions(list(stage_one.DEFAULT_EXCLUDED_ROWS))
             standard, optional = set(), set()
-            for row in self.stage_raw.rows if self.stage_raw else []:
-                # Older grouped imports included the heading's symbol legend.
-                name = re.sub(r'\s*[●]?\s*标配\s*[○]?\s*选配\s*[-−—]?\s*无\s*$', '', row.group or '').strip() or (
-                    '价格信息' if row.name in ('厂商指导价(元)', '经销商报价') else '未分类（旧数据）')
-                names = groups.setdefault(name, [])
-                if row.name not in names:
-                    names.append(row.name)
+            for row in rows:
                 if any(stage_one.parts(cell) for cell in row.cells):
                     standard.add(row.name)
                 if any(stage_one.parts(cell, optional=True) for cell in row.cells):
                     optional.add(row.name)
-            return {'ok': True, 'excluded_rows': self._stage_excluded_rows(),
-                    'default_excluded_rows': self._validate_stage_exclusions(list(stage_one.DEFAULT_EXCLUDED_ROWS)),
-                    'rows': list(dict.fromkeys(row.name for row in self.stage_raw.rows)) if self.stage_raw else [],
-                    'groups': [{'name': name, 'rows': rows} for name, rows in groups.items()],
+            return {'ok': True, 'excluded_rows': excluded,
+                    'default_excluded_rows': defaults,
+                    'rows': list(dict.fromkeys(row.name for row in rows)),
+                    'groups': display_groups(rows, [*defaults, *excluded], self.workdir_path('raw')),
                     'option_status': {name: 'mixed' if name in standard else 'optional' for name in optional}}
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}

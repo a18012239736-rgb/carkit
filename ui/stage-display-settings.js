@@ -9,18 +9,18 @@
       const search = ref(''), excludedOnly = ref(false), currentModel = ref('');
       const loading = ref(false), saving = ref(false), status = ref(''), failed = ref(false);
       const dirty = computed(() => selected.value.length !== saved.value.length || selected.value.some(name => !saved.value.includes(name)));
-      const rows = computed(() => [...new Set([...source.value, ...saved.value, ...selected.value])]);
+      const rows = computed(() => [...new Set([...source.value, ...defaults.value, ...saved.value, ...selected.value])]);
       const visible = computed(() => rows.value.filter(name => name.toLowerCase().includes(search.value.trim().toLowerCase()) && (!excludedOnly.value || selected.value.includes(name))));
       const groups = computed(() => {
         const classified = new Set();
         const result = sourceGroups.value.map(group => {
-          const names = [...new Set(group.rows)].filter(name => source.value.includes(name));
+          const names = [...new Set(group.rows)].filter(name => rows.value.includes(name));
           names.forEach(name => classified.add(name));
           return {name: group.name || '未分类（旧数据）', rows: names};
         }).filter(group => group.rows.length);
         const unclassified = source.value.filter(name => !classified.has(name));
         if (unclassified.length) result.push({name: '未分类（旧数据）', rows: [...new Set(unclassified)]});
-        const other = rows.value.filter(name => !source.value.includes(name));
+        const other = rows.value.filter(name => !source.value.includes(name) && !classified.has(name));
         if (other.length) result.push({name: '其他车型/已保存', rows: other});
         return result;
       });
@@ -38,6 +38,8 @@
           const result = await api('stage_display_rules');
           if (!result?.ok) throw new Error(result?.error || '读取不展示清单失败，请重新打开重试');
           if (request !== revision) return;
+          const addedDefaults = (result.default_excluded_rows || []).filter(name =>
+            !defaults.value.includes(name) && (result.excluded_rows || []).includes(name));
           source.value = result.rows || [];
           sourceGroups.value = result.groups || [];
           optionStatus.value = result.option_status || {};
@@ -46,6 +48,10 @@
           if (!dirty.value) {
             saved.value = result.excluded_rows || [];
             selected.value = [...saved.value];
+          } else if (addedDefaults.length) {
+            const restored = saved.value.filter(name => !selected.value.includes(name));
+            selected.value = [...new Set([...selected.value, ...addedDefaults.filter(name => !restored.includes(name))])];
+            saved.value = [...new Set([...saved.value, ...addedDefaults])];
           }
         } catch (error) {
           if (request === revision) { status.value = error.message || '读取不展示清单失败，请重新打开重试'; failed.value = true; }
@@ -75,7 +81,7 @@
       function undo() { selected.value = [...saved.value]; status.value = ''; failed.value = false; }
       return {source, rows, defaults, saved, selected, search, excludedOnly, currentModel, loading, saving, status, failed, dirty, visible, groups, visibleGroups, hasUnclassified, optionStatus, optionLabel, selectedCount, setGroup, load, save, undo};
     }, template: `<details class="card stage-display-settings" @toggle="$event.target === $event.currentTarget && $event.target.open && load()">
-      <summary>不展示的配置 <span class="dim">勾选即不展示</span></summary>
+      <summary>不展示的配置 <span class="dim">× 表示不展示</span></summary>
       <p class="dim">只影响配置阶梯图、Markdown 和 Excel；不删除原始数据，不改变赋值计算。按汽车之家配置行名称保存，并应用于其他车型。选配在阶梯图下方单列；隐藏配置也会隐藏对应选配。</p>
       <div class="row stage-display-toolbar">
         <input type="text" v-model="search" placeholder="搜索配置名称" aria-label="搜索配置名称">
@@ -84,7 +90,7 @@
       <p class="dim stage-display-count">{{currentModel ? '当前车型：' + currentModel : '尚未打开车型；可管理之前保存的不展示配置'}} · 已勾选不展示 {{selectedCount(rows)}} 项<span v-if="dirty">（尚未保存）</span></p>
       <p class="dim stage-display-hint">沿用汽车之家分类；分类按钮仅作用于当前筛选结果。</p>
       <p class="dim" v-if="defaults.length">标有“默认不展示”的项目已预先勾选；可取消勾选并保存，以恢复展示。</p>
-      <p class="dim" v-if="hasUnclassified">部分历史数据未保存分类；重新抓取车型后，可按原分类查看。</p>
+      <p class="dim" v-if="hasUnclassified">部分配置尚未匹配到汽车之家分类；重新抓取车型后，可按原分类查看。</p>
       <div class="stage-display-list" :aria-busy="loading" v-if="loading">正在读取配置名称…</div>
       <div class="stage-display-list" v-else>
         <details v-for="(group, index) in visibleGroups" :key="index + ':' + group.name" class="stage-display-group" open>

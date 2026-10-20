@@ -307,6 +307,62 @@ assert.deepStrictEqual(plain(state.visible.value),['指导价','长度(mm)','共
 """)
 
 
+def test_default_and_saved_rows_outside_current_vehicle_use_their_supplied_categories():
+    run_node(SETTINGS_HARNESS + r"""
+const defaults=['电池容量(kWh)','后电动机最大功率(kW)','电池快充时间(小时)'];
+settingsApi=async()=>({ok:true,rows:['厂商','前排座椅功能'],
+  default_excluded_rows:defaults,excluded_rows:[...defaults,'车载冰箱'],
+  groups:[
+    {name:'基本参数',rows:['厂商','电池快充时间(小时)']},
+    {name:'座椅配置',rows:['前排座椅功能']},
+    {name:'电动机',rows:['后电动机最大功率(kW)']},
+    {name:'电池/充电',rows:['电池容量(kWh)','电池快充时间(小时)']},
+    {name:'空调/冰箱',rows:['车载冰箱']},
+  ]});
+await state.load();
+assert.deepStrictEqual(plain(state.groups.value),[
+  {name:'基本参数',rows:['厂商','电池快充时间(小时)']},
+  {name:'座椅配置',rows:['前排座椅功能']},
+  {name:'电动机',rows:['后电动机最大功率(kW)']},
+  {name:'电池/充电',rows:['电池容量(kWh)','电池快充时间(小时)']},
+  {name:'空调/冰箱',rows:['车载冰箱']},
+]);
+assert(!state.groups.value.some(group=>group.name==='其他车型/已保存'));
+state.search.value='快充';
+assert.deepStrictEqual(plain(state.visibleGroups.value),[
+  {name:'基本参数',rows:['电池快充时间(小时)']},
+  {name:'电池/充电',rows:['电池快充时间(小时)']},
+]);
+state.setGroup(state.visibleGroups.value[1].rows,false);
+assert.strictEqual(state.selectedCount(state.visibleGroups.value[0].rows),0);
+assert.strictEqual(state.selectedCount(state.visibleGroups.value[1].rows),0);
+assert(state.selected.value.includes('后电动机最大功率(kW)'));
+""")
+
+
+def test_restored_default_outside_current_vehicle_stays_in_its_category_after_save_and_reload():
+    run_node(SETTINGS_HARNESS + r"""
+const name='后电动机最大功率(kW)';let stored=[name];
+settingsApi=async(method,names)=>{
+  if(method==='stage_display_rules')return {ok:true,rows:['前排座椅功能'],
+    default_excluded_rows:[name],excluded_rows:stored,
+    groups:[{name:'座椅配置',rows:['前排座椅功能']},{name:'电动机',rows:[name]}]};
+  assert.strictEqual(method,'save_stage_display_rules');
+  stored=plain(names);return {ok:true,excluded_rows:stored};
+};
+await state.load();state.setGroup([name],false);await state.save();await state.load();
+assert.deepStrictEqual(stored,[]);
+assert(state.rows.value.includes(name));
+assert.deepStrictEqual(plain(state.groups.value[1]),{name:'电动机',rows:[name]});
+assert(!state.selected.value.includes(name));
+state.excludedOnly.value=true;
+assert.deepStrictEqual(plain(state.visibleGroups.value),[]);
+state.excludedOnly.value=false;state.setGroup([name],true);await state.save();await state.load();
+assert.deepStrictEqual(stored,[name]);
+assert.strictEqual(state.selectedCount(state.groups.value[1].rows),1);
+""")
+
+
 def test_category_hide_restore_syncs_shared_names_without_touching_other_rows():
     run_node(SETTINGS_HARNESS + r"""
 settingsApi=async()=>({ok:true,rows:['主驾调节','座椅记忆','方向盘记忆','车载冰箱'],

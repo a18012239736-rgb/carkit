@@ -4,7 +4,7 @@ import subprocess
 from lxml import html as LH
 
 from api.bridge import Bridge
-from engine import acquire, rawschema, scrape
+from engine import acquire, rawschema, scrape, stage_one
 from engine.models import Cell, RawRow, RawTable, Trim
 
 
@@ -93,7 +93,8 @@ def test_live_legacy_html_and_compact_keep_real_categories_and_clean_legends(tmp
     assert RawTable.from_dict(captured.to_dict()).to_dict() == captured.to_dict()
 
 
-def test_stage_categories_keep_source_order_dedupe_only_within_each_group_and_do_not_write(tmp_path):
+def test_stage_categories_keep_source_order_dedupe_only_within_each_group_and_do_not_write(tmp_path, monkeypatch):
+    monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', ())
     bridge = Bridge(str(tmp_path))
     bridge.stage_raw = RawTable(trims=[Trim(0, '基础')], rows=[
         RawRow('厂商指导价(元)', [Cell(text='10.99万')]),
@@ -133,17 +134,20 @@ def test_legacy_compact_without_categories_stays_compatible(tmp_path):
     bridge = Bridge(str(tmp_path))
     try:
         bridge.stage_raw = raw
-        assert bridge.stage_display_rules()['groups'] == [
-            {'name': '价格信息', 'rows': ['厂商指导价(元)']},
-            {'name': '未分类（旧数据）', 'rows': ['厂商']},
-        ]
+        result = bridge.stage_display_rules()
+        assert result['rows'] == ['厂商指导价(元)', '厂商']
+        assert category_names(result, '厂商') == ['基本参数']
+        assert category_names(result, '厂商指导价(元)') == ['价格信息']
         bridge.stage_raw = None
-        assert bridge.stage_display_rules()['groups'] == []
+        result = bridge.stage_display_rules()
+        assert result['rows'] == []
+        assert {name for group in result['groups'] for name in group['rows']} == set(stage_one.DEFAULT_EXCLUDED_ROWS)
     finally:
         bridge.shutdown()
 
 
-def test_old_grouped_import_removes_heading_legend_only_for_display(tmp_path):
+def test_old_grouped_import_removes_heading_legend_only_for_display(tmp_path, monkeypatch):
+    monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', ())
     bridge = Bridge(str(tmp_path))
     bridge.stage_raw = RawTable(trims=[Trim(0, '基础')], rows=[
         RawRow('天窗类型', [Cell(text='不可开启全景天窗')], group='天窗/玻璃标配选配-无'),
@@ -156,6 +160,112 @@ def test_old_grouped_import_removes_heading_legend_only_for_display(tmp_path):
             {'name': '座椅配置', 'rows': ['前排座椅功能']},
         ]
         assert bridge.stage_raw.to_dict() == original
+    finally:
+        bridge.shutdown()
+
+
+def category_names(result, name):
+    return [group['name'] for group in result['groups'] if name in group['rows']]
+
+
+def test_all_current_defaults_have_catalogue_categories_without_a_vehicle(tmp_path):
+    bridge = Bridge(str(tmp_path))
+    try:
+        result = bridge.stage_display_rules()
+        assert result['ok'] and result['rows'] == []
+        assert all(category_names(result, name) for name in stage_one.DEFAULT_EXCLUDED_ROWS)
+        assert not {'未分类（旧数据）', '其他车型/已保存'}.intersection(group['name'] for group in result['groups'])
+        assert category_names(result, '电池容量(kWh)') == ['电池/充电']
+        assert category_names(result, '电动机(kW)') == ['电动机']
+        assert category_names(result, '电池快充时间(小时)') == ['基本参数', '电池/充电']
+        assert not (tmp_path / '阶梯展示排除清单.json').exists()
+    finally:
+        bridge.shutdown()
+
+
+def test_default_and_saved_items_keep_categories_after_restoring_defaults(tmp_path, monkeypatch):
+    defaults = ('电池容量(kWh)', '电动机(kW)', '后电动机最大功率(kW)')
+    monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', defaults)
+    bridge = Bridge(str(tmp_path))
+    bridge.stage_raw = RawTable(trims=[Trim(0, '基础')], rows=[
+        RawRow('当前车型独有项', [Cell(dot='●')], group='原始分类'),
+    ])
+    original = bridge.stage_raw.to_dict()
+    try:
+        assert bridge.save_stage_display_rules([*defaults, '座椅材质', '未知外来项'])['ok']
+        path = tmp_path / '阶梯展示排除清单.json'
+        saved = path.read_bytes()
+        result = bridge.stage_display_rules()
+        assert result['rows'] == ['当前车型独有项']
+        assert result['groups'] == [
+            {'name': '原始分类', 'rows': ['当前车型独有项']},
+            {'name': '电动机', 'rows': ['电动机(kW)', '后电动机最大功率(kW)']},
+            {'name': '电池/充电', 'rows': ['电池容量(kWh)']},
+            {'name': '座椅配置', 'rows': ['座椅材质']},
+            {'name': '其他车型/已保存', 'rows': ['未知外来项']},
+        ]
+        assert path.read_bytes() == saved and bridge.stage_raw.to_dict() == original
+        assert bridge.save_stage_display_rules(['座椅材质', '未知外来项'])['excluded_rows'] == ['座椅材质', '未知外来项']
+        assert bridge.stage_display_rules()['groups'] == result['groups']
+    finally:
+        bridge.shutdown()
+
+
+def test_original_groups_override_catalogue_and_keep_shared_names_and_source_order(tmp_path, monkeypatch):
+    monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', ('后电动机最大功率(kW)', '电池快充时间(小时)'))
+    bridge = Bridge(str(tmp_path))
+    bridge.stage_raw = RawTable(trims=[Trim(0, '基础')], rows=[
+        RawRow('厂商', [Cell(text='测试品牌')]),
+        RawRow('后电动机最大功率(kW)', [Cell(text='100')], group='座椅配置'),
+        RawRow('厂商', [Cell(text='测试品牌')], group='基本参数'),
+        RawRow('后电动机最大功率(kW)', [Cell(text='100')], group='原表第二分类'),
+        RawRow('后电动机最大功率(kW)', [Cell(text='100')], group='原表第二分类'),
+    ])
+    try:
+        result = bridge.stage_display_rules()
+        assert [group['name'] for group in result['groups']] == [
+            '座椅配置', '基本参数', '原表第二分类', '电池/充电',
+        ]
+        assert category_names(result, '后电动机最大功率(kW)') == ['座椅配置', '原表第二分类']
+        assert category_names(result, '电池快充时间(小时)') == ['基本参数', '电池/充电']
+        assert all(len(group['rows']) == len(set(group['rows'])) for group in result['groups'])
+        assert result['groups'][1]['rows'] == ['厂商', '电池快充时间(小时)']
+    finally:
+        bridge.shutdown()
+
+
+def test_history_exact_names_restore_missing_categories_skip_bad_files_and_do_not_write(tmp_path, monkeypatch):
+    monkeypatch.setattr(stage_one, 'DEFAULT_EXCLUDED_ROWS', ('历史默认项', '电池容量(kWh)'))
+    bridge = Bridge(str(tmp_path))
+    raw_dir = tmp_path / 'raw'
+    (raw_dir / '00-broken.json').write_text('{broken', encoding='utf-8')
+    old = RawTable(trims=[Trim(0, '历史车型')], rows=[
+        RawRow('历史默认项', [Cell(dot='●')], group='座椅配置'),
+        RawRow('历史外来项', [Cell(dot='●')], group='外观/防盗'),
+        RawRow('历史当前项', [Cell(dot='●')], group='驾驶功能 ● 标配 ○ 选配 − 无'),
+        RawRow('电池容量(kWh)', [Cell(text='50')], group='历史真实电池分类'),
+    ])
+    old.save(raw_dir / '01-history.json')
+    bridge.stage_raw = RawTable(trims=[Trim(0, '当前车型')], rows=[
+        RawRow('历史当前项', [Cell(dot='●')]),
+        RawRow('未知原始配置', [Cell(dot='●')]),
+        RawRow('厂商', [Cell(text='测试品牌')]),
+    ])
+    original = bridge.stage_raw.to_dict()
+    try:
+        assert bridge.save_stage_display_rules([*stage_one.DEFAULT_EXCLUDED_ROWS, '历史外来项', '未知外来项'])['ok']
+        before = {path: path.read_bytes() for path in [*raw_dir.glob('*.json'), tmp_path / '阶梯展示排除清单.json']}
+        result = bridge.stage_display_rules()
+        assert result['ok']
+        assert category_names(result, '历史默认项') == ['座椅配置']
+        assert category_names(result, '历史外来项') == ['外观/防盗']
+        assert category_names(result, '历史当前项') == ['驾驶功能']
+        assert category_names(result, '电池容量(kWh)') == ['历史真实电池分类']
+        assert category_names(result, '厂商') == ['基本参数']
+        assert category_names(result, '未知原始配置') == ['未分类（旧数据）']
+        assert category_names(result, '未知外来项') == ['其他车型/已保存']
+        assert bridge.stage_raw.to_dict() == original
+        assert all(path.read_bytes() == content for path, content in before.items())
     finally:
         bridge.shutdown()
 
