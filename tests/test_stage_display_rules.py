@@ -175,6 +175,62 @@ def test_lidar_line_count_is_hidden_by_default_but_restorable_without_valuation_
     assert raw.to_json() == original
 
 
+@pytest.mark.parametrize('restore', [False, True])
+def test_nedc_combined_range_is_hidden_in_all_exports_and_can_be_restored_after_restart(tmp_path, restore):
+    target, fuel, pure = 'NEDC综合续航(km)', 'NEDC综合油耗(L/100km)', 'NEDC纯电续航里程(km)'
+    raw = raw_table([
+        RawRow(target, [Cell(text='1000'), Cell(text='1200')], group='电池/充电'),
+        RawRow(fuel, [Cell(text='5.0'), Cell(text='4.5')], group='基本参数'),
+        RawRow(pure, [Cell(text='100'), Cell(text='150')], group='电池/充电'),
+    ])
+    original = raw.to_json()
+    rules = Rules()
+    mapped = map_raw_to_ladder(raw, rules)
+    assert target not in stage_one.RANGE_ROWS
+    keys = {feature['key'] for feature in stage_one.features(raw)}
+    assert target not in keys and fuel not in keys and pure in keys
+    workdir = tmp_path / 'work'
+    bridge = Bridge(str(workdir))
+    bridge.stage_raw = raw
+    try:
+        settings = bridge.stage_display_rules()
+        assert settings['ok']
+        assert target in settings['default_excluded_rows'] and target in settings['excluded_rows']
+        if restore:
+            saved = bridge.save_stage_display_rules([name for name in settings['excluded_rows'] if name != target])
+            assert saved['ok'] and target not in saved['excluded_rows']
+        preview = bridge.stage_preview(PLAN)
+        assert preview['ok']
+        assert any(target in item for column in preview['columns'] for item in column['items']) == restore
+    finally:
+        bridge.shutdown()
+    restarted = Bridge(str(workdir))
+    restarted.stage_raw = raw
+    restarted.save_file_dialog = lambda name, *_: str(tmp_path / name)
+    try:
+        settings = restarted.stage_display_rules()
+        assert target in settings['default_excluded_rows']
+        assert (target not in settings['excluded_rows']) == restore
+        preview = restarted.stage_preview(PLAN)
+        markdown = restarted.stage_export(PLAN)
+        excel = restarted.export_excel('ladder', PLAN)
+        assert preview['ok'] and markdown['ok'] and excel['ok']
+        preview_text = '\n'.join(value for column in preview['columns'] for value in [*column['items'], *column['options']])
+        book = load_workbook(excel['path'])
+        try:
+            excel_text = '\n'.join(str(cell.value or '') for row in book['配置阶梯'] for cell in row)
+        finally:
+            book.close()
+        for text in [preview_text, markdown['md'], excel_text]:
+            assert (target in text) == restore
+            assert fuel not in text
+            assert 'NEDC纯电续航' in text
+        assert raw.to_json() == original
+        assert map_raw_to_ladder(raw, rules) == mapped
+    finally:
+        restarted.shutdown()
+
+
 def test_saved_empty_list_restores_all_defaults_and_survives_restart(tmp_path):
     bridge = Bridge(str(tmp_path))
     try:
