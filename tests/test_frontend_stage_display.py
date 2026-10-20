@@ -149,6 +149,38 @@ assert.deepStrictEqual(plain(state.selected.value),['零重力座椅','外后视
 """)
 
 
+def test_optional_badges_distinguish_trim_coverage_and_empty_packages_without_changing_preferences():
+    run_node(SETTINGS_HARNESS + r"""
+let response={ok:true,rows:['全选装','部分选装','全部混合','部分混合','加热包','标配'],excluded_rows:[],
+  option_status:{'全选装':'optional','部分选装':'optional','全部混合':'mixed','部分混合':'mixed','加热包':'package'},
+  option_availability:{'全选装':'all','部分选装':'partial','全部混合':'all','部分混合':'partial','加热包':'none'}};
+let stored;
+settingsApi=async(method,names)=>{
+  if(method==='stage_display_rules')return response;
+  assert.strictEqual(method,'save_stage_display_rules');stored=plain(names);
+  return {ok:true,excluded_rows:names};
+};
+await state.load();
+assert.strictEqual(state.optionLabel('全选装'),'全部版型选装');
+assert.strictEqual(state.optionLabel('部分选装'),'部分版型选装');
+assert.strictEqual(state.optionLabel('全部混合'),'全部版型含选装');
+assert.strictEqual(state.optionLabel('部分混合'),'部分版型含选装');
+assert.strictEqual(state.optionLabel('加热包'),'选装包（当前版型无选装记录）');
+assert.strictEqual(state.optionLabel('标配'),'');
+assert.deepStrictEqual(plain(state.selected.value),[]);
+state.setGroup(['加热包','部分选装'],true);await state.save();
+assert.deepStrictEqual(stored,['加热包','部分选装']);
+assert.strictEqual(state.optionLabel('部分选装'),'部分版型选装');
+modelName='车型 B';
+response={ok:true,rows:['标配'],excluded_rows:stored};await state.load();
+assert.deepStrictEqual(plain(state.optionAvailability.value),{});
+assert.deepStrictEqual(plain(state.optionStatus.value),{});
+assert.strictEqual(state.optionLabel('部分选装'),'');
+assert.strictEqual(state.optionLabel('加热包'),'');
+assert.deepStrictEqual(plain(state.selected.value),stored);
+""")
+
+
 def test_search_and_checked_filter_include_saved_rows_from_other_vehicles():
     run_node(SETTINGS_HARNESS + r"""
 settingsApi=async method=>{

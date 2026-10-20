@@ -5,7 +5,7 @@
   function mount(element, {api, model, onSaved}) {
     root = element;
     current = createApp({setup() {
-      const source = ref([]), sourceGroups = ref([]), optionStatus = ref({}), defaults = ref([]), saved = ref([]), selected = ref([]);
+      const source = ref([]), sourceGroups = ref([]), optionStatus = ref({}), optionAvailability = ref({}), defaults = ref([]), saved = ref([]), selected = ref([]);
       const search = ref(''), excludedOnly = ref(false), currentModel = ref('');
       const loading = ref(false), saving = ref(false), status = ref(''), failed = ref(false);
       const dirty = computed(() => selected.value.length !== saved.value.length || selected.value.some(name => !saved.value.includes(name)));
@@ -43,6 +43,7 @@
           source.value = result.rows || [];
           sourceGroups.value = result.groups || [];
           optionStatus.value = result.option_status || {};
+          optionAvailability.value = result.option_availability || {};
           defaults.value = result.default_excluded_rows || [];
           currentModel.value = model();
           if (!dirty.value) {
@@ -71,7 +72,17 @@
         } finally { saving.value = false; }
       }
       function selectedCount(names) { return names.filter(name => selected.value.includes(name)).length; }
-      function optionLabel(name) { return optionStatus.value[name] === 'optional' ? '选配' : optionStatus.value[name] === 'mixed' ? '含选配' : ''; }
+      function optionLabel(name) {
+        const status = optionStatus.value[name], availability = optionAvailability.value[name];
+        if (status === 'package') return '选装包（当前版型无选装记录）';
+        if (status === 'optional' || status === 'mixed') {
+          if (availability === 'all' || availability === 'partial') {
+            return (availability === 'all' ? '全部版型' : '部分版型') + (status === 'mixed' ? '含选装' : '选装');
+          }
+          return status === 'optional' ? '选配' : '含选配';
+        }
+        return '';
+      }
       function setGroup(names, hidden) {
         if (saving.value || loading.value) return;
         const targets = new Set(names);
@@ -79,7 +90,7 @@
         status.value = ''; failed.value = false;
       }
       function undo() { selected.value = [...saved.value]; status.value = ''; failed.value = false; }
-      return {source, rows, defaults, saved, selected, search, excludedOnly, currentModel, loading, saving, status, failed, dirty, visible, groups, visibleGroups, hasUnclassified, optionStatus, optionLabel, selectedCount, setGroup, load, save, undo};
+      return {source, rows, defaults, saved, selected, search, excludedOnly, currentModel, loading, saving, status, failed, dirty, visible, groups, visibleGroups, hasUnclassified, optionStatus, optionAvailability, optionLabel, selectedCount, setGroup, load, save, undo};
     }, template: `<details class="card stage-display-settings" @toggle="$event.target === $event.currentTarget && $event.target.open && load()">
       <summary>不展示的配置 <span class="dim">× 表示不展示</span></summary>
       <p class="dim">只影响配置阶梯图、Markdown 和 Excel；不删除原始数据，不改变赋值计算。按汽车之家配置行名称保存，并应用于其他车型。选配在阶梯图下方单列；隐藏配置也会隐藏对应选配。</p>
@@ -89,6 +100,7 @@
       </div>
       <p class="dim stage-display-count">{{currentModel ? '当前车型：' + currentModel : '尚未打开车型；可管理之前保存的不展示配置'}} · 已勾选不展示 {{selectedCount(rows)}} 项<span v-if="dirty">（尚未保存）</span></p>
       <p class="dim stage-display-hint">沿用汽车之家分类；分类按钮仅作用于当前筛选结果。</p>
+      <p class="dim">选装标记按当前车型的全部版型统计；“含选装”表示该配置行同时有标配和选装内容。</p>
       <p class="dim" v-if="defaults.length">标有“默认不展示”的项目已预先勾选；可取消勾选并保存，以恢复展示。</p>
       <p class="dim" v-if="hasUnclassified">部分配置尚未匹配到汽车之家分类；重新抓取车型后，可按原分类查看。</p>
       <div class="stage-display-list" :aria-busy="loading" v-if="loading">正在读取配置名称…</div>

@@ -288,10 +288,67 @@ def test_selection_optional_labels_follow_capture_markers_without_changing_names
         assert result['option_status'] == {
             '纯选配': 'optional', '部分选配': 'mixed', '同格混合': 'mixed', '重复名称': 'mixed',
         }
+        assert result['option_availability'] == {
+            '纯选配': 'partial', '部分选配': 'partial', '同格混合': 'partial', '重复名称': 'partial',
+        }
         assert result['rows'] == list(dict.fromkeys(row.name for row in bridge.stage_raw.rows))
         assert bridge.stage_raw.to_dict() == original
         assert not (tmp_path / '阶梯展示排除清单.json').exists()
         bridge.stage_raw = None
-        assert bridge.stage_display_rules()['option_status'] == {}
+        empty = bridge.stage_display_rules()
+        assert empty['option_status'] == empty['option_availability'] == {}
+    finally:
+        bridge.shutdown()
+
+
+def test_option_availability_counts_current_trims_and_preserves_empty_package_evidence(tmp_path):
+    bridge = Bridge(str(tmp_path))
+    bridge.stage_raw = RawTable(trims=[Trim(0, '基础'), Trim(1, '升级')], rows=[
+        RawRow('全部选装', [Cell(dot='○'), Cell(dot='○')]),
+        RawRow('泼墨环保麂皮内饰', [Cell(), Cell(dot='○', text='选配 (3000元)')], group='选装包'),
+        RawRow('标配与选装', [Cell(dot='○'), Cell(dot='●')]),
+        RawRow('全版型混合子项', [
+            Cell(dot='●', text='加热', subs=[Cell(dot='○', text='通风')]),
+            Cell(dot='●', text='加热', subs=[Cell(dot='○', text='通风')]),
+        ]),
+        # Real radar captures retain the parent solid marker alongside 前○/后●.
+        RawRow('前/后驻车雷达', [Cell(dot='●', text='前○/后●'), Cell()]),
+        RawRow('文本选装标记', [Cell(text='前○/后○'), Cell(dot='○')]),
+        RawRow('跨行同名选装', [Cell(dot='○'), Cell()], group='天窗/玻璃'),
+        RawRow('跨行同名选装', [Cell(), Cell(dot='○')], group='座椅配置'),
+        # The selected trims have no recorded availability for these package rows.
+        RawRow('加热包', [Cell(), Cell(text='-')], group='选装包 ● 标配 ○ 选配 - 无'),
+        RawRow('选装包名称不是标记', [Cell(), Cell()]),
+        RawRow('标配包', [Cell(dot='●'), Cell()], group='选装包'),
+    ])
+    original = bridge.stage_raw.to_dict()
+    raw_path = tmp_path / 'raw' / 'capture.json'
+    bridge.stage_raw.save(raw_path)
+    preferences = tmp_path / '阶梯展示排除清单.json'
+    preferences.write_text(json.dumps({
+        'schema': 'carkit.stage-display/v5', 'excluded_rows': ['已保存隐藏项'], 'included_rows': [],
+    }, ensure_ascii=False), encoding='utf-8')
+    before = {path: path.read_bytes() for path in (raw_path, preferences)}
+    try:
+        result = bridge.stage_display_rules()
+        assert result['ok']
+        assert result['option_status'] == {
+            '全部选装': 'optional', '泼墨环保麂皮内饰': 'optional', '标配与选装': 'mixed',
+            '全版型混合子项': 'mixed', '前/后驻车雷达': 'mixed', '文本选装标记': 'optional',
+            '跨行同名选装': 'optional', '加热包': 'package',
+        }
+        assert result['option_availability'] == {
+            '全部选装': 'all', '泼墨环保麂皮内饰': 'partial', '标配与选装': 'partial',
+            '全版型混合子项': 'all', '前/后驻车雷达': 'partial', '文本选装标记': 'all',
+            '跨行同名选装': 'all', '加热包': 'none',
+        }
+        assert bridge.stage_raw.to_dict() == original
+        bridge.stage_raw = RawTable(trims=[Trim(0, '另一车型')], rows=[
+            RawRow('标准功能', [Cell(dot='●')]),
+        ])
+        changed = bridge.stage_display_rules()
+        assert changed['ok']
+        assert changed['option_status'] == changed['option_availability'] == {}
+        assert all(path.read_bytes() == content for path, content in before.items())
     finally:
         bridge.shutdown()

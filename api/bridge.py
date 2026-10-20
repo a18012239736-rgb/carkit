@@ -21,7 +21,7 @@ from engine import rawschema, ladder as ladder_mod, differ, render_backup, value
 from engine.models import Snapshot, Ladder, ValuationTable, ValuationItem
 from engine.snapshot import resolve
 from engine import acquire, stage_one, __version__
-from engine.autohome_categories import display_groups
+from engine.autohome_categories import clean_group, display_groups
 from engine.storage import atomic_write_text, unique_filename
 
 
@@ -380,17 +380,28 @@ class Bridge:
             rows = self.stage_raw.rows if self.stage_raw else []
             excluded = self._stage_excluded_rows()
             defaults = self._validate_stage_exclusions(list(stage_one.DEFAULT_EXCLUDED_ROWS))
-            standard, optional = set(), set()
+            standard, optional, packages = set(), {}, set()
+            trim_count = len(self.stage_raw.trims) if self.stage_raw else 0
             for row in rows:
-                if any(stage_one.parts(cell) for cell in row.cells):
-                    standard.add(row.name)
-                if any(stage_one.parts(cell, optional=True) for cell in row.cells):
-                    optional.add(row.name)
+                if clean_group(row.group) == '选装包':
+                    packages.add(row.name)
+                for index, cell in enumerate(row.cells[:trim_count]):
+                    items = [cell, *cell.subs]
+                    if stage_one.parts(cell) or any('●' in item.text for item in items):
+                        standard.add(row.name)
+                    # Position-specific markers can live inside a standard cell.
+                    if any(item.dot == '○' or '○' in item.text for item in items):
+                        optional.setdefault(row.name, set()).add(index)
+            option_status = {name: 'mixed' if name in standard else 'optional' for name in optional}
+            option_status.update({name: 'package' for name in packages - standard - optional.keys()})
             return {'ok': True, 'excluded_rows': excluded,
                     'default_excluded_rows': defaults,
                     'rows': list(dict.fromkeys(row.name for row in rows)),
                     'groups': display_groups(rows, [*defaults, *excluded], self.workdir_path('raw')),
-                    'option_status': {name: 'mixed' if name in standard else 'optional' for name in optional}}
+                    'option_status': option_status,
+                    'option_availability': {name: 'none' if status == 'package' else
+                                            'all' if len(optional[name]) == trim_count else 'partial'
+                                            for name, status in option_status.items()}}
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
 
