@@ -56,10 +56,10 @@ assert.strictEqual(vm.runInContext('stageDisplayRevision',context),2);
 """)
 
 
-def test_ladder_preview_is_a_sibling_below_display_settings_and_old_vehicle_requests_are_discarded():
+def test_ladder_preview_is_below_permanent_result_tools_and_old_vehicle_requests_are_discarded():
     run_node(r"""
 let afterSaved;
-const siblings=[node('#stage-trims'),node('#stage-display-settings'),node('#advanced-import')];
+const siblings=[node('#stage-trims'),node('#stage-display-settings'),node('#stage-result-tools'),node('#advanced-import')];
 const fields=new Map();
 context.document={
   querySelector:selector=>siblings.find(element=>'#'+element.id===selector) || null,
@@ -72,12 +72,12 @@ context.document={
   },
 };
 const parent={id:'page-scrape'};
-for(const [index,id] of ['stage-trims','stage-display-settings','advanced-import'].entries()) {
+for(const [index,id] of ['stage-trims','stage-display-settings','stage-result-tools','advanced-import'].entries()) {
   siblings[index].id=id;siblings[index].parentElement=parent;
 }
 node('#stage-trims').append=()=>assert.fail('The preview must not be nested inside the trim card');
-node('#stage-display-settings').after=panel=>{
-  const index=siblings.indexOf(node('#stage-display-settings'));
+node('#stage-result-tools').after=panel=>{
+  const index=siblings.indexOf(node('#stage-result-tools'));
   siblings.splice(index+1,0,panel);panel.parentElement=parent;
 };
 context.StageDisplaySettings={mount(root,options){afterSaved=options.onSaved;}};
@@ -89,9 +89,9 @@ load('previewButton.onclick =', "$('#stage-trim-editor').addEventListener");
 load('function renderStageTrimEditor()', 'function updateStageBases(');
 context.api=async()=>({ok:true,model:'车型',columns:[]});
 await context.previewButton.onclick();
-assert.deepStrictEqual(siblings.map(element=>element.id),['stage-trims','stage-display-settings','ladder-visual','advanced-import']);
-assert.strictEqual(siblings[2].parentElement,parent);
-assert.strictEqual(siblings[2].className,'card');
+assert.deepStrictEqual(siblings.map(element=>element.id),['stage-trims','stage-display-settings','stage-result-tools','ladder-visual','advanced-import']);
+assert.strictEqual(siblings[3].parentElement,parent);
+assert.strictEqual(siblings[3].className,'card');
 await context.previewButton.onclick();
 assert.strictEqual(siblings.filter(element=>element.id==='ladder-visual').length,1);
 afterSaved();assert(!context.document.querySelector('#ladder-visual'));
@@ -102,7 +102,7 @@ let resolveOld;context.api=async()=>new Promise(resolve=>resolveOld=resolve);
 const oldPreview=context.previewButton.onclick();context.renderStageTrimEditor();
 resolveOld({ok:true,model:'旧车型',columns:[]});await oldPreview;
 assert(!context.document.querySelector('#ladder-visual'));
-assert.deepStrictEqual(siblings.map(element=>element.id),['stage-trims','stage-display-settings','advanced-import']);
+assert.deepStrictEqual(siblings.map(element=>element.id),['stage-trims','stage-display-settings','stage-result-tools','advanced-import']);
 """)
 
 

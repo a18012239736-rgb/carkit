@@ -30,6 +30,8 @@ function syncActionButtons() {
     button.title = button.dataset.busy ? '正在处理，请稍候' : enabled ? '' : reason;
   };
   const stageReady = !!ST.stage?.trims.length && stagePlan().length > 0;
+  const stageTools = $('#stage-result-tools');
+  if(stageTools) stageTools.hidden = !ST.stage?.trims.length;
   for (const id of ['#btn-stage-preview', '#btn-stage-export', '#btn-stage-excel'])
     ready(id, stageReady, '请先选择车型，并勾选至少一个输出版型');
   const competitor = $('#diff-mode').value === 'competitor';
@@ -327,6 +329,11 @@ async function refreshRawList() {
   $('#ladder-raw-select').innerHTML = records.map(r=>`<option value="${esc(r.file)}">${esc(r.label)}</option>`).join('');
 }
 
+$('#btn-open-history').onclick=()=>{
+  const history=$('#raw-history'); history.open=!history.open;
+  if(history.open) history.scrollIntoView({behavior:'smooth',block:'nearest'});
+};
+
 $("#btn-scrape-open").addEventListener("click", async () => {
   const sid = $("#scrape-series").value.trim();
   if (!sid) return toast("请输入车型名称或汽车之家配置页网址", "err");
@@ -356,6 +363,8 @@ function handleStageResult(res) {
   if (res.needs_browser) { $("#scrape-status").textContent = "⚠ " + res.message; $("#scrape-status").className = "status warn"; return; }
   if (!res.ok) { $("#scrape-status").textContent = "✕ " + res.error; $("#scrape-status").className = "status err"; return; }
   $("#stage-candidates").hidden = true;
+  $('#raw-history').open=false;
+  const filters=$('#capture-filters'); if(filters) filters.open=false;
   $('#raw-inspector').hidden=true; $('#raw-inspector').replaceChildren(); $('#md-preview').hidden=true; $('#stage-export-status').textContent='';
   ST.stage = {trims: res.trims, seriesId: res.series_id, model: res.model};
   StageDisplaySettings.refresh();
@@ -368,9 +377,9 @@ function handleStageResult(res) {
 function renderCaptureFilters(filters) {
   $('#stage-candidates').hidden = true;
   let panel = $('#capture-filters');
-  if (!panel) { panel=document.createElement('div'); panel.id='capture-filters'; panel.className='card'; $('#stage-trims').before(panel); }
-  panel.hidden=false;
-  panel.innerHTML='<div class="capture-heading"><div><h2>选择抓取条件</h2><p>按需选择，可多选。未勾选的条件不作限制。</p></div><span class="capture-step">抓取前筛选</span></div>'+filters.map((f,i)=>`<fieldset class="capture-filter"><legend>${esc(f.label)}</legend><div class="capture-options">${f.values.map(v=>`<label class="capture-option"><input type="checkbox" data-filter="${i}" data-value="${esc(v.value)}"><span>${esc(v.label)}</span></label>`).join('')}</div></fieldset>`).join('')+'<div class="capture-actions"><button id="btn-confirm-capture" class="primary">开始抓取</button><span id="capture-filter-status" class="status" role="status" aria-live="polite"></span></div>';
+  if (!panel) { panel=document.createElement('details'); panel.id='capture-filters'; panel.className='card workspace-details'; $('#stage-trims').before(panel); }
+  panel.hidden=false; panel.open=true;
+  panel.innerHTML='<summary>选择抓取条件</summary><p class="dim">按需选择，可多选。未勾选的条件不作限制。</p>'+filters.map((f,i)=>`<fieldset class="capture-filter"><legend>${esc(f.label)}</legend><div class="capture-options">${f.values.map(v=>`<label class="capture-option"><input type="checkbox" data-filter="${i}" data-value="${esc(v.value)}"><span>${esc(v.label)}</span></label>`).join('')}</div></fieldset>`).join('')+'<div class="capture-actions"><button id="btn-confirm-capture" class="primary">开始抓取</button><span id="capture-filter-status" class="status" role="status" aria-live="polite"></span></div>';
   $('#btn-confirm-capture').onclick=async()=>{
     const selected={}; $$('#capture-filters [data-filter]:checked').forEach(x=>(selected[filters[+x.dataset.filter].label] ||= []).push(x.dataset.value));
     const button=$('#btn-confirm-capture'), status=$('#capture-filter-status');
@@ -398,19 +407,33 @@ function renderStageTrimEditor() {
     return m ? Number(m[0]) : Infinity;
   };
   const order = trims.map((_,i)=>i).sort((a,b)=>price(trims[a])-price(trims[b]) || a-b);
-  $("#stage-trim-editor").innerHTML = order.map(i => `<div class="stage-trim-row"><label><input type="checkbox" class="stage-use" data-i="${i}" checked> ${esc(trims[i].name)}（${trims[i].price_guide ?? '待核'}万）</label><select class="stage-base" data-i="${i}"><option value="">基本配置</option></select></div>`).join("");
+  const root = $('#stage-trim-editor');
+  root.dataset.priceOrder = JSON.stringify(order);
+  root.innerHTML = `<label class="row">基本版型<select id="stage-primary-base"${order.length ? '' : ' disabled'}>${order.map(i=>`<option value="${i}">${esc(trims[i].name)}（${trims[i].price_guide ?? '待核'}万）</option>`).join('')}</select></label>` + order.map(i => `<div class="stage-trim-row"><label><input type="checkbox" class="stage-use" data-i="${i}" checked> ${esc(trims[i].name)}（${trims[i].price_guide ?? '待核'}万）</label><select class="stage-base" data-i="${i}"><option value="">基本配置</option></select></div>`).join("");
+  $('#stage-primary-base').onchange = () => {
+    const selected = document.querySelector(`.stage-use[data-i="${$('#stage-primary-base').value}"]`);
+    if(selected) selected.checked = true;
+    updateStageBases();
+  };
   $$(".stage-use").forEach(cb => cb.addEventListener('change', updateStageBases));
   updateStageBases(true);
   syncActionButtons();
 }
 
 function updateStageBases(reset=false) {
+  const root = $('#stage-trim-editor'), primary = $('#stage-primary-base');
+  const priceOrder = JSON.parse(root.dataset.priceOrder || '[]');
+  const selected = $$('.stage-use').filter(cb=>cb.checked).map(cb=>+cb.dataset.i);
+  if(primary.value === '' || !selected.includes(Number(primary.value)))
+    primary.value = String(priceOrder.find(i=>selected.includes(i)) ?? '');
+  const order = primary.value === '' ? priceOrder : [Number(primary.value),...priceOrder.filter(i=>i!==Number(primary.value))];
+  $$('#stage-trim-editor .stage-trim-row').sort((a,b)=>order.indexOf(+a.querySelector('.stage-use').dataset.i)-order.indexOf(+b.querySelector('.stage-use').dataset.i)).forEach(row=>root.append(row));
   const earlier=[];
   $$('.stage-use').forEach(cb => {
     const i=+cb.dataset.i, sel=document.querySelector(`.stage-base[data-i="${i}"]`), old=sel.value;
     sel.innerHTML='<option value="">基本配置</option>'+earlier.map(j=>`<option value="${j}">${esc(ST.stage.trims[j].name)}</option>`).join('');
-    if (reset !== true && [...sel.options].some(o=>o.value===old)) sel.value=old;
-    else sel.value=ST.stage.trims[i].price_guide != null && earlier.length ? String(earlier[earlier.length-1]) : '';
+    if (reset !== true && old !== '' && [...sel.options].some(o=>o.value===old)) sel.value=old;
+    else sel.value=earlier.length ? String(earlier[earlier.length-1]) : '';
     sel.disabled=!cb.checked || !earlier.length;
     if(cb.checked) earlier.push(i);
   });
@@ -436,6 +459,7 @@ StageDisplaySettings.mount($('#stage-display-settings'), {api, model: () => ST.s
 const previewButton = document.createElement('button');
 previewButton.textContent = '查看配置阶梯图';
 previewButton.id = 'btn-stage-preview';
+previewButton.className = 'primary';
 $('#btn-stage-export').before(previewButton);
 previewButton.onclick = async () => {
   const revision = stageDisplayRevision;
@@ -462,7 +486,7 @@ previewButton.onclick = async () => {
     price.append(unit);
   });
   enableLadderCardMoves(panel);
-  $('#stage-display-settings').after(panel);
+  $('#stage-result-tools').after(panel);
   panel.querySelector('.close-ladder').onclick = () => panel.remove();
   panel.scrollIntoView({behavior:'smooth', block:'start', inline:'start'});
   panel.querySelector('.ladder-scroll').scrollLeft = 0;
@@ -510,7 +534,7 @@ function enableLadderCardMoves(panel) {
   });
   refresh();
 }
-$('#stage-trim-editor').addEventListener('change', () => { document.querySelector('#ladder-visual')?.remove(); syncActionButtons(); });
+$('#stage-trim-editor').addEventListener('change', () => { stageDisplayRevision++; document.querySelector('#ladder-visual')?.remove(); syncActionButtons(); });
 
 $("#btn-stage-export").addEventListener("click", async () => {
   const revision = stageDisplayRevision;
@@ -1158,6 +1182,7 @@ function clearComparisonSelf() {
   ConfigEditor.unmount($('#diff-self-table'));
   $('#diff-self-editor').hidden = true;
   $('#diff-self-table').innerHTML = '';
+  delete $('#diff-self-editor').dataset.source;
   comparisonSelf=null;comparisonSelfPath='';
   ST.leftLadder=null;ST.leftLadderPath='';
 }
@@ -1167,6 +1192,19 @@ function hideComparisonEditors() {
   $('#diff-competitor-editor').hidden = true;
   $('#diff-ladder-table-wrap').innerHTML = '';
 }
+function showComparisonEditor(side) {
+  $('#diff-self-editor').hidden=side!=='self';
+  $('#diff-competitor-editor').hidden=side!=='competitor';
+  $(side==='self'?'#diff-self-editor':'#diff-competitor-editor').scrollIntoView?.({behavior:'smooth',block:'start'});
+}
+function returnToComparisonPairs() {
+  ++ST.selfEditorRevision;
+  $('#diff-self-editor').hidden=true;
+  $('#diff-competitor-editor').hidden=true;
+  $('#pairs-editor').scrollIntoView?.({behavior:'smooth',block:'start'});
+}
+$('#diff-back-self').onclick=returnToComparisonPairs;
+$('#diff-back-competitor').onclick=returnToComparisonPairs;
 $('#delete-self-file').onclick=async()=>{
   const file=$('#diff-snapshot').value;
   if(!file)return toast('请先选择要删除的本品文件','err');
@@ -1184,10 +1222,13 @@ $('#delete-self-file').onclick=async()=>{
 $('#diff-snapshot').addEventListener('change',clearComparisonSelf);
 $('#diff-edit-self').onclick=async()=>{
   const competitor=$('#diff-mode').value==='competitor';
-  hideComparisonEditors();
-  const revision=ST.selfEditorRevision;
   const file=$(competitor?'#diff-left-vehicle':'#diff-snapshot').value;
   if(!file)return toast(competitor?'请先选择左侧竞品':'请先选择本品配置','err');
+  const source=JSON.stringify([file,competitor,ST.plan?.session || '']);
+  if($('#diff-self-editor').dataset.source===source){showComparisonEditor('self');return;}
+  clearComparisonSelf();
+  $('#diff-competitor-editor').hidden=true;
+  const revision=ST.selfEditorRevision;
   const isCurrent=()=>revision===ST.selfEditorRevision && competitor===($('#diff-mode').value==='competitor') && $(competitor?'#diff-left-vehicle':'#diff-snapshot').value===file;
   if(competitor){
     const r=await api(ST.plan?'load_ladder':'prepare_competitor',ST.plan?ST.plan.paths.left:file);
@@ -1196,7 +1237,8 @@ $('#diff-edit-self').onclick=async()=>{
     $('#diff-self-editor h3').textContent='修改左侧竞品配置';
     $('#diff-self-editor p').textContent='修正会用于该历史车型的后续对比，不修改原始抓取数据。';
     renderLadderTable('#diff-self-table',ST.leftLadder);
-    $('#diff-self-editor').hidden=false;
+    $('#diff-self-editor').dataset.source=source;
+    showComparisonEditor('self');
     return;
   }
   const path=ST.plan?ST.plan.paths.left:await api('workdir_path','快照',file);
@@ -1210,34 +1252,41 @@ $('#diff-edit-self').onclick=async()=>{
   $('#diff-self-editor h3').textContent='修改本品配置';
   $('#diff-self-editor p').textContent='修改会同步到继承该项的版型，保存后重新对比。';
   mountConfigurationEditor($('#diff-self-table'),comparisonSelf,'snapshot',Object.fromEntries(checklist.items.map(x=>[x.no,x.name])));
-  $('#diff-self-editor').hidden=false;
+  $('#diff-self-editor').dataset.source=source;
+  showComparisonEditor('self');
 };
 $('#diff-save-self').onclick=async()=>{
   if(!ConfigEditor.validate($('#diff-self-table'))) return;
+  const revision=ST.selfEditorRevision;
   if($('#diff-mode').value==='competitor'){
     if(!ST.leftLadder||!ST.leftLadderPath)return toast('请先选择左侧竞品','err');
     collectLadderEdits('#diff-self-table',ST.leftLadder);
     const r=await api('save_ladder_edit',ST.leftLadderPath,ST.leftLadder);
-    if(r&&r.ok){invalidateDiff();if(!ST.plan)await rebuildPairs();toast('左侧竞品修正已保存，请运行对比','ok');}
+    if(r&&r.ok){invalidateDiff();if(!ST.plan)await rebuildPairs();toast('左侧竞品修正已保存，请运行对比','ok');if(revision===ST.selfEditorRevision && !$('#diff-self-editor').hidden)returnToComparisonPairs();}
     return;
   }
   if(!comparisonSelf)return;
-  await api('save_snapshot',comparisonSelfPath,comparisonSelf);
+  const r=await api('save_snapshot',comparisonSelfPath,comparisonSelf);
+  if(r?.ok===false)return;
   invalidateDiff();
   toast('本品修正已保存，请运行对比','ok');
+  if(revision===ST.selfEditorRevision && !$('#diff-self-editor').hidden)returnToComparisonPairs();
 };
 $('#review-competitor').onclick=()=>{
   if(!ST.ladder || !$('#diff-ladder').value) return toast('请先选择竞品');
-  clearComparisonSelf();
-  const panel=$('#diff-competitor-editor'); panel.hidden=!panel.hidden;
-  if(!panel.hidden) renderLadderTable('#diff-ladder-table-wrap');
+  ++ST.selfEditorRevision;
+  if(!$('#diff-competitor-editor').hidden){returnToComparisonPairs();return;}
+  if(!ConfigEditor.isMounted($('#diff-ladder-table-wrap')) && !$('#diff-ladder-table-wrap').innerHTML)
+    renderLadderTable('#diff-ladder-table-wrap');
+  showComparisonEditor('competitor');
 };
 $('#diff-save-competitor').onclick=async()=>{
   if(!ConfigEditor.validate($('#diff-ladder-table-wrap'))) return;
   if(!ST.ladderPath) return;
+  const ladder=ST.ladder;
   collectLadderEdits('#diff-ladder-table-wrap');
   const r=await api('save_ladder_edit',ST.ladderPath,ST.ladder);
-  if(r && r.ok){ invalidateDiff(); toast('竞品修正已保存，请运行对比','ok'); }
+  if(r && r.ok){ invalidateDiff(); toast('竞品修正已保存，请运行对比','ok'); if(ladder===ST.ladder && !$('#diff-competitor-editor').hidden)returnToComparisonPairs(); }
 };
 $('#back-to-diff').onclick=async()=>{
   collectLadderEdits();
@@ -1375,12 +1424,17 @@ $('#ppt-save').onclick=async()=>{
 const compareCard=$('#diff-mode').closest('.card');
 const oldRow=$('#diff-mode').parentElement;
 const modeRow=document.createElement('div'); modeRow.className='compare-mode';
-modeRow.innerHTML='<strong>选择对比方式</strong>'; modeRow.append($('#diff-mode'));
+modeRow.innerHTML='<strong>01 选择车型</strong>'; modeRow.append($('#diff-mode'));
 const sides=document.createElement('div'); sides.className='compare-sides';
 for(const [title,ids] of [['左侧 · 比较主体',['diff-snapshot','diff-left-vehicle','diff-edit-self','delete-self-file']],['右侧 · 对照车型',['diff-vehicle','diff-ladder','review-competitor']]]) {
   const side=document.createElement('div'); side.className='compare-side';
   const heading=document.createElement('h3'); heading.textContent=title; side.append(heading);
-  ids.forEach(id=>side.append(document.getElementById(id))); sides.append(side);
+  const actions=document.createElement('div'); actions.className='workspace-section-actions';
+  ids.forEach(id=>{
+    const control=document.getElementById(id);
+    if(control.tagName==='BUTTON')actions.append(control);else side.append(control);
+  });
+  side.append(actions); sides.append(side);
 }
 const ruleRow=document.createElement('div'); ruleRow.className='compare-rules';
 ruleRow.hidden=true;
@@ -1388,11 +1442,19 @@ ruleRow.innerHTML='<label>赋值规则</label>'; ruleRow.append($('#diff-valuati
 compareCard.prepend(modeRow,sides,ruleRow); oldRow.remove();
 const valuationShortcut=$('#diff-toggle-valuation');
 const shortcutRow=valuationShortcut.closest('.row');
-modeRow.append(valuationShortcut,$('#page-diff [data-goto="snapshot"]'));
+modeRow.append(valuationShortcut);
+const productImport=$('#page-diff [data-goto="snapshot"]'); productImport.textContent='导入 / 添加本品';
+sides.firstElementChild.querySelector('.workspace-section-actions').append(productImport);
+const more=document.createElement('details'); more.className='secondary-menu';
+more.innerHTML='<summary>更多</summary><div></div>';
+more.querySelector('div').append($('#delete-self-file'));
+sides.firstElementChild.querySelector('.workspace-section-actions').append(more);
 if(!shortcutRow.children.length)shortcutRow.remove();
+compareCard.after($('#diff-self-editor'),$('#diff-competitor-editor'));
 $('#btn-run-diff').closest('.row').classList.add('compare-actions');
 $('#btn-run-diff').textContent='开始对比';
 $('#btn-export-result').textContent='导出 Markdown';
+$('#stage-result-actions').prepend(previewButton);
 for(const [anchor,kind] of [['btn-stage-export','ladder'],['btn-export-result','diff']]) {
   const markdown=document.getElementById(anchor);
   const group=document.createElement('div');
@@ -1407,6 +1469,7 @@ for(const [anchor,kind] of [['btn-stage-export','ladder'],['btn-export-result','
   button.textContent='导出 Excel';
   button.className='export-button';
   group.append(button);
+  $(kind==='ladder'?'#stage-result-actions':'#comparison-result-actions').append(group);
   button.onclick=async()=>{
     if(button.dataset.busy)return;
     if(kind==='diff'&&!ST.diff)return toast('请先运行对比','err');
@@ -1422,7 +1485,7 @@ for(const [anchor,kind] of [['btn-stage-export','ladder'],['btn-export-result','
 }
 $('#page-diff .notice').hidden=true;
 $('#page-diff .steps').textContent='01 选择车型　→　02 指定版型配对　→　03 查看并导出结果';
-$('#pairs-editor strong').textContent='版型配对';
+$('#pairs-editor strong').textContent='02 版型配对与底价';
 $('#page-diff .intro').textContent='选择两侧车型，指定版型配对，查看配置差异与赋值结果。';
 syncActionButtons();
 

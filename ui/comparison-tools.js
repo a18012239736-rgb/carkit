@@ -6,15 +6,26 @@
   const showTime = value => value ? new Date(value).toLocaleString('zh-CN') : '';
   const evidenceButton = (pair,no) => `<button class="evidence-link" data-evidence-pair="${Number(pair)}" data-evidence-no="${Number(no)}">查看依据</button>`;
 
+  function setPlanStatus(message) {
+    ['#comparison-plan-status','#comparison-save-status'].forEach(selector=>{
+      const status=$(selector);
+      if(status)status.textContent=message;
+    });
+  }
+
   function sync() {
     const save=$('#btn-save-plan');
     save.disabled=!!save.dataset.busy || !ST.diff?.comparison_id;
     save.title=ST.diff?.comparison_id?'':'请先完成对比；修改配置后需重新计算再保存';
+    const controls=$('#comparison-save-controls');
+    if(controls)controls.hidden=!ST.diff;
     selectors.forEach(selector=>$(selector).disabled=!!ST.plan);
     ['#diff-toggle-valuation','#btn-save-valuation','#btn-reset-valuation','#btn-make-template','#btn-load-valuation'].forEach(selector=>$(selector).disabled=!!ST.plan);
     $('#delete-self-file').disabled=!!ST.plan || !$('#diff-snapshot').value;
     $('#comparison-plan-banner').hidden=!ST.plan;
     if (!ST.diff) {
+      const status=$('#comparison-save-status');
+      if(status)status.textContent='';
       const dialog=$('#comparison-evidence');
       if(dialog.open) dialog.close();
     }
@@ -38,7 +49,8 @@
   async function openPlan() {
     const file=$('#comparison-plan-list').value, button=$('#btn-open-plan');
     if(!file || button.dataset.busy)return;
-    if((!$('#diff-self-editor').hidden || !$('#diff-competitor-editor').hidden) &&
+    if((!$('#diff-self-editor').hidden || !$('#diff-competitor-editor').hidden ||
+        ConfigEditor.isMounted($('#diff-self-table')) || ConfigEditor.isMounted($('#diff-ladder-table-wrap'))) &&
        !window.confirm('打开方案会切换当前配置。若有未保存的修改，请先取消并保存。是否继续？'))return;
     setActionBusy(button,true);
     const revision=invalidateDiff();
@@ -73,7 +85,7 @@
       }
       $('#comparison-plan-name').value=opened.name;
       $('#comparison-plan-context').textContent=`方案：${opened.name} · 保存于${showTime(opened.created_at)}。当前显示保存时的结果；修改后重新计算只使用方案内规则（算法使用当前程序版本）。如需更换车型或全局规则，请先退出方案。`;
-      $('#comparison-plan-status').textContent='已打开独立工作副本。修改并重新对比后，可另存为新方案；原方案不会被覆盖。';
+      setPlanStatus('已打开独立工作副本。修改并重新对比后，可另存为新方案；原方案不会被覆盖。');
       ST.diff=opened.result;
       renderDiff(opened.result);
       $('#diff-status').textContent='已载入方案保存时的结果，尚未重新计算。';
@@ -90,7 +102,7 @@
     selectors.filter(selector=>selector!=='#diff-mode').forEach(selector=>$(selector).innerHTML='');
     $('#diff-ladder').innerHTML='';
     $('#pairs-editor').querySelectorAll('.pair-row').forEach(row=>row.remove());
-    $('#comparison-plan-status').textContent='已退出方案，原方案及工作副本仍保留在本地。';
+    setPlanStatus('已退出方案，原方案及工作副本仍保留在本地。');
     $('#diff-edit-self').textContent=$('#diff-mode').value==='competitor'?'修改左侧竞品配置':'修改当前本品配置';
     $('#diff-save-self').textContent=$('#diff-mode').value==='competitor'?'保存左侧竞品修正':'保存本品修正';
     await refreshDiffSelects();
@@ -101,9 +113,10 @@
     const rows=result.review || [], warnings=rows.filter(row=>row.level==='warning');
     const info=$('#comparison-review-info').checked;
     const selected=rows.filter(row=>info || row.level==='warning');
-    $('#comparison-review').hidden=false;
-    $('#comparison-review-summary').textContent=`待核清单：${warnings.length}项需检查 · ${rows.length-warnings.length}项来源提示`;
-    $('#comparison-review').open=warnings.length>0;
+    const review=$('#comparison-review');
+    review.hidden=false;
+    review.dataset.hasWarnings=String(warnings.length>0);
+    $('#comparison-review-summary').textContent=`${warnings.length?'有'+warnings.length+'项待核':'未发现已知待核项'} · ${rows.length-warnings.length}项来源提示`;
     $('#comparison-review-list').innerHTML=selected.length?
       '<table class="grid"><thead><tr><th>配对</th><th>配置项</th><th>位置</th><th>提示</th><th>依据</th></tr></thead><tbody>'+selected.map(row=>
         `<tr><td>${Number(row.pair)+1}</td><td>${esc(row.name)}</td><td>${esc(row.side==='left'?'左侧':row.side==='right'?'右侧':'双方')}</td><td>${esc(row.message)}</td><td>${evidenceButton(row.pair,row.no)}</td></tr>`).join('')+'</tbody></table>':
@@ -145,7 +158,7 @@
     setActionBusy(button,true);
     try {
       const saved=await api('save_comparison_plan',$('#comparison-plan-name').value.trim(),result.comparison_id);
-      if(result===ST.diff)$('#comparison-plan-status').textContent=`已另存方案：${saved.name} · ${showTime(saved.created_at)}`;
+      if(result===ST.diff)setPlanStatus(`已另存方案：${saved.name} · ${showTime(saved.created_at)}`);
       else toast(`已保存点击时的方案：${saved.name}；新的配置尚未保存。`,'ok');
       await refreshPlans();
     } finally {setActionBusy(button,false);}

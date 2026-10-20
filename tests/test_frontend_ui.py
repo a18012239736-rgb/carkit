@@ -19,6 +19,7 @@ load('function setActionBusy(', 'function invalidateDiff(');
 def test_action_buttons_follow_selected_trims_models_pairs_and_valid_results():
     run_node(BUTTON_HELPERS + r"""
 context.syncActionButtons();
+assert.strictEqual(node('#stage-result-tools').hidden,true);
 for(const id of ['btn-stage-preview','btn-stage-export','btn-stage-excel','btn-run-diff',
   'btn-export-result','btn-result-excel','diff-edit-self','review-competitor']) {
   assert.strictEqual(node('#'+id).disabled,true,id+' without inputs');
@@ -29,6 +30,7 @@ node('#diff-mode').value='self';node('#diff-snapshot').value='self.json';
 node('#diff-ladder').value='comp.json';ST.ladder={trims:[{name:'Comp'}]};
 ST.ladderPath='阶梯/comp.json';pair();
 context.syncActionButtons();
+assert.strictEqual(node('#stage-result-tools').hidden,false);
 for(const id of ['btn-stage-preview','btn-stage-export','btn-stage-excel','btn-run-diff',
   'diff-edit-self','review-competitor']) {
   assert.strictEqual(node('#'+id).disabled,false,id+' with valid inputs');
@@ -72,6 +74,7 @@ assert.strictEqual(button.disabled,false);
 
 def test_excel_handler_finally_keeps_export_disabled_after_result_invalidation():
     run_node(BUTTON_HELPERS + r"""
+for(const id of ['#stage-result-actions','#comparison-result-actions'])node(id).append=()=>{};
 for(const id of ['#btn-stage-export','#btn-export-result']) {
   node(id).before=()=>{};node(id).classList={remove(){},add(){}};
 }
