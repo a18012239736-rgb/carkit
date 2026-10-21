@@ -16,16 +16,40 @@ def _trim_index(names, target):
     return matches[0] if len(matches) == 1 else None
 
 
-def _source(ladder, rules):
+def _source(ladder, rules, trims):
     saved = ladder.evidence.get('raw') if isinstance(ladder.evidence, dict) else None
+    items = {}
+    for item in ladder.items:
+        items.setdefault(item.no, item)
+    names = [entry['name'] for entry in ladder.trims]
+    context = {'saved': saved, 'raw': None, 'mapped': None, 'items': items,
+               'indices': {trim: _trim_index(names, trim) for trim in trims},
+               'source_indices': {}, 'rows': {}}
     if not isinstance(saved, dict):
-        return None, None, None
+        context['saved'] = None
+        return context
     try:
         raw = RawTable.from_dict(saved)
-        return saved, raw, build_ladder(raw, rules)
+        mapped = build_ladder(raw, rules)
     except (KeyError, TypeError, ValueError, IndexError, AttributeError):
         # Imported old or incomplete evidence cannot make a valid comparison fail.
-        return saved, None, None
+        return context
+    source_items = {}
+    for item in mapped.items:
+        source_items.setdefault(item.no, item)
+    context.update(raw=raw, mapped=mapped, source_items=source_items)
+    names = [entry.short for entry in raw.trims]
+    context['source_indices'] = {trim: _trim_index(names, trim) for trim in trims}
+    row_items = {}
+    for no, item in rules.items_by_no.items():
+        for name in item.get('source_rows', []):
+            row_items.setdefault(name, set()).add(no)
+    for name, no in rules.row_to_item.items():
+        row_items.setdefault(name, set()).add(no)
+    for row in saved.get('rows', []):
+        for no in row_items.get(row.get('name'), ()):
+            context['rows'].setdefault(no, []).append(row)
+    return context
 
 
 def _same_value(no, value, source_value):
@@ -91,11 +115,11 @@ def _calculation(no, value, raw, index):
     return []
 
 
-def _side(ladder, trim, no, value, rules, valuation, context):
-    saved, raw, mapped = context
-    item = ladder.item(no)
-    index = _trim_index([entry['name'] for entry in ladder.trims], trim)
-    source_index = _trim_index([entry.short for entry in raw.trims], trim) if raw is not None else None
+def _side(ladder, trim, no, value, vitem, context):
+    saved, raw, mapped = context['saved'], context['raw'], context['mapped']
+    item = context['items'].get(no)
+    index = context['indices'].get(trim)
+    source_index = context['source_indices'].get(trim)
     result = {'model': ladder.model, 'trim': trim, 'value': deepcopy(value),
               'source_kind': 'unavailable', 'source_url': '', 'captured_at': '',
               'rows': [], 'source_value': None, 'notes': [], 'calculation': []}
@@ -107,14 +131,12 @@ def _side(ladder, trim, no, value, rules, valuation, context):
         if source_index is None:
             result['notes'].append('原始配置无法唯一对应此版型，未推定来源。')
         else:
-            names = set(rules.items_by_no.get(no, {}).get('source_rows', []))
-            names.update(name for name, item_no in rules.row_to_item.items() if item_no == no)
             result['rows'] = [{'name': row['name'], 'group': row.get('group', ''),
                                'cell': deepcopy(row['cells'][source_index])}
-                              for row in saved.get('rows', []) if row.get('name') in names and source_index < len(row.get('cells', []))]
-            vitem = valuation.item(no) if valuation is not None else None
+                              for row in context['rows'].get(no, []) if source_index < len(row.get('cells', []))]
             source_value = differ._pair_values(mapped, mapped, no, source_index, source_index,
-                                              usb_base=(vitem.get('params') or {}).get('base_count', 3) if vitem else 3)[0]
+                                              usb_base=(vitem.get('params') or {}).get('base_count', 3) if vitem else 3,
+                                              self_items=context['source_items'], comp_items=context['source_items'])[0]
             result['source_value'] = source_value
             if not _same_value(no, value, source_value):
                 result['notes'].append('计算用配置与原文识别不同，可能有人工修正或识别版本差异。')
@@ -164,7 +186,22 @@ def _unknown_count(no, value):
 
 def build_review(left, right, pairs, rules, valuation, cells, groups):
     """Return per-pair/per-item source evidence and non-blocking review entries."""
-    contexts = [_source(ladder, rules) for ladder in (left, right)]
+    contexts = [_source(ladder, rules, {pair[key] for pair in pairs})
+                for ladder, key in ((left, 'self_trim'), (right, 'comp_trim'))]
+    details = []
+    for group in groups:
+        by_no = {}
+        for detail in group.get('valuation', {}).get('detail', []):
+            by_no.setdefault(detail['no'], detail)
+        details.append(by_no)
+    valuation_items, explanations = {}, {}
+    for no in dict.fromkeys(cell['no'] for cell in cells):
+        vitem = valuation.item(no) if valuation is not None else None
+        valuation_items[no] = vitem
+        explanations[no] = valuer.explain_rule(valuation, no) if vitem else '未提供赋值规则'
+    messages = {'pending': '该项待定，需核对来源或补充配置。',
+                'unmapped': '该项尚未完成识别映射，需核对原文。',
+                'unknown_count': '有配置，但计算所需的数量或调节方式未确定；沿用现有处理规则。'}
     evidence, review = [], []
     for cell in cells:
         pair_index, no = cell['pair'], cell['no']
@@ -172,11 +209,11 @@ def build_review(left, right, pairs, rules, valuation, cells, groups):
         cfg = rules.items_by_no.get(no, {})
         name = cfg.get('name', str(no))
         group_value = groups[pair_index].get('valuation', {}) if pair_index < len(groups) else {}
-        detail = next((row for row in group_value.get('detail', []) if row['no'] == no), None)
+        detail = details[pair_index].get(no) if pair_index < len(details) else None
         entry = {'pair': pair_index, 'no': no, 'name': name,
-                 'rule': valuer.explain_rule(valuation, no) if valuation is not None and valuation.item(no) else '未提供赋值规则',
+                 'rule': explanations[no],
                  'amount': detail['amount'] if detail is not None else None}
-        vitem = valuation.item(no) if valuation is not None else None
+        vitem = valuation_items[no]
         excluded = bool(cfg.get('exempt_from_valuation') or (vitem and vitem.get('rule') == 'excluded'))
         if excluded:
             entry['rule'] = '本项不参与赋值计算。'
@@ -185,23 +222,20 @@ def build_review(left, right, pairs, rules, valuation, cells, groups):
             ('right', right, 'comp_trim', 'comp_config', contexts[1]),
         ):
             value = cell.get(value_key, cell.get('self_val' if side == 'left' else 'comp_val', '✕'))
-            item = ladder.item(no)
-            entry[side] = _side(ladder, pair[trim_key], no, value, rules, valuation, context)
+            item = context['items'].get(no)
+            entry[side] = _side(ladder, pair[trim_key], no, value, vitem, context)
             if excluded or not _active(value):
                 continue
             code = ('pending' if _pending(value, '[待定]') or str(value).strip() == '?' else
                     'unmapped' if (item and item.unmapped) or _pending(value, '[待映射]') else
                     'unknown_count' if _unknown_count(no, value) else '')
-            messages = {'pending': '该项待定，需核对来源或补充配置。',
-                        'unmapped': '该项尚未完成识别映射，需核对原文。',
-                        'unknown_count': '有配置，但计算所需的数量或调节方式未确定；沿用现有处理规则。'}
             if code:
                 review.append({'pair': pair_index, 'no': no, 'name': name, 'side': side,
                                'level': 'warning', 'code': code, 'message': messages[code]})
         if not excluded:
             for side, ladder, context in (('left', left, contexts[0]), ('right', right, contexts[1])):
-                item = ladder.item(no)
-                if context[1] is not None and item and item.row_absent and entry[side]['value'] != '不适用':
+                item = context['items'].get(no)
+                if context['raw'] is not None and item and item.row_absent and entry[side]['value'] != '不适用':
                     review.append({'pair': pair_index, 'no': no, 'name': name, 'side': side,
                                    'level': 'info', 'code': 'source_row_absent',
                                    'message': '原始表没有该配置行；沿用现有无行处理规则，可查看来源核对。'})

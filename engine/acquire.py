@@ -1,5 +1,6 @@
 """Standalone acquisition. All Playwright objects stay on one owning worker thread."""
 from __future__ import annotations
+from collections import Counter
 from pathlib import Path
 import datetime
 import re
@@ -101,7 +102,12 @@ class Acquirer:
                 self.browser = self.pw.chromium.launch(channel=channel, headless=False)
                 self.page = self.browser.new_page(viewport={'width':1440,'height':960})
                 return
-            except Exception as exc: errors.append(str(exc).splitlines()[0])
+            except Exception as exc:
+                errors.append(str(exc).splitlines()[0] if str(exc) else type(exc).__name__)
+                if self.browser is not None:
+                    try: self.browser.close()
+                    except Exception: pass
+                self.browser = self.page = None
         self.close()
         raise RuntimeError('未能启动Edge或Chrome，请安装其中一个浏览器。'+'; '.join(errors))
 
@@ -209,8 +215,9 @@ class Acquirer:
         raw.source=data['url']
         # Keep exact labels including 版; duplicate short names across years remain distinguishable.
         short=[re.sub(r'^.*?\d{4}款\s*','',h) for h in data['headers']]
+        short_counts = Counter(short)
         for t,name in zip(raw.trims,short):
-            t.short = name if short.count(name)==1 else t.full
+            t.short = name if short_counts[name]==1 else t.full
         return {'raw':raw.to_dict(),'years':years or data.get('years',[]),'complete':True}
 
     def resume(self):

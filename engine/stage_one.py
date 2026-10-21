@@ -252,10 +252,11 @@ def display_raw(raw, excluded_rows=None):
 def parts(cell, optional=False):
     if cell is None: return []
     result=[]
-    for c in [cell]+list(cell.subs):
+    marker = '○' if optional else '●'
+    for c in (cell, *cell.subs):
         # Subs in historical HTML may contain the head again; deduplicate.
         text=c.text.strip()
-        if c.dot == ('○' if optional else '●') or (not optional and not c.dot and text not in EMPTY and '○' not in text):
+        if c.dot == marker or (not optional and not c.dot and text not in EMPTY and '○' not in text):
             if text in EMPTY and c.dot not in {'●', '○'}: continue
             value=text or '有'
             if value not in result: result.append(value)
@@ -646,12 +647,19 @@ def features(raw, excluded_rows=None):
 
 
 def validate_plan(raw, plan):
-    if not isinstance(plan,list) or not plan: raise ValueError('请至少选择一个版型。')
-    seen=set()
+    if not isinstance(plan, list) or not plan:
+        raise ValueError('请至少选择一个版型。')
+    seen = set()
     for row in plan:
-        target=row.get('target'); base=row.get('base')
-        if type(target) is not int or not 0<=target<len(raw.trims) or target in seen: raise ValueError('导出版型无效或重复。')
-        if base is not None and (type(base) is not int or base not in seen): raise ValueError('比较基准须选择已排在前面的版型，不能自比、循环或引用未导出版型。')
+        if not isinstance(row, dict):
+            raise ValueError('导出版型无效或重复。')
+        target, base = row.get('target'), row.get('base')
+        if type(target) is not int or not 0 <= target < len(raw.trims) or target in seen:
+            raise ValueError('导出版型无效或重复。')
+        if 'base' not in row:
+            raise ValueError('请为每个导出版型指定比较基准，基本配置选择空基准。')
+        if base is not None and (type(base) is not int or base not in seen):
+            raise ValueError('比较基准须选择已排在前面的版型，不能自比、循环或引用未导出版型。')
         seen.add(target)
     return plan
 
@@ -687,6 +695,12 @@ _BASE_GROUPS = [
     ('扬声器数量', '车外扬声器数量'),
     ('空调温度控制方式', '后座出风口'),
 ]
+_BASE_GROUP_INDEX = {key: index for index, group in enumerate(_BASE_GROUPS) for key in group}
+_SEAT_TOKENS = {
+    position + '座椅' + function: (position, function)
+    for position in ('主驾', '副驾', '后排')
+    for function in ('通风', '加热', '按摩', '记忆')
+}
 
 
 def _change_items(fs, trim_index, base_index):
@@ -727,37 +741,44 @@ def _change_items(fs, trim_index, base_index):
     return items
 
 
+def _compact_seats(lines):
+    result = []
+    functions_order = ('通风', '加热', '按摩', '记忆')
+    found = {position: set() for position in ('主驾', '副驾', '后排')}
+    insertion = None
+    for line in lines:
+        if '(' in line or '（' in line:
+            result.append(line)
+            continue
+        rest = []
+        for token in line.split('+'):
+            seat = _SEAT_TOKENS.get(token)
+            if seat:
+                position, function = seat
+                found[position].add(function)
+                if insertion is None:
+                    insertion = len(result)
+            else:
+                rest.append(token)
+        if rest:
+            result.append('+'.join(rest))
+    common = found['主驾'] & found['副驾']
+    labels = []
+    for position, funcs in [('前排', common), ('主驾', found['主驾'] - common),
+                            ('副驾', found['副驾'] - common), ('后排', found['后排'])]:
+        if funcs:
+            labels.append(position + ''.join(function for function in functions_order if function in funcs))
+    if labels:
+        result.insert(insertion if insertion is not None else len(result), '+'.join(labels))
+    return result
+
+
 def _compact_items(items, base_index):
-    def compact_seats(lines):
-        result = []
-        functions_order = ('通风', '加热', '按摩', '记忆')
-        seat_tokens = {p+'座椅'+f for p in ('主驾','副驾','后排') for f in functions_order}
-        found = {p:set() for p in ('主驾','副驾','后排')}
-        insertion = None
-        for line in lines:
-            if '(' in line or '（' in line:
-                result.append(line)
-                continue
-            tokens = line.split('+')
-            for position in found:
-                found[position].update(f for f in functions_order if position+'座椅'+f in tokens)
-            if any(t in seat_tokens for t in tokens) and insertion is None:
-                insertion=len(result)
-            rest=[t for t in tokens if t not in seat_tokens]
-            if rest: result.append('+'.join(rest))
-        common=found['主驾'] & found['副驾']
-        labels=[]
-        for position, funcs in [('前排',common), ('主驾',found['主驾']-common),
-                                ('副驾',found['副驾']-common), ('后排',found['后排'])]:
-            if funcs: labels.append(position+''.join(f for f in functions_order if f in funcs))
-        if labels: result.insert(insertion if insertion is not None else len(result), '+'.join(labels))
-        return result
     if base_index is None:
-        groups = {key: index for index, group in enumerate(_BASE_GROUPS) for key in group}
         grouped = []
         positions = {}
         for key, value in items:
-            group_index = groups.get(key)
+            group_index = _BASE_GROUP_INDEX.get(key)
             if group_index is None:
                 grouped.append(value)
                 continue
@@ -766,7 +787,7 @@ def _compact_items(items, base_index):
                 grouped.append(value)
             else:
                 grouped[positions[group_index]] += ('，' if key in {'主驾座椅调节', '副驾座椅调节'} else '+') + value
-        return compact_seats(grouped)
+        return _compact_seats(grouped)
     # Merge repeated rows and the two seat summaries. Comparison parentheses
     # retain the chosen baseline; unchanged rows stay omitted.
     grouped = []
@@ -779,7 +800,7 @@ def _compact_items(items, base_index):
         else:
             positions[key] = len(grouped)
             grouped.append(value)
-    return compact_seats(grouped)
+    return _compact_seats(grouped)
 
 
 def _position_line(raw, plan):

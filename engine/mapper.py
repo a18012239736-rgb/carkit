@@ -24,7 +24,7 @@ def _cell(raw: RawTable, row_names, i: int) -> Cell | None:
 
 
 def _has_row(raw: RawTable, row_names) -> bool:
-    return any(raw.row(n) is not None for n in row_names)
+    return raw.row(*row_names) is not None
 
 
 def _txt(c: Cell | None) -> str:
@@ -560,7 +560,7 @@ def n_seat_func(raw, i, cfg, *, assume_front=True):
     pending = [sub for sub in SUBS if '[待定]' in sub_map[sub]]
     if pending:
         val = (val + '+' if summaries else '') + '[待定]' + '/'.join(pending)
-    return val, funcs, {sub: sub_map[sub] for sub in SUBS}
+    return val, funcs, sub_map
 
 
 def n_speaker(raw, i, cfg):
@@ -754,7 +754,7 @@ def map_raw_to_ladder(raw: RawTable, rules) -> dict:
         rows = item.get("source_rows", [])
         row_absent = rows and not _has_row(raw, rows)
         fn = NORMALIZERS.get(vt, n_bool)
-        values, extra = [], {}
+        values = []
         airbag_comps = []
         subs_rows = []
         for i in range(n_trims):
@@ -775,7 +775,7 @@ def map_raw_to_ladder(raw: RawTable, rules) -> dict:
                 airbag_comps.append(comps)
             elif vt == "seat_func":
                 from .seat_functions import SUBS
-                val, funcs, sub_map = fn(raw, i, item)
+                val, _, sub_map = fn(raw, i, item)
                 values.append(val)
                 if not subs_rows:
                     subs_rows = [{"sub": s, "values": []} for s in SUBS]

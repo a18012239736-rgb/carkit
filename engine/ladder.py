@@ -96,7 +96,7 @@ def render_md(ladder: Ladder, title: str = "") -> str:
                 v = str(v)
                 if prev is not None and v == prev:
                     v = "同"
-                sub_cells.append(v if idx or True else v)
+                sub_cells.append(v)
                 prev = str(sr["values"][idx])
             lines.append(f"| — | {sr['sub']} | " + " | ".join(sub_cells) + " |")
     lines.append("")

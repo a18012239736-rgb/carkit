@@ -12,7 +12,6 @@
 """
 from __future__ import annotations
 import datetime
-import re
 
 # 5C 输出跳过的行（价格/参数表头类）
 SKIP_ROWS = {"厂商指导价(元)", "经销商报价", "厂商", "上市时间", "外观颜色", "内饰颜色"}
@@ -43,6 +42,14 @@ def render_md(raw, model: str = "", series_id: str = "", date: str = "") -> str:
     date = date or datetime.date.today().isoformat()
     trims = sorted(raw.trims, key=lambda t: (t.price_guide is None, t.price_guide or 0))
     n = len(trims)
+    row_values = []
+    for row in raw.rows:
+        values = []
+        for trim in trims:
+            cell = row.cells[trim.idx] if trim.idx < len(row.cells) else None
+            values.append((cell is not None and cell.dot == '●', _val_text(cell), _opt_text(cell)))
+        row_values.append((row.name, values))
+    config_rows = [(name, values) for name, values in row_values if name not in SKIP_ROWS]
     lines = []
 
     # ---- 段1 一句话定位 ----
@@ -89,40 +96,29 @@ def render_md(raw, model: str = "", series_id: str = "", date: str = "") -> str:
     lines.append("## 配置")
     lines.append("")
 
-    def col_of(t):
-        return t.idx
-
     base = trims[0]
     lines.append(f"**基本配置（{base.short}）：**")
     lines.append("")
-    for r in raw.rows:
-        if r.name in SKIP_ROWS:
-            continue
-        c = r.cells[col_of(base)] if col_of(base) < len(r.cells) else None
-        v = _val_text(c)
-        if c is not None and c.dot == "●":
-            lines.append(f"{r.name}：{v}" if v and v != "●" else r.name)
+    for name, values in config_rows:
+        present, value, _ = values[0]
+        if present:
+            lines.append(f"{name}：{value}" if value and value != "●" else name)
     # ---- 升档段 ----
-    for prev, cur in zip(trims, trims[1:]):
+    for index, (prev, cur) in enumerate(zip(trims, trims[1:]), 1):
         dp = (cur.price_guide or 0) - (prev.price_guide or 0)
         lines.append("")
         lines.append(f"**较{prev.short} +{dp:g}万:（{cur.short}）**")
         lines.append("")
         adds, dels = [], []
-        for r in raw.rows:
-            if r.name in SKIP_ROWS:
-                continue
-            pc = r.cells[col_of(prev)] if col_of(prev) < len(r.cells) else None
-            cc = r.cells[col_of(cur)] if col_of(cur) < len(r.cells) else None
-            pv, cv = _val_text(pc), _val_text(cc)
-            p_has = pc is not None and pc.dot == "●"
-            c_has = cc is not None and cc.dot == "●"
+        for name, values in config_rows:
+            p_has, pv, _ = values[index - 1]
+            c_has, cv, _ = values[index]
             if c_has and not p_has:
-                adds.append(f"{r.name}：{cv}" if cv and cv != "●" else r.name)
+                adds.append(f"{name}：{cv}" if cv and cv != "●" else name)
             elif c_has and p_has and cv != pv and cv and pv:
-                adds.append(f"{r.name}：{pv} → {cv}")
+                adds.append(f"{name}：{pv} → {cv}")
             elif p_has and not c_has:
-                dels.append(f"{r.name}（{pv}）" if pv and pv != "●" else r.name)
+                dels.append(f"{name}（{pv}）" if pv and pv != "●" else name)
         if adds:
             lines.append("增：" + "；".join(adds))
         if dels:
@@ -131,15 +127,14 @@ def render_md(raw, model: str = "", series_id: str = "", date: str = "") -> str:
             lines.append("（配置相同，仅价格/续航差异）")
 
     # ---- 段4 选装 ----
-    opts = []
-    for r in raw.rows:
-        for i, t in enumerate(trims):
-            c = r.cells[col_of(t)] if col_of(t) < len(r.cells) else None
-            o = _opt_text(c)
+    opts, seen_opts = [], set()
+    for name, values in row_values:
+        for t, (_, _, o) in zip(trims, values):
             if o:
-                item = f"{r.name}：{o}" if o != "选装" else r.name
+                item = f"{name}：{o}" if o != "选装" else name
                 entry = f"{item}（{t.short}）"
-                if entry not in opts:
+                if entry not in seen_opts:
+                    seen_opts.add(entry)
                     opts.append(entry)
     if opts:
         lines.append("")

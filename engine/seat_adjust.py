@@ -221,7 +221,12 @@ def zero_gravity_positions(raw, i, *, legacy_scope=False):
 
 
 def raw_details(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_display=False):
-    electric, main, passenger = _cells(raw, i)
+    return _raw_details(raw, i, _cells(raw, i), include_terms=include_terms,
+                        legacy_price_notes=legacy_price_notes, legacy_display=legacy_display)
+
+
+def _raw_details(raw, i, cells, *, include_terms, legacy_price_notes, legacy_display):
+    electric, main, passenger = cells
     count_directions = _legacy_raw_directions if legacy_display or legacy_price_notes else raw_directions
     counts = [count_directions(cell) for cell in (main, passenger)]
     positions = zero_gravity_positions(raw, i, legacy_scope=legacy_price_notes) if include_terms else []
@@ -270,7 +275,8 @@ def legacy_summary(raw, i):
 def from_raw(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_display=False):
     from .stage_one import clean, parts
     electric, main, passenger = _cells(raw, i)
-    counts, modes, positions = raw_details(raw, i, include_terms=include_terms, legacy_price_notes=legacy_price_notes, legacy_display=legacy_display)
+    counts, modes, positions = _raw_details(raw, i, (electric, main, passenger), include_terms=include_terms,
+                                          legacy_price_notes=legacy_price_notes, legacy_display=legacy_display)
     gravity = raw.row('零重力座椅') if include_terms else None
     unknown = parts(gravity.cells[i]) if gravity and i < len(gravity.cells) else []
     if unknown and not positions and electric is None and main is None and passenger is None:

@@ -45,9 +45,11 @@ def _cells(raw, names, i):
     return [(row.name, row.cells[i]) for row in raw.rows if row.name in names and i < len(row.cells)]
 
 
-def _knee_components(raw, i):
+def _knee_components(cells):
     positions, mentioned, generic = set(), set(), False
-    for name, cell in _cells(raw, KNEE_ROWS, i):
+    for name, cell in cells:
+        if name not in KNEE_ROWS:
+            continue
         for part in _parts(cell):
             text = part.text or ''
             # A dedicated row supplies the position when its cell is only ●.
@@ -66,17 +68,19 @@ def _knee_components(raw, i):
 def from_raw(raw, i):
     """返回 (数量, 组成)，同一位置/同类别名不重复计；○ 不计。"""
     count, components = 0, []
+    cells = _cells(raw, SOURCE_ROWS, i)
     for rows, pattern, order, per_position, labels in (
         (DRIVER_ROWS, _DRIVER_POSITION, ('主', '副'), 1, {'主': '主驾', '副': '副驾'}),
         (SIDE_ROWS, _ROW_POSITION, ('前', '后'), 2, {'前': '前侧', '后': '后侧'}),
         (HEAD_ROWS, _ROW_POSITION, ('前', '后'), 1, {'前': '前气帘', '后': '后气帘'}),
     ):
-        positions = {pos for _, cell in _cells(raw, rows, i) for pos in _positions(cell, pattern, order)}
+        positions = {pos for name, cell in cells if name in rows
+                     for pos in _positions(cell, pattern, order)}
         count += per_position * len(positions)
         components.extend(['主副'] if rows == DRIVER_ROWS and len(positions) == 2
                           else [labels[pos] for pos in order if pos in positions])
-    if any(_standard(part) for _, cell in _cells(raw, MIDDLE_ROWS, i) for part in _parts(cell)):
+    if any(_standard(part) for name, cell in cells if name in MIDDLE_ROWS for part in _parts(cell)):
         count += 1
         components.append('中央气囊')
-    knees = _knee_components(raw, i)
+    knees = _knee_components(cells)
     return count + len(knees), components + knees

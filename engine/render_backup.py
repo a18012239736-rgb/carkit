@@ -80,7 +80,9 @@ def format_configurations(cells, groups):
     """Apply ladder wording after pricing; UI and both exports share the result."""
     from .differ import MORE, LESS, SAME, _has, _merge_seat_labels, BACKUP_MORE_ORDER, BACKUP_LESS_ORDER
     affected = {3, 18, 20, 21, 22, 29, 34, 35}
+    cells_by_pair = {}
     for cell in cells:
+        cells_by_pair.setdefault(cell['pair'], {})[cell['no']] = cell
         no, verdict = cell['no'], cell['verdict']
         if no not in affected:
             continue
@@ -98,7 +100,7 @@ def format_configurations(cells, groups):
                 summary = _configuration_label(no, value)
             cell['backup_more'], cell['backup_less'] = (summary, '') if verdict == MORE else ('', summary)
     for pi, group in enumerate(groups):
-        pair_cells = {cell['no']: cell for cell in cells if cell['pair'] == pi}
+        pair_cells = cells_by_pair.get(pi, {})
         for side, order, field in (('more', BACKUP_MORE_ORDER, 'backup_more'), ('less', BACKUP_LESS_ORDER, 'backup_less')):
             labels = {no: cell[field] for no, cell in pair_cells.items() if cell[field]}
             group[side] = _merge_seat_labels([labels[no] for no in order+sorted(labels.keys()-set(order)) if no in labels])
@@ -195,11 +197,13 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
     lines.append("| # | 配置项 | " + " | ".join(plabels) + " |")
     lines.append("|---" * (len(plabels) + 2) + "|")
     # 按项号分组渲染
-    nos = sorted({c["no"] for c in cells}, key=display_order_key)
-    item_names = {c["no"]: c.get("name", "") for c in cells}
+    cells_by_no, item_names = {}, {}
+    for cell in cells:
+        cells_by_no.setdefault(cell['no'], []).append(cell)
+        item_names[cell['no']] = cell.get('name', '')
+    nos = sorted(cells_by_no, key=display_order_key)
     for serial, no in enumerate(nos, 1):
-        row_cells = [c for c in cells if c["no"] == no]
-        row_cells.sort(key=lambda c: c["pair"])
+        row_cells = sorted(cells_by_no[no], key=lambda c: c['pair'])
         name = item_names.get(no) or str(no)
         disp_cells = []
         for c in row_cells:

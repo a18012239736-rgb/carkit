@@ -257,9 +257,9 @@ class Snapshot:
                 continue
             vals = [c["values"].get(t) or "✕" for t in trim_names]
             sub_rows = []
-            if isinstance(vals[0], dict) or any(isinstance(v, dict) for v in vals):
+            if any(isinstance(v, dict) for v in vals):
                 # 复合子项（#36）：values 为 {sub: v} dict
-                subnames = list(vals[0].keys()) if isinstance(vals[0], dict) else []
+                subnames = dict.fromkeys(s for v in vals if isinstance(v, dict) for s in v)
                 sub_rows = [{"sub": s, "values": [(v.get(s, "✕") if isinstance(v, dict) else "✕")
                                                   for v in vals]} for s in subnames]
             items.append(LadderItem(no=no, name=ci["name"], values=vals,
@@ -270,8 +270,11 @@ class Snapshot:
                              for t in self.trims],
                       items=items, options=copy.deepcopy(self.options))
 
+    def to_dict(self):
+        return asdict(self)
+
     def to_json(self, **kw):
-        return json.dumps(asdict(self), ensure_ascii=False, **kw)
+        return json.dumps(self.to_dict(), ensure_ascii=False, **kw)
 
     @classmethod
     def from_dict(cls, d):
@@ -370,9 +373,8 @@ class ValuationTable:
 
     def item(self, no):
         for it in self.items:
-            d = it if isinstance(it, dict) else asdict(it)
-            if d.get("no") == no:
-                return d
+            if (it.get("no") if isinstance(it, dict) else it.no) == no:
+                return it if isinstance(it, dict) else asdict(it)
         return None
 
     def to_json(self, **kw):

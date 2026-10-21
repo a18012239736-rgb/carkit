@@ -376,10 +376,10 @@ def _apply(text, values, evidence, leftovers):
         elif '座椅电调' in t or re.search(r'[主副]驾\d+向',t):
             # A known power adjustment without a direction count is still unresolved for valuation.
             setv(35,'[待定]'+t+'（请确认主副驾方向数）')
-        from .seat_functions import from_text
-        subs=copy.deepcopy(values.get(36,{}))
-        if not isinstance(subs,dict):subs={}
         if any(feature in t for feature in ('通风','加热','按摩','头枕音响')) and any(scope in t for scope in ('座椅','主驾','副驾','前排','二排','后排','头枕音响')):
+            from .seat_functions import from_text
+            subs=copy.deepcopy(values.get(36,{}))
+            if not isinstance(subs,dict):subs={}
             additions=from_text(t if '二排' not in t and '后排' not in t else '', t if '二排' in t or '后排' in t else '', t if '头枕音响' in t else '')
             subs.update({key:value for key,value in additions.items() if value!='✕'})
             setv(36,subs)
@@ -453,6 +453,7 @@ def make_snapshot(draft):
     if any(not n for n in names) or len(set(names))!=len(names):raise ValueError('版型名称不能为空或重复')
     model=str(draft.get('model','')).strip()
     if not model:raise ValueError('请填写本品车型名称')
+    items = [item for item in Rules().items if not item.get('merged_into')]
     lookup=dict(zip(names,columns)); expanded={}; traces={}; remaining={}; declared={}; options={}
     def expand(name,stack):
         if name in expanded:return
@@ -462,7 +463,7 @@ def make_snapshot(draft):
         if base:
             expand(base,stack+[name]); vals=copy.deepcopy(expanded[base]); ev=copy.deepcopy(traces[base])
         else:
-            vals={it['no']:'✕' for it in Rules().items if not it.get('merged_into')}
+            vals={it['no']:'✕' for it in items}
             from .seat_functions import empty
             vals[36]=empty();ev={}
         before={no:len(lines) for no,lines in ev.items()}
@@ -473,8 +474,7 @@ def make_snapshot(draft):
         rest=[];_apply(standard_text,vals,ev,rest)
         declared[name]={no for no,lines in ev.items() if len(lines)>before.get(no,0)}
         # A range in an upgrade column may be a delta, not the absolute range.
-        if base and re.search(r'\d+\s*km续航', standard_text, re.I):
-            stated = re.search(r'(\d+)\s*km续航', standard_text, re.I)
+        if base and (stated := re.search(r'(\d+)\s*km续航', standard_text, re.I)):
             named_range = re.match(r'(\d{3,4})', name)
             if named_range and stated[1] != named_range[1]:
                 vals[1] = '[待定]续航原文' + stated[0] + '，请确认总续航或增量'
@@ -492,9 +492,8 @@ def make_snapshot(draft):
                       'price_source':draft.get('price_kind','未确定'),'price_reference':price,'base':col.get('base'),
                       'range':expanded[name][1] if not str(expanded[name][1]).startswith('[待定]') else ''})
     cells=[]
-    for it in Rules().items:
+    for it in items:
         no=it['no']
-        if it.get('merged_into'):continue
         ev=[]
         for name in names:
             if no in traces[name]:ev.append(name+'：'+'；'.join(dict.fromkeys(traces[name][no])))

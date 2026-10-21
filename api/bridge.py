@@ -13,6 +13,7 @@ import re
 import copy
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -38,6 +39,7 @@ class Bridge:
         # methods on different worker threads, so serialize all browser work
         # through one stable owner thread.
         self._acquire_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='carkit-browser')
+        self._closed = False
         self.stage_raw = None
         self._comparison_records = {}
         self._plan_sessions = {}
@@ -47,6 +49,9 @@ class Bridge:
 
     def shutdown(self):
         """Close the Playwright owner thread when the native window exits."""
+        if self._closed:
+            return
+        self._closed = True
         try:
             self._acquire_executor.submit(self.acquirer.close).result(timeout=10)
         except Exception:
@@ -94,8 +99,6 @@ class Bridge:
     def remove_imported_snapshot(self, filename):
         """Move an imported snapshot to a recoverable local recycle folder."""
         try:
-            import uuid
-            from pathlib import Path
             root = (Path(self.workdir) / '快照').resolve()
             if not filename or Path(filename).name != filename or not filename.endswith('.json'):
                 raise ValueError('请选择有效的本品配置文件')
@@ -120,8 +123,6 @@ class Bridge:
 
     def remove_vehicle_history(self, filename):
         try:
-            import uuid
-            from pathlib import Path
             workspace = Path(self.workdir).resolve()
             root = (workspace / 'raw').resolve()
             if not root.is_relative_to(workspace):
@@ -182,7 +183,7 @@ class Bridge:
             # Include the normalization version in the cache key.  Older
             # caches were built before embedded markers such as ``主●/副●``
             # were recognized, which could make airbags appear as zero.
-            key = hashlib.sha256(open(raw_path, 'rb').read() + b"|cell-marker-v2").hexdigest()[:16]
+            key = hashlib.sha256(Path(raw_path).read_bytes() + b"|cell-marker-v2").hexdigest()[:16]
             output = os.path.join(self.workdir, '阶梯', 'compare-'+key+'.json')
             if os.path.exists(output):
                 lad = Ladder.load(output)
@@ -193,13 +194,19 @@ class Bridge:
                 mapped = map_raw_to_ladder(raw, self.rules)
                 source_indices = {trim.short: i for i, trim in enumerate(raw.trims)}
                 configs = {item['no']: item for item in self.rules.items}
-                roof, seat = lad.item(18), lad.item(35)
+                items_by_no = {}
+                for item in lad.items:
+                    items_by_no.setdefault(item.no, item)
+                roof, seat = items_by_no.get(18), items_by_no.get(35)
+                has_seat_adjust = raw.row('主座椅调节方式', '副座椅调节方式') is not None
+                airbag_values = ladder_mod._airbag_display(mapped[5]['values'], mapped[5]['airbag_comps'])
+                seat_subs = {sub['sub']: sub['values'] for sub in mapped[36]['subs']}
                 alias_updates = []
                 for no, aliases, normalize in (
                     (3, ('高压平台（V）', '高压平台(V)'), n_high_voltage),
                     (45, ('电动座椅记忆功能',), n_seat_memory),
                 ):
-                    item = lad.item(no)
+                    item = items_by_no.get(no)
                     if item and item.row_absent and raw.row(*aliases):
                         alias_updates.append((item, normalize))
                 for i, trim in enumerate(lad.trims):
@@ -212,7 +219,7 @@ class Bridge:
                         old_values = [from_raw(raw, source_i, include_terms=False),
                                       from_raw(raw, source_i, include_terms=False, legacy_display=True),
                                       from_raw(raw, source_i, legacy_display=True)]
-                        if raw.row('主座椅调节方式', '副座椅调节方式'):
+                        if has_seat_adjust:
                             old_values.append(legacy_summary(raw, source_i))
                         if seat.values[i] in old_values:
                             seat.values[i] = from_raw(raw, source_i)
@@ -220,7 +227,7 @@ class Bridge:
                         if i < len(item.values) and item.values[i] == '✕':
                             item.values[i] = normalize(raw, source_i, configs[item.no])
                     for no in (5, 6, 7, 9, 21, 22, 25, 29, 30, 31, 33, 34, 35, 36, 39):
-                        item = lad.item(no)
+                        item = items_by_no.get(no)
                         if not item or i >= len(item.values):
                             continue
                         versions = [legacy_mapped_item(raw, source_i, no)]
@@ -233,13 +240,13 @@ class Bridge:
                             if not any(item.values[i] == old['value'] and current_subs == old['subs'] for old in versions):
                                 continue  # An explicit seat correction keeps its whole trim authoritative.
                             for row in item.subs:
-                                row['values'][i] = next(sub['values'][source_i] for sub in mapped[no]['subs'] if sub['sub'] == row['sub'])
+                                row['values'][i] = seat_subs[row['sub']][source_i]
                         elif not any(item.values[i] == old['value'] for old in versions):
                             continue
-                        item.values[i] = (ladder_mod._airbag_display(mapped[5]['values'], mapped[5]['airbag_comps'])[source_i]
+                        item.values[i] = (airbag_values[source_i]
                                           if no == 5 else mapped[no]['values'][source_i])
                         item.row_absent = mapped[no]['row_absent']
-                for item in (roof, seat, lad.item(3), lad.item(5), lad.item(30), lad.item(45)):
+                for item in (roof, seat, items_by_no.get(3), items_by_no.get(5), items_by_no.get(30), items_by_no.get(45)):
                     if item and raw.row(*configs[item.no]['source_rows']):
                         item.row_absent = False
                 # Existing captures keep hand edits; append only newly defined items.
@@ -297,35 +304,21 @@ class Bridge:
 
     def stage_search(self, query: str, year: str = ""):
         """Search by model name, or accept an Autohome series URL/id."""
-        try:
-            result = self._acquire_executor.submit(self.acquirer.search, query, year).result()
-            if result.get('raw'):
-                return self._stage_store(result['raw'])
-            return {"ok": True, **result}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        return self._acquire(self.acquirer.search, query, year)
 
     def stage_choose_series(self, sid: str):
-        try:
-            result = self._acquire_executor.submit(self.acquirer.fetch, sid).result()
-            if result.get('raw'):
-                return self._stage_store(result['raw'])
-            return {"ok": True, **result}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        return self._acquire(self.acquirer.fetch, sid)
 
     def stage_apply_filters(self, selected=None):
-        try:
-            result = self._acquire_executor.submit(self.acquirer.apply_filters, selected or {}).result()
-            if result.get('raw'):
-                return self._stage_store(result['raw'])
-            return {"ok": True, **result}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        return self._acquire(self.acquirer.apply_filters, selected or {})
 
     def stage_continue(self):
+        return self._acquire(self.acquirer.resume)
+
+    def _acquire(self, action, *args):
+        """Keep browser calls on their owner thread and handle captures uniformly."""
         try:
-            result = self._acquire_executor.submit(self.acquirer.resume).result()
+            result = self._acquire_executor.submit(action, *args).result()
             if result.get('raw'):
                 return self._stage_store(result['raw'])
             return {"ok": True, **result}
@@ -360,7 +353,7 @@ class Bridge:
             data = json.load(source)
         rows = self._validate_stage_exclusions(data.get('excluded_rows') if isinstance(data, dict) else data)
         if isinstance(data, dict) and data.get('schema') in ('carkit.stage-display/v4', 'carkit.stage-display/v5'):
-            included = self._validate_stage_exclusions(data.get('included_rows', [])) if data['schema'] == 'carkit.stage-display/v5' else []
+            included = set(self._validate_stage_exclusions(data.get('included_rows', []))) if data['schema'] == 'carkit.stage-display/v5' else set()
             return list(dict.fromkeys([name for name in defaults if name not in included] + rows))
         # Old files mixed defaults with custom exclusions. Store only the extra
         # exclusions; missing defaults in old files are not manual overrides.
@@ -409,13 +402,15 @@ class Bridge:
         try:
             rows = self._validate_stage_exclusions(excluded_rows)
             defaults = self._validate_stage_exclusions(list(stage_one.DEFAULT_EXCLUDED_ROWS))
-            extra = [name for name in rows if name not in defaults]
-            included = [name for name in defaults if name not in rows]
+            selected = set(rows)
+            default_names = set(defaults)
+            extra = [name for name in rows if name not in default_names]
+            included = [name for name in defaults if name not in selected]
             path = os.path.join(self.workdir, '阶梯展示排除清单.json')
             # Keep manual restores separate so future code defaults still apply.
             data = {'schema': 'carkit.stage-display/v5', 'excluded_rows': extra, 'included_rows': included}
             atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2)+'\n')
-            return {'ok': True, 'excluded_rows': [name for name in defaults if name in rows] + extra}
+            return {'ok': True, 'excluded_rows': [name for name in defaults if name in selected] + extra}
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
 
@@ -428,7 +423,7 @@ class Bridge:
         filters = []
         for label, name in fields:
             if name is None:
-                values = [(re.search(r'(20\d{2})款', t.full).group(1) if re.search(r'(20\d{2})款', t.full) else '') for t in raw.trims]
+                values = [match[1] if (match := re.search(r'(20\d{2})款', t.full)) else '' for t in raw.trims]
             else:
                 row = raw.row(name)
                 values = [' / '.join(stage_one.parts(c)) for c in row.cells] if row else []
@@ -548,7 +543,7 @@ class Bridge:
             out = self._new_output_path('阶梯', f'竞品阶梯-{lad.model}', '.json')
             lad.save(out)
             md = ladder_mod.render_md(lad)
-            md_out = out.replace(".json", ".md")
+            md_out = str(Path(out).with_suffix('.md'))
             atomic_write_text(md_out, md)
             return {"ok": True, "path": out, "md_path": md_out, "ladder": lad.to_dict()}
         except Exception as e:
@@ -596,7 +591,7 @@ class Bridge:
         try:
             from engine.ppt_import import make_snapshot
             snap = make_snapshot(draft)
-            return {'ok': True, 'snapshot': json.loads(snap.to_json())}
+            return {'ok': True, 'snapshot': snap.to_dict()}
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
 
@@ -616,10 +611,9 @@ class Bridge:
                 raise ValueError('版型名称不能为空或重复')
             snap.status = '已确认（未明确项保留待定）'
             safe = re.sub(r'[^\w\-一-龥]+', '_', snap.model).strip('_')
-            import uuid
             path = os.path.join(self.workdir, '快照', safe+'-PPT导入-'+_today()+'-'+uuid.uuid4().hex[:8]+'.json')
             snap.save(path)
-            return {'ok': True, 'path': path, 'snapshot': json.loads(snap.to_json())}
+            return {'ok': True, 'path': path, 'snapshot': snap.to_dict()}
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
 
@@ -632,12 +626,12 @@ class Bridge:
         prepare_snapshot(snap)
         out = self._new_output_path('快照', f'{model}-配置阶梯快照', '.json')
         snap.save(out)
-        return {"ok": True, "path": out, "snapshot": json.loads(snap.to_json())}
+        return {"ok": True, "path": out, "snapshot": snap.to_dict()}
 
     def load_snapshot(self, path: str):
         try:
             snap = resolve(Snapshot.load(path))
-            return {"ok": True, "snapshot": json.loads(snap.to_json())}
+            return {"ok": True, "snapshot": snap.to_dict()}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -658,9 +652,10 @@ class Bridge:
     def current_valuation(self):
         try:
             path = self._current_valuation_path()
-            data = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else valuer.default_valuation(self.rules)
+            customized = os.path.exists(path)
+            data = json.loads(Path(path).read_text(encoding="utf-8")) if customized else {}
             return {"ok": True, "valuation": valuer.normalize_valuation(data, self.rules),
-                    "path": path, "customized": os.path.exists(path),
+                    "path": path, "customized": customized,
                     "editor_schema": valuer.editor_schema()}
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -688,17 +683,17 @@ class Bridge:
     def make_valuation_template(self):
         out = os.path.join(self.workdir, "赋值", f"赋值表模板-{_today()}.xlsx")
         path = self._current_valuation_path()
-        saved = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
+        saved = json.loads(Path(path).read_text(encoding="utf-8")) if os.path.exists(path) else {}
         current = valuer.normalize_valuation(saved, self.rules)
         valuer.make_template_xlsx(out, self.rules, {it["no"]: it for it in current["items"]})
         return {"ok": True, "path": out}
 
     def load_valuation(self, path: str):
         try:
-            if path.endswith(".xlsx"):
+            if path.lower().endswith(".xlsx"):
                 d = valuer.load_xlsx(path)
             else:
-                d = json.load(open(path, encoding="utf-8"))
+                d = json.loads(Path(path).read_text(encoding="utf-8"))
             return {"ok": True, "valuation": valuer.normalize_valuation(d, self.rules),
                     "editor_schema": valuer.editor_schema()}
         except Exception as e:
@@ -747,7 +742,7 @@ class Bridge:
                 if snap.status == '待确认':
                     raise ValueError('PPT解析草稿尚未确认，请先到本品配置核对并保存')
                 self_lad = snap.to_ladder(rules.checklist["items"])
-                left_input = json.loads(snap.to_json())
+                left_input = snap.to_dict()
             comp_lad = Ladder.load(ladder_path)
             missing_items = {it['no'] for it in rules.items} - {it.no for it in comp_lad.items}
             if missing_items:
@@ -761,20 +756,15 @@ class Bridge:
                     return {"ok": False, "error": f"竞品版型不存在: {p['comp_trim']}"}
                 if p['comp_trim'] not in comp_trims:
                     p['comp_trim'] += '版'
-            valuation = None
             if valuation_path:
-                vd = valuer.load_xlsx(valuation_path) if valuation_path.endswith(".xlsx") \
-                    else json.load(open(valuation_path, encoding="utf-8"))
-                vd = valuer.normalize_valuation(vd, rules)
-                valuation = ValuationTable(version=vd.get("version", ""),
-                                           source=vd.get("source", ""),
-                                           items=[ValuationItem(**it) for it in vd["items"]])
+                saved = valuer.load_xlsx(valuation_path) if valuation_path.lower().endswith(".xlsx") \
+                    else json.loads(Path(valuation_path).read_text(encoding="utf-8"))
             else:
                 path = self._current_valuation_path()
-                saved = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {}
-                vd = valuer.normalize_valuation(saved, rules)
-                valuation = ValuationTable(version=vd["version"], source=vd["source"],
-                                           items=[ValuationItem(**it) for it in vd["items"]])
+                saved = json.loads(Path(path).read_text(encoding="utf-8")) if os.path.exists(path) else {}
+            vd = valuer.normalize_valuation(saved, rules)
+            valuation = ValuationTable(version=vd["version"], source=vd["source"],
+                                       items=[ValuationItem(**it) for it in vd["items"]])
             cells = differ.diff(self_lad, comp_lad, pairs, rules, valuation=valuation)
             name_by_no = {it["no"]: (it.get("md_name") or it["name"])
                           for it in rules.checklist["items"]}
@@ -875,7 +865,7 @@ class Bridge:
         try:
             lad = Ladder.load(ladder_path)
             md = ladder_mod.render_md(lad)
-            out = ladder_path.replace(".json", ".md")
+            out = str(Path(ladder_path).with_suffix('.md'))
             atomic_write_text(out, md)
             return {"ok": True, "path": out}
         except Exception as e:

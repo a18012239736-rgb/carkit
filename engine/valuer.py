@@ -9,7 +9,6 @@
 任何一项查不到金额 → 该组 config_adv=None 并列出 missing（渲染层显示 待赋值明细表/[待赋值]）。
 """
 from __future__ import annotations
-import copy
 import json
 import math
 import re
@@ -101,13 +100,13 @@ def default_valuation(rules):
         no = item["no"]
         if item.get("merged_into"):
             continue
-        rule = "dynamic" if no in {1, 3, 4, 5, 6, 7, 9, 12, 17, 18, 20, 21, 22, 23, 25, 26, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 45} else "flat"
+        rule = "dynamic" if no in DEFAULT_DYNAMIC_PARAMS else "flat"
         if no in EXCLUDED_ITEMS:
             rule = 'excluded'
         items.append({"no": no, "name": item.get("md_name") or item["name"],
                       "pricing": "manual", "val": 0 if no in ZERO_ITEMS else DEFAULT_FLAT.get(no),
                       "unit_val": None, "bands": [], "rule": rule,
-                      "params": copy.deepcopy(DEFAULT_DYNAMIC_PARAMS.get(no, {})),
+                      "params": dict(DEFAULT_DYNAMIC_PARAMS.get(no, {})),
                       "note": "内置：竞争力对比配置清单参考(1).xlsx；/按0元处理" if no in ZERO_ITEMS else "内置用户规则"})
     return {"schema": "carkit.valuation/v1", "version": "user-reference-2026-09-12",
             "source": "内置：竞争力对比配置清单参考(1).xlsx + 用户补充规则", "items": items}
@@ -263,20 +262,21 @@ def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
             if amt == 0 and verdict == '同':
                 continue
             disp = cell.get('backup_more') or cell.get('backup_less') or cell['display']
-            amounts.append((no, disp, amt, verdict))
+            amounts.append((no, disp, amt, verdict, item))
     else:
         for side, mapping in (('多', more_map), ('少', less_map)):
             for no, disp in mapping.items():
-                amt = _amount_for(valuation, no, disp, side='more' if side == '多' else 'less')
-                amounts.append((no, disp, None if amt is None else abs(amt) * (1 if side == '多' else -1), side))
-    for no, disp, amt, verdict in amounts:
+                item = valuation.item(no)
+                amt = _amount_for_item(item, no, disp, side='more' if side == '多' else 'less')
+                amounts.append((no, disp, None if amt is None else abs(amt) * (1 if side == '多' else -1), side, item))
+    for no, disp, amt, verdict, item in amounts:
         if amt is None:
             missing.append(no)
         else:
             total_more += max(amt, 0)
             total_less += max(-amt, 0)
             side = '多' if amt > 0 else '少' if amt < 0 else verdict
-            detail.append({"no": no, "name": (valuation.item(no) or {}).get('name', str(no)), "side": side, "amount": round(amt, 2), "display": disp, "rule": explain_rule(valuation, no)})
+            detail.append({"no": no, "name": (item or {}).get('name', str(no)), "side": side, "amount": round(amt, 2), "display": disp, "rule": _explain_item_rule(item or {}, no)})
     if missing:
         return {"config_adv": None, "flat_adv": None, "overall": None,
                 "config_adv_reason": '缺少配置赋值规则', "flat_adv_reason": '缺少配置赋值规则',
@@ -297,53 +297,59 @@ def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
             "missing": [], "detail": detail}
 
 
+_DYNAMIC_RULE_TEXT = {
+    1: '续航差小于{threshold_km}km计0，否则续航差×{per_km}元/km',
+    3: '800V：{platform_800v}元；其他平台：0元',
+    4: 'R{base_inch}钢轮毂为0元；每增加1寸加{per_inch}元，铝轮毂另加{alloy_bonus}元',
+    5: '气囊每个{per_airbag}元；主副驾各1个，侧气囊前后排各2个，头部气囊前后排各1个，前排中间气囊1个，膝部气囊每个标配项1个；选配不计',
+    6: '软硬调节{soft_hard}元，高低调节{height_or_air}元；空气/魔毯悬架按两项合计',
+    7: '倒车影像或360影像{reverse_or_360}元，540影像{image_540}元，无配置0元',
+    9: '定速巡航{cruise}元，基础L2 {l2}元，高速NOA {highway_noa}元，城市NOA {city_noa}元',
+    12: '手动前备箱{manual}元、电动前备箱{electric}元',
+    17: 'LED大灯{led}元，其他灯光0元',
+    18: '普通电动天窗{electric}元，不可开启全景天窗{fixed_panorama}元，可开启全景天窗{opening_panorama}元',
+    20: '电调、折叠、加热各{per_function}元，按功能数量差计价',
+    21: '中控屏尺寸差≥{threshold_inch}寸计{price}元，未达阈值计0元',
+    22: '副驾屏<{small_limit}寸{small}元，{small_limit}～{large_limit}寸{medium}元，>{large_limit}寸{large}元，无屏0元',
+    23: '4G车联网{4g}元，5G车联网{5g}元，无配置0元',
+    25: '方向盘：塑料{plastic}元、仿皮{faux}元、真皮{leather}元、翻毛皮{suede}元、NAPPA {nappa}元',
+    26: '方向盘手调0元，电调{electric}元',
+    29: '仪表尺寸每寸{per_inch}元，全液晶另加{lcd_bonus}元',
+    30: 'HUD {hud}元，AR-HUD {ar_hud}元，P-HUD {p_hud}元',
+    31: '手动防眩目0元，流媒体后视镜{streaming}元',
+    32: 'USB/Type-C默认{base_count}个为0元，每个接口差额{per_port}元',
+    33: '无线充电≥40W为快充，每个{per_charger}元；低于40W为慢充，每个{slow_charger}元；前后排分别计，未标功率沿用快充单价但不补写功率',
+    34: '座椅：织物{fabric}元、仿皮{faux}元、真皮{leather}元、翻毛皮{suede}元、NAPPA {nappa}元',
+    35: '座椅每向{per_direction}元，每个电调座椅另加{electric_bonus}元；主副驾合计',
+    36: '每座：通风{ventilation}元、加热{heating}元、按摩{massage}元、头枕音响{headrest}元；前排含主副驾',
+    37: '扬声器每个{per_speaker}元',
+    38: '车外扬声器每个{per_speaker}元',
+    39: '无氛围灯0元，单色{single}元，多色{multi}元',
+    45: '座椅记忆每座{per_seat}元，前排主副驾合计{front_seats}元',
+}
+
+
 def explain_rule(valuation, no):
-    item = valuation.item(no) or {}
+    return _explain_item_rule(valuation.item(no) or {}, no)
+
+
+def _explain_item_rule(item, no):
     if item.get('rule') != 'dynamic':
         return f"{item.get('pricing', 'flat')}：{item.get('val')} 元；{item.get('note', '')}"
     params = dict(DEFAULT_DYNAMIC_PARAMS.get(no, {}))
     params.update(item.get('params') or {})
-    # The rule text mapping below is built eagerly; unrelated rows therefore
-    # ask for keys that do not belong to this item. Only the selected row is
-    # returned, so missing unrelated keys render as empty placeholders.
-    p = lambda key: params.get(key, '')
-    rules = {
-        1: f'续航差小于{p("threshold_km")}km计0，否则续航差×{p("per_km")}元/km',
-        3: f'800V：{p("platform_800v")}元；其他平台：0元',
-        4: f'R{p("base_inch")}钢轮毂为0元；每增加1寸加{p("per_inch")}元，铝轮毂另加{p("alloy_bonus")}元',
-        5: f'气囊每个{p("per_airbag")}元；主副驾各1个，侧气囊前后排各2个，头部气囊前后排各1个，前排中间气囊1个，膝部气囊每个标配项1个；选配不计',
-        6: f'软硬调节{p("soft_hard")}元，高低调节{p("height_or_air")}元；空气/魔毯悬架按两项合计',
-        7: f'倒车影像或360影像{p("reverse_or_360")}元，540影像{p("image_540")}元，无配置0元',
-        9: f'定速巡航{p("cruise")}元，基础L2 {p("l2")}元，高速NOA {p("highway_noa")}元，城市NOA {p("city_noa")}元',
-        12: f'手动前备箱{p("manual")}元、电动前备箱{p("electric")}元',
-        17: f'LED大灯{p("led")}元，其他灯光0元',
-        18: f'普通电动天窗{p("electric")}元，不可开启全景天窗{p("fixed_panorama")}元，可开启全景天窗{p("opening_panorama")}元',
-        20: f'电调、折叠、加热各{p("per_function")}元，按功能数量差计价',
-        21: f'中控屏尺寸差≥{p("threshold_inch")}寸计{p("price")}元，未达阈值计0元',
-        22: f'副驾屏<{p("small_limit")}寸{p("small")}元，{p("small_limit")}～{p("large_limit")}寸{p("medium")}元，>{p("large_limit")}寸{p("large")}元，无屏0元',
-        23: f'4G车联网{p("4g")}元，5G车联网{p("5g")}元，无配置0元',
-        25: f'方向盘：塑料{p("plastic")}元、仿皮{p("faux")}元、真皮{p("leather")}元、翻毛皮{p("suede")}元、NAPPA {p("nappa")}元',
-        26: f'方向盘手调0元，电调{p("electric")}元',
-        29: f'仪表尺寸每寸{p("per_inch")}元，全液晶另加{p("lcd_bonus")}元',
-        30: f'HUD {p("hud")}元，AR-HUD {p("ar_hud")}元，P-HUD {p("p_hud")}元',
-        31: f'手动防眩目0元，流媒体后视镜{p("streaming")}元',
-        32: f'USB/Type-C默认{p("base_count")}个为0元，每个接口差额{p("per_port")}元',
-        33: f'无线充电≥40W为快充，每个{p("per_charger")}元；低于40W为慢充，每个{p("slow_charger")}元；前后排分别计，未标功率沿用快充单价但不补写功率',
-        34: f'座椅：织物{p("fabric")}元、仿皮{p("faux")}元、真皮{p("leather")}元、翻毛皮{p("suede")}元、NAPPA {p("nappa")}元',
-        35: f'座椅每向{p("per_direction")}元，每个电调座椅另加{p("electric_bonus")}元；主副驾合计',
-        36: f'每座：通风{p("ventilation")}元、加热{p("heating")}元、按摩{p("massage")}元、头枕音响{p("headrest")}元；前排含主副驾',
-        37: f'扬声器每个{p("per_speaker")}元',
-        38: f'车外扬声器每个{p("per_speaker")}元',
-        39: f'无氛围灯0元，单色{p("single")}元，多色{p("multi")}元',
-        45: f'座椅记忆每座{p("per_seat")}元，前排主副驾合计{p("per_seat") * 2}元',
-    }
-    return rules.get(no, '未配置规则说明') + '；按双方配置价值之差计价'
+    if no == 45:
+        params['front_seats'] = params['per_seat'] * 2
+    return _DYNAMIC_RULE_TEXT.get(no, '未配置规则说明').format_map(params) + '；按双方配置价值之差计价'
 
 
 def _amount_for(valuation, no, disp, side):
     """从显示串反解自/对方值算金额。flat/per_unit 直接取表值；
     band/segmented 需要双方数值——从 disp 'A(B)' 解析"""
-    vitem = valuation.item(no)
+    return _amount_for_item(valuation.item(no), no, disp, side)
+
+
+def _amount_for_item(vitem, no, disp, side):
     if vitem is None:
         return None
     if no == 12 or vitem.get("rule") == "dynamic":

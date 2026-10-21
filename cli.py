@@ -45,8 +45,7 @@ def cmd_ladder(args):
 
 
 def cmd_snapshot(args):
-    snap = Snapshot.from_dict(json.load(open(args.json, encoding="utf-8"))) \
-        if args.json.endswith(".json") else None
+    snap = Snapshot.load(args.json) if args.json.lower().endswith(".json") else None
     if snap is None:
         from engine.snapshot import parse_snapshot_md, resolve
         snap = resolve(parse_snapshot_md(args.json))
@@ -79,9 +78,9 @@ def cmd_diff(args):
     valuation = None
     if args.valuation:
         from engine.models import ValuationTable
-        if args.valuation.endswith(".xlsx"):
+        if args.valuation.lower().endswith(".xlsx"):
             vd = valuer.load_xlsx(args.valuation)
-            valuation = ValuationTable.from_dict(vd) if hasattr(ValuationTable, "from_dict") else _vt(vd)
+            valuation = _vt(vd)
         else:
             valuation = ValuationTable.load(args.valuation)
     cells = differ.diff(self_lad, comp_lad, pairs, rules, valuation=valuation)

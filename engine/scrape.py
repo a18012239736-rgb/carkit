@@ -79,11 +79,18 @@ def scrape_open(series_id: str, channel: str = "msedge") -> dict:
     """第1步：打开配置页（headful），等使用者勾年款 + 隐藏相同参数"""
     from playwright.sync_api import sync_playwright
     sid = re.sub(r"\D", "", series_id) or series_id
-    pw = sync_playwright().start()
-    browser = pw.chromium.launch(channel=channel, headless=False)
-    page = browser.new_page()
-    page.goto(CONFIG_URL.format(sid=sid), wait_until="domcontentloaded", timeout=60000)
-    _SESSION.update(pw=pw, browser=browser, page=page, series_id=sid)
+    close_browser()
+    _SESSION['pw'] = sync_playwright().start()
+    try:
+        browser = _SESSION['pw'].chromium.launch(channel=channel, headless=False)
+        _SESSION['browser'] = browser
+        page = browser.new_page()
+        _SESSION['page'] = page
+        page.goto(CONFIG_URL.format(sid=sid), wait_until="domcontentloaded", timeout=60000)
+        _SESSION['series_id'] = sid
+    except Exception:
+        close_browser()
+        raise
     return {"ok": True, "url": page.url,
             "hint": "请在弹出的浏览器中：①勾选目标年款、取消其他年款 ②勾选「隐藏相同参数」，然后回本窗口点「确认抓取」"}
 
@@ -95,16 +102,19 @@ def scrape_capture(model: str = "") -> "RawTable":
     page = _SESSION.get("page")
     if page is None:
         raise RuntimeError("未打开配置页，请先执行 scrape_open")
-    page.wait_for_selector('div[class*="style_row"]', timeout=30000)
-    out = page.evaluate(EVALUATE_JS)
-    close_browser()
+    sid = _SESSION.get("series_id", "")
+    try:
+        page.wait_for_selector('div[class*="style_row"]', timeout=30000)
+        out = page.evaluate(EVALUATE_JS)
+    finally:
+        close_browser()
     data = json.loads(out) if isinstance(out, str) else out
     if not data.get("rows"):
         raise RuntimeError("抓到 0 行——页面可能未加载完整或被反爬拦截；请重试或用「导入 HTML」兜底")
     if any(not header for header in data.get('headers', [])):
         raise ValueError('未找到完整版型表头，请等配置表加载完成后重试。')
     validate(data)
-    raw = rawschema.from_compact(data, series_id=_SESSION.get("series_id", ""))
+    raw = rawschema.from_compact(data, series_id=sid)
     if model:
         raw.model = model
     return raw
@@ -118,7 +128,7 @@ def close_browser():
                 obj.close() if key == "browser" else obj.stop()
             except Exception:
                 pass
-    _SESSION.update(pw=None, browser=None, page=None)
+    _SESSION.update(pw=None, browser=None, page=None, series_id="")
 
 
 def scrape_series(series_id: str, channel: str = "msedge", model: str = "") -> "RawTable":

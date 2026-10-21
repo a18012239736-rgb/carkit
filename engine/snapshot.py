@@ -74,7 +74,7 @@ def resolve(snap: Snapshot) -> Snapshot:
         vals = cell["values"]
         if not isinstance(vals, dict):
             continue
-        first = vals.get(trim_names[0])
+        first = vals.get(trim_names[0]) if trim_names else None
         last_concrete = first
         for t in trim_names:
             v = vals.get(t)
@@ -102,11 +102,8 @@ def parse_snapshot_md(path: str) -> Snapshot:
     trim_names = [c.strip() for c in m.group(1).strip().strip("|").split("|")]
     cells = []
     row_re = re.compile(r"^\|\s*(\d+|—)\s*\|([^|]+)\|(.+)\|\s*$")
-    in_table = False
-    for line in text.splitlines():
-        if line.startswith("| # | 配置项"):
-            in_table = True
-            continue
+    in_table = True
+    for line in text[m.end():].splitlines():
         if in_table and line.startswith("|---"):
             continue
         if in_table:
@@ -138,4 +135,4 @@ def parse_snapshot_md(path: str) -> Snapshot:
             else:
                 values = dict(zip(trim_names, vals_raw))
             cells.append({"no": no, "values": values, "basis": basis})
-    return Snapshot(model="", version="", cells=cells)
+    return Snapshot(model="", version="", trims=[{'name': name} for name in trim_names], cells=cells)

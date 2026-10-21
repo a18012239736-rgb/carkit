@@ -241,9 +241,10 @@ def cmp_seat36(sv, cv, comp_sub_vals=None, params=None, **kw):
 
 # ---------- 主流程 ----------
 
-def _pair_values(self_ladder, comp_ladder, no, si, ci, *, usb_base=3):
-    def value(ladder, index):
-        entry = ladder.item(no)
+def _pair_values(self_ladder, comp_ladder, no, si, ci, *, usb_base=3,
+                 self_items=None, comp_items=None):
+    def value(ladder, index, items):
+        entry = ladder.item(no) if items is None else items.get(no)
         result = entry.values[index] if entry and index < len(entry.values) else "✕"
         if no == 36 and entry and entry.subs:
             from .seat_functions import SUBS, normalize
@@ -254,8 +255,8 @@ def _pair_values(self_ladder, comp_ladder, no, si, ci, *, usb_base=3):
                            for row in entry.subs if row['sub'] in SUBS})
         return result, entry
 
-    sv, _ = value(self_ladder, si)
-    cv, cit = value(comp_ladder, ci)
+    sv, _ = value(self_ladder, si, self_items)
+    cv, cit = value(comp_ladder, ci, comp_items)
     if no == 32:
         from .usb import usb_label
         sv, cv = usb_label(sv, default=usb_base), usb_label(cv, default=usb_base)
@@ -266,6 +267,18 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
     """pairs: [{"self_trim":名,"comp_trim":名}]；返回 DiffResult 用 dict 列表"""
     self_trims = [t["name"] for t in self_ladder.trims]
     comp_trims = [t["name"] for t in comp_ladder.trims]
+    self_items, comp_items = {}, {}
+    self_trim_indices, comp_trim_indices = {}, {}
+    # Match Ladder.item/list.index: the first duplicate remains authoritative.
+    for ladder, items, names, indices in (
+            (self_ladder, self_items, self_trims, self_trim_indices),
+            (comp_ladder, comp_items, comp_trims, comp_trim_indices)):
+        for entry in ladder.items:
+            items.setdefault(entry.no, entry)
+        for index, name in enumerate(names):
+            indices.setdefault(name, index)
+    comparison_items = [(item, valuation.item(item['no']) if valuation is not None else None)
+                        for item in rules.items]
     cells = []
     range_bands = rules.range_bands()
 
@@ -275,23 +288,23 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 return i
         return len(range_bands)
 
-    def find_trim(names, target):
+    def find_trim(names, indices, target):
         """版型名容错匹配：精确 / ±尾缀「版」"""
-        if target in names:
-            return names.index(target)
+        if target in indices:
+            return indices[target]
         for cand in (target + "版", target.rstrip("版")):
-            if cand and cand in names:
-                return names.index(cand)
+            if cand and cand in indices:
+                return indices[cand]
         raise ValueError(f"版型不存在: {target}（可用: {names}）")
 
     for pi, pair in enumerate(pairs):
-        si = find_trim(self_trims, pair["self_trim"])
-        ci = find_trim(comp_trims, pair["comp_trim"])
-        for item in rules.items:
+        si = find_trim(self_trims, self_trim_indices, pair["self_trim"])
+        ci = find_trim(comp_trims, comp_trim_indices, pair["comp_trim"])
+        for item, vitem in comparison_items:
             no = item["no"]
-            vitem = valuation.item(no) if valuation is not None else None
             sv, cv, cit = _pair_values(self_ladder, comp_ladder, no, si, ci,
-                                      usb_base=(vitem.get('params') or {}).get('base_count', 3) if vitem else 3)
+                                      usb_base=(vitem.get('params') or {}).get('base_count', 3) if vitem else 3,
+                                      self_items=self_items, comp_items=comp_items)
             screen_optional = ''
             if no in (21, 22, 29):
                 from .screen_config import normalize_screen
@@ -771,6 +784,9 @@ def _merge_seat_labels(labels):
 def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_prices,
                     valuation=None, self_options=None, comp_options=None):
     """按 BACKUP_MORE/LESS_ORDER 汇总每组的多/少栏；valuation 为 None 时金额行占位"""
+    cells_by_pair = {}
+    for cell in cells:
+        cells_by_pair.setdefault(cell['pair'], []).append(cell)
     groups = []
     for pi, pair in enumerate(pairs):
         from .valuer import normalize_floor_price
@@ -779,9 +795,8 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
             pair[key] = normalize_floor_price(pair.get(key), f'第{pi+1}组{label}')
         more, less = [], []
         more_map, less_map = {}, {}
-        for c in cells:
-            if c["pair"] != pi:
-                continue
+        pair_cells = cells_by_pair.get(pi, [])
+        for c in pair_cells:
             if c["verdict"] == MORE and c["backup_more"]:
                 more_map[c["no"]] = c["backup_more"]
             elif c["verdict"] == LESS and c["backup_less"]:
@@ -804,7 +819,7 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
             from .valuer import value_pair
             g["valuation"] = value_pair(more_map, less_map, sp, cp, valuation,
                                          self_floor_price=g['self_floor_price'], comp_floor_price=g['comp_floor_price'],
-                                         cells=[c for c in cells if c['pair'] == pi])
+                                         cells=pair_cells)
         else:
             g["valuation"] = {"config_adv": None, "flat_adv": None, "overall": None,
                               "config_adv_reason": '缺少配置赋值规则', "flat_adv_reason": '缺少配置赋值规则',

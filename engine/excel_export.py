@@ -10,6 +10,10 @@ from .render_backup import floor_calculation, missing_metric_reason
 def export_report(path, kind, data):
     book = Workbook()
     book.remove(book.active)
+    font = Font(name='Calibri', size=11)
+    alignment = Alignment(vertical='top', wrap_text=True)
+    header_fill = PatternFill('solid', fgColor='245E6B')
+    header_font = Font(name='Calibri', bold=True, color='FFFFFF')
 
     def sheet(name, rows):
         ws = book.create_sheet(name)
@@ -19,13 +23,13 @@ def export_report(path, kind, data):
             for cell in row:
                 if isinstance(cell.value, str):
                     cell.data_type = 's'
-                cell.font = Font(name='Calibri', size=11)
-                cell.alignment = Alignment(vertical='top', wrap_text=True)
+                cell.font = font
+                cell.alignment = alignment
                 if isinstance(cell.value, (int, float)):
                     cell.number_format = '0.##;[Red]-0.##'
         for cell in ws[1]:
-            cell.fill = PatternFill('solid', fgColor='245E6B')
-            cell.font = Font(name='Calibri', bold=True, color='FFFFFF')
+            cell.fill = header_fill
+            cell.font = header_font
         for i in range(1, ws.max_column + 1):
             ws.column_dimensions[get_column_letter(i)].width = 30 if i < 4 else 48
         ws.freeze_panes = 'A2'
@@ -60,14 +64,23 @@ def export_report(path, kind, data):
         ws.column_dimensions['A'].width = 26
         for col in range(2, len(groups)+2):
             ws.column_dimensions[get_column_letter(col)].width = 46
+        border = Border(*([Side(style='thin', color='DDE7EB')]*4))
+        colors = {1: ('EDF4F5', '245E6B'), 3: ('EFF8F1', '28744B'),
+                  4: ('FFF2F1', 'B64D43'), 0: ('FFFFFF', '243444')}
+        fills = {key: PatternFill('solid', fgColor=bg) for key, (bg, _) in colors.items()}
+        fonts = {key: Font(name='Calibri', size=11, bold=key == 1, color=fg)
+                 for key, (_, fg) in colors.items()}
+        alignments = {(header, first): Alignment(vertical='center' if header or first else 'top',
+                                                horizontal='center' if header else 'left', wrap_text=True)
+                      for header in (False, True) for first in (False, True)}
         for row in ws:
             for cell in row:
-                cell.border = Border(*( [Side(style='thin', color='DDE7EB')]*4 ))
+                cell.border = border
                 if cell.row > 1:
-                    bg, fg = ('EDF4F5','245E6B') if cell.column == 1 or cell.row == 2 else ('EFF8F1','28744B') if cell.row == 3 else ('FFF2F1','B64D43') if cell.row == 4 else ('FFFFFF','243444')
-                    cell.fill = PatternFill('solid', fgColor=bg)
-                    cell.font = Font(name='Calibri', size=11, bold=cell.column==1 or cell.row==2, color=fg)
-                cell.alignment = Alignment(vertical='center' if cell.row<=2 or cell.column==1 else 'top', horizontal='center' if cell.row<=2 else 'left', wrap_text=True)
+                    style = 1 if cell.column == 1 or cell.row == 2 else cell.row if cell.row in (3, 4) else 0
+                    cell.fill = fills[style]
+                    cell.font = fonts[style]
+                cell.alignment = alignments[cell.row <= 2, cell.column == 1]
         ws.row_dimensions[1].height = 32
         ws.row_dimensions[2].height = 72
         for index in (3, 4, *range(8, ws.max_row + 1)):

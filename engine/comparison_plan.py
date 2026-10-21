@@ -79,7 +79,8 @@ def _document(data, kind, label):
         names.append(_text(trim.get('name'), label+'版型名称'))
         if trim.get('price_guide') is not None:
             _number(trim['price_guide'], label+'指导价')
-    _check(len(names) == len(set(names)), f'{label}版型名称重复')
+    name_set = set(names)
+    _check(len(names) == len(name_set), f'{label}版型名称重复')
     if 'options' in data:
         from .models import normalize_product_options
         data['options'] = normalize_product_options(data['options'], names)
@@ -89,7 +90,7 @@ def _document(data, kind, label):
         values = row.get('values')
         if kind == 'snapshot':
             # Sparse snapshots intentionally inherit or default omitted trims to ✕.
-            _check(isinstance(values, dict) and set(values) <= set(names), f'{label}配置值与版型不一致')
+            _check(isinstance(values, dict) and values.keys() <= name_set, f'{label}配置值与版型不一致')
         else:
             _check(isinstance(values, list) and len(values) == len(names), f'{label}配置值列数与版型不一致')
             _check(isinstance(row.get('subs', []), list), f'{label}子项结构无效')

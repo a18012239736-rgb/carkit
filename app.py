@@ -28,19 +28,22 @@ def main():
     bridge = Bridge(workdir)
     ui = os.path.join(BASE, "ui", "index.html")
 
-    window = webview.create_window(
-        "carkit — 车型配置对比工具",
-        ui,
-        js_api=bridge,
-        width=1360,
-        height=900,
-        min_size=(1024, 700),
-        background_color="#f6f7f9",
-        text_select=True,
-    )
-    window.events.closed += bridge.shutdown
-    # Windows 上强制 WebView2（Edge Chromium）；缺失时 pywebview 会报错提示安装
-    webview.start(debug=os.environ.get("CARKIT_DEBUG") == "1")
+    try:
+        window = webview.create_window(
+            "carkit — 车型配置对比工具",
+            ui,
+            js_api=bridge,
+            width=1360,
+            height=900,
+            min_size=(1024, 700),
+            background_color="#f6f7f9",
+            text_select=True,
+        )
+        window.events.closed += bridge.shutdown
+        # Windows 上强制 WebView2（Edge Chromium）；缺失时 pywebview 会报错提示安装
+        webview.start(debug=os.environ.get("CARKIT_DEBUG") == "1")
+    finally:
+        bridge.shutdown()
 
 
 if __name__ == "__main__":
