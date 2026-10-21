@@ -93,15 +93,17 @@
       return {source, rows, defaults, saved, selected, search, excludedOnly, currentModel, loading, saving, status, failed, dirty, visible, groups, visibleGroups, hasUnclassified, optionStatus, optionAvailability, optionLabel, selectedCount, setGroup, load, save, undo};
     }, template: `<details class="card stage-display-settings" @toggle="$event.target === $event.currentTarget && $event.target.open && load()">
       <summary>不展示的配置 <span class="dim">× 表示不展示</span></summary>
-      <p class="dim">只影响配置阶梯图、Markdown 和 Excel；不删除原始数据，不改变赋值计算。按汽车之家配置行名称保存，并应用于其他车型。选配在阶梯图下方单列；隐藏配置也会隐藏对应选配。</p>
+      <p class="dim">勾选表示不展示，应用于所有车型的阶梯图和导出文档；隐藏配置也会隐藏对应选配。</p>
       <div class="row stage-display-toolbar">
         <input type="text" v-model="search" placeholder="搜索配置名称" aria-label="搜索配置名称">
         <label><input type="checkbox" v-model="excludedOnly"> 仅查看不展示项</label>
       </div>
       <p class="dim stage-display-count">{{currentModel ? '当前车型：' + currentModel : '尚未打开车型；可管理之前保存的不展示配置'}} · 已勾选不展示 {{selectedCount(rows)}} 项<span v-if="dirty">（尚未保存）</span></p>
-      <p class="dim stage-display-hint">沿用汽车之家分类；分类按钮仅作用于当前筛选结果。</p>
-      <p class="dim">选装标记按当前车型的全部版型统计；“含选装”表示该配置行同时有标配和选装内容。</p>
-      <p class="dim" v-if="defaults.length">标有“默认不展示”的项目已预先勾选；可取消勾选并保存，以恢复展示。</p>
+      <details class="display-help"><summary>展示规则说明</summary>
+        <p class="dim stage-display-hint">只影响配置阶梯图、Markdown 和 Excel；不删除原始数据，不改变赋值计算。沿用汽车之家分类；分类按钮仅作用于当前筛选结果。</p>
+        <p class="dim">选配在阶梯图下方单列。选装标记按当前车型的全部版型统计；“含选装”表示该配置行同时有标配和选装内容。</p>
+        <p class="dim" v-if="defaults.length">标有“默认不展示”的项目已预先勾选；可取消勾选并保存，以恢复展示。</p>
+      </details>
       <p class="dim" v-if="hasUnclassified">部分配置尚未匹配到汽车之家分类；重新抓取车型后，可按原分类查看。</p>
       <div class="stage-display-list" :aria-busy="loading" v-if="loading">正在读取配置名称…</div>
       <div class="stage-display-list" v-else>

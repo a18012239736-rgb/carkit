@@ -51,6 +51,7 @@ function syncActionButtons() {
   $('#comparison-action-hint').textContent = !left || !right ? '请选择左右两侧车型，再指定版型配对。' : !paired ? '请添加至少一组有效版型配对。' : ST.diff?.ok ? '结果已生成，可导出 Markdown 或 Excel。' : '版型配对已就绪，点击“开始对比”生成结果。';
   ready('#ppt-save', !$('#ppt-review').hidden && ST.snapshot?.status === '待确认' && $('#ppt-confirm').checked, '请展开完整配置，核对后勾选确认');
   if (window.ComparisonTools) window.ComparisonTools.sync();
+  if (window.syncWorkspace) window.syncWorkspace();
 }
 
 function invalidateDiff() {
@@ -291,13 +292,13 @@ function setSidebarHidden(hidden) {
 $('#sidebar-hide').addEventListener('click', () => setSidebarHidden(true));
 $('#sidebar-show').addEventListener('click', () => setSidebarHidden(false));
 $$(".nav-item").forEach((btn) =>
-  btn.addEventListener("click", () => {
-    $$(".nav-item").forEach((b) => b.classList.remove("active"));
-    btn.classList.add("active");
-    $$(".page").forEach((p) => p.classList.remove("active"));
-    $("#page-" + btn.dataset.page).classList.add("active");
-    if (btn.dataset.page === "diff") refreshDiffSelects();
-    if (btn.dataset.page === "scrape") refreshRawList();
+  btn.addEventListener("click", async () => {
+    if (btn.dataset.page === 'valuation' && ST.plan)
+      return toast('当前使用方案保存的规则；请先退出方案再修改全局规则。', 'err');
+    showPage(btn.dataset.page);
+    if (btn.dataset.page === "diff") await refreshDiffSelects();
+    if (btn.dataset.page === "scrape") await refreshRawList();
+    if (btn.dataset.page === "valuation") await loadCurrentValuation();
   })
 );
 
@@ -333,15 +334,32 @@ $('#btn-open-history').onclick=()=>{
   const history=$('#raw-history'); history.open=!history.open;
   if(history.open) history.scrollIntoView({behavior:'smooth',block:'nearest'});
 };
+$('#raw-history').addEventListener('toggle', () =>
+  $('#btn-open-history').setAttribute('aria-expanded', String($('#raw-history').open)));
+$('#scrape-series').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.isComposing) $('#btn-scrape-open').click();
+});
 
 $("#btn-scrape-open").addEventListener("click", async () => {
+  const button = $('#btn-scrape-open');
+  if (button.disabled) return;
   const sid = $("#scrape-series").value.trim();
   if (!sid) return toast("请输入车型名称或汽车之家配置页网址", "err");
+  button.disabled = true;
+  button.textContent = '正在读取…';
   $("#btn-scrape-capture").hidden = true;
   $("#scrape-status").textContent = "搜索和读取中…";
   $("#scrape-status").className = "status";
-  const res = await api("stage_search", sid, "");
-  handleStageResult(res);
+  try {
+    const res = await api("stage_search", sid, "");
+    handleStageResult(res);
+  } catch (error) {
+    $('#scrape-status').textContent = error.message || '读取失败，请重试';
+    $('#scrape-status').className = 'status err';
+  } finally {
+    button.disabled = false;
+    button.textContent = '搜索车型';
+  }
 });
 
 $("#btn-scrape-capture").addEventListener("click", async () => {
@@ -368,7 +386,8 @@ function handleStageResult(res) {
   $('#raw-inspector').hidden=true; $('#raw-inspector').replaceChildren(); $('#md-preview').hidden=true; $('#stage-export-status').textContent='';
   ST.stage = {trims: res.trims, seriesId: res.series_id, model: res.model};
   StageDisplaySettings.refresh();
-  $("#scrape-status").textContent = `✓ 已读取 ${res.model}：${res.trims.length} 个版型、${res.rows} 行完整配置${res.raw_path ? `\n原始数据：${res.raw_path}` : ""}`;
+  $("#scrape-status").textContent = `已读取 ${res.model} · ${res.trims.length} 个版型 · ${res.rows} 行完整配置`;
+  $("#scrape-status").title = res.raw_path || '';
   $("#scrape-status").className = "status ok";
   renderStageTrimEditor();
   refreshRawList();
@@ -397,6 +416,7 @@ function renderCaptureFilters(filters) {
 
 function renderStageTrimEditor() {
   stageDisplayRevision++;
+  ST.stage.exported = false;
   document.querySelector('#ladder-visual')?.remove();
   $("#stage-trims").hidden = false;
   $('#stage-display-settings').hidden = false;
@@ -454,6 +474,8 @@ StageDisplaySettings.mount($('#stage-display-settings'), {api, model: () => ST.s
   $('#md-preview-text').textContent = '';
   $('#stage-export-status').textContent = '不展示清单已更新，请重新查看或导出配置阶梯。';
   $('#stage-export-status').className = 'status';
+  ST.stage.exported = false;
+  window.syncWorkspace?.();
 }});
 
 const previewButton = document.createElement('button');
@@ -487,7 +509,8 @@ previewButton.onclick = async () => {
   });
   enableLadderCardMoves(panel);
   $('#stage-result-tools').after(panel);
-  panel.querySelector('.close-ladder').onclick = () => panel.remove();
+  panel.querySelector('.close-ladder').onclick = () => { panel.remove(); window.syncWorkspace?.(); };
+  window.syncWorkspace?.();
   panel.scrollIntoView({behavior:'smooth', block:'start', inline:'start'});
   panel.querySelector('.ladder-scroll').scrollLeft = 0;
 };
@@ -534,7 +557,15 @@ function enableLadderCardMoves(panel) {
   });
   refresh();
 }
-$('#stage-trim-editor').addEventListener('change', () => { stageDisplayRevision++; document.querySelector('#ladder-visual')?.remove(); syncActionButtons(); });
+$('#stage-trim-editor').addEventListener('change', () => {
+  stageDisplayRevision++;
+  ST.stage.exported=false;
+  document.querySelector('#ladder-visual')?.remove();
+  $('#md-preview').hidden=true;
+  $('#stage-export-status').textContent='版型或比较基准已更新，请重新预览或导出。';
+  $('#stage-export-status').className='status';
+  syncActionButtons();
+});
 
 $("#btn-stage-export").addEventListener("click", async () => {
   const revision = stageDisplayRevision;
@@ -545,6 +576,7 @@ $("#btn-stage-export").addEventListener("click", async () => {
   $('#md-preview').hidden=false; $('#md-preview-text').textContent=res.md;
   $("#stage-export-status").textContent=res.ok?'✓ 已导出：'+res.path:'✕ '+res.error;
   $("#stage-export-status").className=res.ok?'status ok':'status err';
+  if(res.ok) { ST.stage.exported=true; window.syncWorkspace?.(); }
 });
 
 $("#btn-import-raw").addEventListener("click", async () => {
@@ -1129,8 +1161,16 @@ setTimeout(() => {
 
 function showPage(name) {
   $$('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));
-  const navName=name==='valuation'?'diff':name;
-  $$('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.page===navName));
+  const navName=name==='ladder'?'diff':name;
+  $$('.nav-item').forEach(b=>{
+    const active=b.dataset.page===navName;
+    b.classList.toggle('active',active);
+    if(active) b.setAttribute('aria-current','page');
+    else b.removeAttribute('aria-current');
+  });
+  const label=$('#current-page-label');
+  if(label) label.textContent=$('#page-'+name+' h1')?.textContent || '';
+  window.scrollTo({top:0,left:0,behavior:'auto'});
 }
 async function selectCompetitor() {
   const revision = ++ST.competitorRevision;
@@ -1298,14 +1338,11 @@ $('#ladder-raw-select').closest('.row').hidden=true;
 $('#btn-export-ladder-md').hidden=true;
 $('#page-settings ol').closest('.card').innerHTML='<h2>使用顺序</h2><p>配置阶梯：抓取或选择历史车型 → 检查版型 → 指定基准 → 导出MD。</p><p>竞争力对比：准备本品配置和赋值规则 → 选择历史竞品 → 配对版型 → 检查结果。</p><p class="dim">原始配置自动保留；可在竞争力对比中修正计算用的竞品配置。修正不会覆盖原始抓取记录。</p>';
 
-// Secondary tools are reached from the workflow, with an explicit return.
-for(const name of ['snapshot']){
-  const button=document.createElement('button');
-  button.textContent='返回竞争力对比';
-  button.onclick=async()=>{showPage('diff');await refreshDiffSelects();};
-  $('#page-'+name).prepend(button);
-}
-$$('[data-goto]').forEach(b=>b.onclick=()=>showPage(b.dataset.goto));
+$$('[data-goto]').forEach(b=>b.onclick=async()=>{
+  showPage(b.dataset.goto);
+  if(b.dataset.goto==='diff') await refreshDiffSelects();
+});
+$('#diff-get-vehicle').onclick=async()=>{showPage('scrape');await refreshRawList();$('#scrape-series').focus();};
 $('#inspect-raw').onclick=async()=>{
   const wrap=$('#raw-inspector');
   if(!wrap.hidden) {wrap.hidden=true;return;}
@@ -1421,38 +1458,7 @@ $('#ppt-save').onclick=async()=>{
 };
 
 // Arrange existing controls without replacing their event handlers.
-const compareCard=$('#diff-mode').closest('.card');
-const oldRow=$('#diff-mode').parentElement;
-const modeRow=document.createElement('div'); modeRow.className='compare-mode';
-modeRow.innerHTML='<strong>01 选择车型</strong>'; modeRow.append($('#diff-mode'));
-const sides=document.createElement('div'); sides.className='compare-sides';
-for(const [title,ids] of [['左侧 · 比较主体',['diff-snapshot','diff-left-vehicle','diff-edit-self','delete-self-file']],['右侧 · 对照车型',['diff-vehicle','diff-ladder','review-competitor']]]) {
-  const side=document.createElement('div'); side.className='compare-side';
-  const heading=document.createElement('h3'); heading.textContent=title; side.append(heading);
-  const actions=document.createElement('div'); actions.className='workspace-section-actions';
-  ids.forEach(id=>{
-    const control=document.getElementById(id);
-    if(control.tagName==='BUTTON')actions.append(control);else side.append(control);
-  });
-  side.append(actions); sides.append(side);
-}
-const ruleRow=document.createElement('div'); ruleRow.className='compare-rules';
-ruleRow.hidden=true;
-ruleRow.innerHTML='<label>赋值规则</label>'; ruleRow.append($('#diff-valuation'));
-compareCard.prepend(modeRow,sides,ruleRow); oldRow.remove();
-const valuationShortcut=$('#diff-toggle-valuation');
-const shortcutRow=valuationShortcut.closest('.row');
-modeRow.append(valuationShortcut);
-const productImport=$('#page-diff [data-goto="snapshot"]'); productImport.textContent='导入 / 添加本品';
-sides.firstElementChild.querySelector('.workspace-section-actions').append(productImport);
-const more=document.createElement('details'); more.className='secondary-menu';
-more.innerHTML='<summary>更多</summary><div></div>';
-more.querySelector('div').append($('#delete-self-file'));
-sides.firstElementChild.querySelector('.workspace-section-actions').append(more);
-if(!shortcutRow.children.length)shortcutRow.remove();
-compareCard.after($('#diff-self-editor'),$('#diff-competitor-editor'));
-$('#btn-run-diff').closest('.row').classList.add('compare-actions');
-$('#btn-run-diff').textContent='开始对比';
+$('#comparison-setup').after($('#diff-self-editor'),$('#diff-competitor-editor'));
 $('#btn-export-result').textContent='导出 Markdown';
 $('#stage-result-actions').prepend(previewButton);
 for(const [anchor,kind] of [['btn-stage-export','ladder'],['btn-export-result','diff']]) {
@@ -1474,19 +1480,33 @@ for(const [anchor,kind] of [['btn-stage-export','ladder'],['btn-export-result','
     if(button.dataset.busy)return;
     if(kind==='diff'&&!ST.diff)return toast('请先运行对比','err');
     if(kind==='ladder'&&!stagePlan().length)return toast('请勾选至少一个输出版型','err');
+    const revision=kind==='ladder'?stageDisplayRevision:null;
     setActionBusy(button,true);
     try {
       const result=await api('export_excel',kind,kind==='ladder'?stagePlan():ST.diff);
-      if(!result.cancelled)toast(result.ok?'Excel 已导出：'+result.path:result.error,result.ok?'ok':'err');
+      if(!result.cancelled) {
+        toast(result.ok?'Excel 已导出：'+result.path:result.error,result.ok?'ok':'err');
+        if(kind==='ladder' && result.ok && revision===stageDisplayRevision) { ST.stage.exported=true; window.syncWorkspace?.(); }
+      }
     } catch (error) {
       // api() already displays a failure message.
     } finally {setActionBusy(button,false);}
   };
 }
 $('#page-diff .notice').hidden=true;
-$('#page-diff .steps').textContent='01 选择车型　→　02 指定版型配对　→　03 查看并导出结果';
-$('#pairs-editor strong').textContent='02 版型配对与底价';
-$('#page-diff .intro').textContent='选择两侧车型，指定版型配对，查看配置差异与赋值结果。';
+window.syncWorkspace = () => {
+  const stageStep = !ST.stage.trims.length ? 0 : $('#ladder-visual') || ST.stage.exported ? 2 : 1;
+  const leftSelected = $($('#diff-mode').value === 'competitor' ? '#diff-left-vehicle' : '#diff-snapshot').value;
+  const diffStep = ST.diff?.ok ? 2 : ST.ladder && leftSelected ? 1 : 0;
+  for (const [page, step] of [['scrape',stageStep],['diff',diffStep]]) {
+    $$('#page-'+page+' .workflow-steps li').forEach((item,i)=>{
+      item.classList.toggle('is-current',i===step);
+      item.classList.toggle('is-complete',i<step);
+      if(i===step) item.setAttribute('aria-current','step');
+      else item.removeAttribute('aria-current');
+    });
+  }
+};
 syncActionButtons();
 
 // Keep horizontal navigation within reach, even on systems that hide scrollbars.

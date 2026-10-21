@@ -1,6 +1,30 @@
 from test_frontend_comparison_state import run_node
 
 
+def test_vehicle_search_ignores_repeated_clicks_and_recovers_after_failure():
+    run_node(r"""
+load('$("#btn-scrape-open").addEventListener', '$("#btn-scrape-capture").addEventListener');
+node('#scrape-series').value='启源Q05';
+let rejectSearch, calls=0;
+context.api=async(method,query)=>{
+  assert.strictEqual(method,'stage_search');assert.strictEqual(query,'启源Q05');calls++;
+  return new Promise((resolve,reject)=>rejectSearch=reject);
+};
+const button=node('#btn-scrape-open'), click=button.listeners.click[0];
+const searching=click();await click();
+assert.strictEqual(calls,1);assert.strictEqual(button.disabled,true);
+rejectSearch(new Error('读取失败'));await searching;
+assert.strictEqual(button.disabled,false);assert.strictEqual(button.textContent,'搜索车型');
+assert.strictEqual(node('#scrape-status').className,'status err');
+assert.strictEqual(node('#scrape-status').textContent,'读取失败');
+let received;
+context.handleStageResult=result=>received=result;
+context.api=async()=>({ok:true,model:'启源Q05'});
+await click();assert.strictEqual(received.model,'启源Q05');
+assert.strictEqual(button.disabled,false);
+""")
+
+
 BUTTON_HELPERS = r"""
 const stageSelection=[];
 context.stagePlan=()=>stageSelection;

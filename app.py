@@ -30,13 +30,13 @@ def main():
 
     try:
         window = webview.create_window(
-            "carkit — 车型配置对比工具",
+            "carkit — 汽车产品分析工作台",
             ui,
             js_api=bridge,
             width=1360,
             height=900,
             min_size=(1024, 700),
-            background_color="#f6f7f9",
+            background_color="#f5f7fa",
             text_select=True,
         )
         window.events.closed += bridge.shutdown
