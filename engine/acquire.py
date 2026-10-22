@@ -97,7 +97,7 @@ class Acquirer:
         self.close()
         self.pw = sync_playwright().start()
         errors = []
-        for channel in ('msedge', 'chrome'):
+        for channel in ('chrome','msedge'):
             try:
                 self.browser = self.pw.chromium.launch(channel=channel, headless=False)
                 self.page = self.browser.new_page(viewport={'width':1440,'height':960})
