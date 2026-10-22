@@ -15,28 +15,34 @@ NS = {'p': 'http://schemas.openxmlformats.org/presentationml/2006/main',
       'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'}
 UNKNOWN = '[待定]PPT未说明'
 
-_BASE_MARKERS = ('基础配置', '标准配置', '入门配置', '全系标配', '标配')
+_BASE_MARKERS = ('基础配置', '核心配置', '标准配置', '入门配置', '全系标配', '标配')
 
 def _is_trim_name(text):
     """判断文本块是否可能是版型名称，避免把“基础型”写死。"""
     text = str(text or '').strip()
-    if not text or len(text) > 32 or '+' in text or re.search(r'价格|配置表|车型|轴距|指导价', text):
+    if re.search(r'[+＋]选[装配](?:包)?$', text):
+        return _is_trim_name(re.sub(r'[+＋]选[装配](?:包)?$', '', text))
+    if not text or len(text) > 32 or re.search(r'[+＋]|价格|配置表|车型|轴距|指导价', text):
         return False
     if re.search(r'(型|版|款|系|级|配置|车型)$', text):
         return True
     return bool(re.fullmatch(r'(?:Pro|Max|Ultra|Plus|Air|Lite|Premium|Sport|智享|高配|低配|高功率|低功率|长续航|短续航)', text, re.I)
                 or re.fullmatch(r'\d+(?:km|KM|kWh)', text))
 
-def _base_from_marker(marker, trim_names):
+def _base_from_marker(marker, trim_names, current_name=None):
     marker = str(marker or '').strip()
     if any(marker.startswith(x) for x in _BASE_MARKERS):
         return None
     m = re.match(r'(.+?)\s*[+＋]', marker)
     if m:
-        candidate = m.group(1).strip()
+        candidate = re.sub(r'^(?:相较于|相对于|相较|相比于|相比|相对|较)\s*', '', m.group(1).strip())
         def key(s):
-            return re.sub(r'(型|版)$', '', re.sub(r'\s+', '', s)).casefold()
+            return re.sub(r'(型|版)$', '', re.sub(r'[\s\-—_]+', '', s)).casefold()
         matches = [n for n in trim_names if key(n) == key(candidate)]
+        if not matches:
+            matches = [n for n in trim_names if key(n).endswith(key(candidate))]
+            if len(matches) > 1 and current_name:
+                matches = [n for n in matches if key(current_name).startswith(key(n)[:-len(key(candidate))])]
         if len(matches) != 1:
             raise ValueError('继承版型无法唯一匹配：' + candidate)
         return matches[0]
@@ -45,6 +51,34 @@ def _base_from_marker(marker, trim_names):
         candidate = m.group(1).strip()
         return candidate if candidate in trim_names else None
     return None
+
+def _price_value(text, label=''):
+    match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(万元|万|元)?', str(text).replace(',', '').strip())
+    if not match:
+        return None
+    value = float(match[1])
+    unit = match[2] or ('万' if '万' in label else '元' if '元' in label else '')
+    return value / 10000 if unit == '元' or (not unit and value >= 10000) else value
+
+def _column_price(blocks, header, body):
+    """Prefer the labelled guide-price row over settlement prices on the same slide."""
+    center = body['x'] + body['w']/2
+    prices = [b for b in blocks if header['y'] < b['y'] < body['y'] and len(b['lines']) == 1
+              and _price_value(b['lines'][0]) is not None
+              and abs(b['x'] + b['w']/2 - center) < max(body['w']*.65, 300000)]
+    labelled = []
+    for price in prices:
+        labels = [b for b in blocks if b['x'] + b['w'] <= header['x']
+                  and abs(b['y']-price['y']) <= max(min(b['h'], price['h'])*.35, 1000)]
+        for label in labels:
+            text = ''.join(label['lines'])
+            kind = '指导价' if re.search(r'指导价|MSRP', text, re.I) else 'TP价格' if re.search(r'TP\s*价格', text, re.I) else None
+            if kind:
+                labelled.append((_price_value(price['lines'][0], text), kind))
+    preferred = [entry for entry in labelled if entry[1] == '指导价'] or labelled
+    if len(preferred) == 1:
+        return preferred[0]
+    return (_price_value(prices[0]['lines'][0]), None) if len(prices) == 1 else (None, None)
 
 def _table_rows(blocks):
     """从图形表格展开出的单元格块中按 y 聚合行。"""
@@ -146,36 +180,35 @@ def parse_page(path,page):
                       source_text='\n'.join('\n'.join(b['lines']) for b in blocks))
         return result
     # First support conventional text-block ladder pages.
-    bodies=[b for b in blocks if re.match(r'^(?:基础配置\s*[:：]|.+?\s*[+＋]\s*[:：])',b['lines'][0])]
+    bodies=[b for b in blocks if re.match(r'^(?:(?:'+'|'.join(_BASE_MARKERS)+r')\s*[:：]|.+?\s*[+＋]\s*[:：])',b['lines'][0])]
     if not bodies:
         return _parse_table_page(path, page, blocks)
     bodies.sort(key=lambda b:b['x'])
-    columns=[]; used=set()
+    columns=[]; used=set(); price_kinds=set()
     # Names are collected before bases are resolved, so names like Pro/Max are valid.
     possible_names=[b['lines'][0].strip() for b in blocks if len(b['lines'])==1 and _is_trim_name(b['lines'][0])]
     for body in bodies:
         center=body['x']+body['w']/2
         candidates=[b for b in blocks if b['y']<body['y'] and len(b['lines'])==1
                     and _is_trim_name(b['lines'][0])
-                    and '+' not in b['lines'][0]
                     and abs(b['x']+b['w']/2-center)<max(body['w']*.65,300000)]
         if len(candidates)!=1:raise ValueError('版型列头无法唯一对应，请使用每列上方一个版型名称的配置阶梯页')
         header=candidates[0]; name=header['lines'][0]
         if name in used:raise ValueError('版型名称重复，请先在PPT中区分')
         used.add(name)
-        prices=[b for b in blocks if header['y']<b['y']<body['y'] and len(b['lines'])==1
-                and re.fullmatch(r'\d+(?:\.\d+)?(?:万元|万)?',b['lines'][0])
-                and abs(b['x']+b['w']/2-center)<max(body['w']*.65,300000)]
-        price=float(re.sub(r'万元|万','',prices[0]['lines'][0])) if len(prices)==1 else None
+        price, kind = _column_price(blocks, header, body)
+        if kind: price_kinds.add(kind)
         marker=body['lines'][0]
-        base=_base_from_marker(marker, possible_names)
+        base=_base_from_marker(marker, possible_names, name)
         columns.append({'name':name,'base':base,'price':price,'text':'\n'.join(body['lines'][1:])})
     texts='\n'.join('\n'.join(b['lines']) for b in blocks)
     model_candidates=[b['lines'][0] for b in blocks if len(b['lines'])==1 and re.fullmatch(r'[A-Za-z]+[\w -]*\d[\w -]*',b['lines'][0])]
     price_kind='TP价格' if re.search(r'TP\s*价格',texts,re.I) else ('指导价' if '指导价' in texts else '未确定')
+    if price_kinds: price_kind=next(iter(price_kinds)) if len(price_kinds)==1 else '未确定'
     return {'model':model_candidates[0] if len(model_candidates)==1 else Path(path).stem.split('产品')[0],
             'page':page,'source':Path(path).name,'price_kind':price_kind,'columns':columns,
             'source_text':texts,'warnings':['请确认版型与继承关系；未写配置保留待定，不按无配置处理。',
+            '价格已统一为万元；未标单位且大于等于10000的金额按元换算，请核对。',
             '仅当明确选择指导价时，价格才用于指导价比较。']}
 
 def _parse_native_table(table):
@@ -217,15 +250,15 @@ def _parse_native_table(table):
             if price_row:
                 value = ''.join(lines).strip()
                 if value:
-                    match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(?:万元|万|元)?', value)
-                    if match:
-                        column['price'] = float(match[1]) / (10000 if '元' in label and '万' not in label else 1)
+                    price = _price_value(value, label)
+                    if price is not None:
+                        column['price'] = price
                     else:
                         warnings.append(f"{column['name']}价格需核对：{value}")
                 continue
             for line in lines:
                 if re.fullmatch(r'.+?[+＋]\s*[:：]?', line.strip()):
-                    column['base'] = _base_from_marker(line, names)
+                    column['base'] = _base_from_marker(line, names, column['name'])
                 elif line.strip().rstrip(':：') not in _BASE_MARKERS:
                     column['text'] += ('' if label in ('配置', '基础配置', '配置内容') else label + '：') + line + '\n'
     for column in columns:
