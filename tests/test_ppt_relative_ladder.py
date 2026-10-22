@@ -8,11 +8,11 @@ from engine.ppt_import import NS, _base_from_marker, _price_value
 
 
 def test_relative_ladder_import_keeps_all_columns_and_uses_guide_prices(tmp_path):
-    names = ['1.6T-标准型', '1.6T-舒适型', '1.6T-豪华型', '1.6T豪华型+选装',
-             '2.0T-豪华型', '2.0T-豪华型+选装', '1.5L-标准型', '1.5L-舒适型', '1.5L-舒适型+选装']
+    names = ['1.4T-标准型', '1.4T-舒适型', '1.4T-豪华型', '1.4T豪华型+选装',
+             '1.8T-豪华型', '1.8T-豪华型+选装', '1.3L-标准型', '1.3L-舒适型', '1.3L-舒适型+选装']
     markers = ['核心配置：', '较标准型+：', '较舒适型+：', '较豪华型+：',
-               '较1.6T豪华型+：', '较2.0T豪华型+：', '较1.6T标准型+：', '较1.6T舒适型+：', '较1.5L舒适型+：']
-    guides = [106900, 112900, 118900, 130900, 128900, 140900, 114900, 120900, 132900]
+               '较1.4T豪华型+：', '较1.8T豪华型+：', '较1.4T标准型+：', '较1.4T舒适型+：', '较1.3L舒适型+：']
+    guides = [82300, 88700, 95400, 102600, 101800, 114500, 91700, 98300, 110900]
     tag = lambda prefix, name: '{' + NS[prefix] + '}' + name
     slide = ET.Element(tag('p', 'sld'))
     tree = ET.SubElement(ET.SubElement(slide, tag('p', 'cSld')), tag('p', 'spTree'))
@@ -60,19 +60,19 @@ def test_relative_ladder_import_keeps_all_columns_and_uses_guide_prices(tmp_path
 
 
 def test_short_relative_base_requires_unambiguous_column_context():
-    names = ['1.6T-标准型', '1.6T-舒适型', '1.5L-标准型', '1.5L-舒适型']
+    names = ['1.4T-标准型', '1.4T-舒适型', '1.3L-标准型', '1.3L-舒适型']
     assert _base_from_marker('核心配置：', names) is None
     assert _base_from_marker('较标准型+：', names, names[1]) == names[0]
     assert _base_from_marker('相对标准型＋：', names, names[3]) == names[2]
-    assert _base_from_marker('较1.6T标准型+：', names, names[3]) == names[0]
+    assert _base_from_marker('较1.4T标准型+：', names, names[3]) == names[0]
     with pytest.raises(ValueError, match='无法唯一匹配'):
         _base_from_marker('较标准型+：', names)
 
 
 @pytest.mark.parametrize(('value', 'label', 'expected'), [
-    ('106900', '指导价', 10.69), ('106,900元', '指导价', 10.69),
-    ('106900', '指导价（元）', 10.69), ('10.69', '指导价（万元）', 10.69),
-    ('10.69万元', '指导价', 10.69), ('106900万', '指导价', 106900),
+    ('82300', '指导价', 8.23), ('82,300元', '指导价', 8.23),
+    ('82300', '指导价（元）', 8.23), ('8.23', '指导价（万元）', 8.23),
+    ('8.23万元', '指导价', 8.23), ('82300万', '指导价', 82300),
 ])
 def test_ppt_prices_respect_explicit_units_and_normalize_bare_yuan(value, label, expected):
     assert _price_value(value, label) == expected
