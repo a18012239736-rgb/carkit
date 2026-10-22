@@ -51,6 +51,32 @@ for(const kind of ['snapshot','ladder']) {
 """)
 
 
+def test_configuration_editors_use_autohome_groups_without_losing_configuration_rows():
+    run_node(HARNESS + r"""
+const checklist=JSON.parse(fs.readFileSync('engine/rules/checklist_v1.json','utf8')).items;
+const catalogue=JSON.parse(fs.readFileSync('engine/rules/autohome_categories.json','utf8')).groups;
+for(const kind of ['snapshot','ladder']) {
+  const cells=checklist.map(item=>({...item,
+    values:kind==='snapshot'?{基础型:'✕',舒适型:'●'}:['✕','●']}));
+  const model={trims:[{name:'基础型'},{name:'舒适型'}],[kind==='snapshot'?'cells':'items']:cells};
+  const original=JSON.stringify(model),editor=config(model,kind),groups=editor.groups.value;
+  const names=plain(groups.map(group=>group.name));
+  assert.deepStrictEqual(catalogue.map(group=>group.name).filter(name=>names.includes(name)),names);
+  const groupFor=no=>groups.find(group=>group.rows.some(row=>row.cell.no===no)).name;
+  for(const [no,name] of [[5,'被动安全'],[7,'驾驶硬件'],[9,'驾驶功能'],[44,'天窗/玻璃'],
+    [29,'方向盘/内后视镜'],[32,'车内充电'],[36,'座椅配置'],[37,'音响/车内灯光']]) {
+    assert.strictEqual(groupFor(no),name);
+  }
+  const rows=groups.flatMap(group=>group.rows);
+  const visible=checklist.filter(item=>!item.merged_into && item.no!==2).map(item=>item.no).sort((a,b)=>a-b);
+  assert.deepStrictEqual(plain([...new Set(rows.map(row=>row.cell.no))].sort((a,b)=>a-b)),visible);
+  assert.strictEqual(new Set(rows.map(row=>row.key)).size,rows.length);
+  assert.deepStrictEqual(plain(rows.map(row=>row.serial)),plain(rows.map((_,i)=>i+1)));
+  assert.strictEqual(JSON.stringify(model),original);
+}
+assert.strictEqual(changes,0);
+""")
+
 def test_legacy_snapshot_opening_does_not_create_options_or_change_values():
     run_node(HARNESS + r"""
 const model={trims:[{name:'基础型'},{name:'舒适型',base:'基础型'}],cells:[{no:7,values:{基础型:'360影像',舒适型:'540影像'}}]};
