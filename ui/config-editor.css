@@ -62,6 +62,24 @@
 }
 .vue-config-editor .ce-table thead th:first-child,
 .vue-config-editor .ce-table thead th:nth-child(2) { z-index:5; background:#f5f7fa; }
+.vue-config-editor .ce-table .ce-group-row > th {
+  position:static;
+  width:auto;
+  min-width:0;
+  max-width:none;
+  overflow:visible;
+  padding:9px 12px;
+  background:#edf4f3;
+  color:var(--navy);
+  text-align:left;
+  font-size:12px;
+  font-weight:600;
+}
+.vue-config-editor .ce-group-title {
+  position:sticky;
+  left:12px;
+  display:inline-block;
+}
 .vue-config-editor .ce-table tbody tr:hover td { background:#f8fbfa; }
 .vue-config-editor .ce-cell,
 .vue-config-editor .ce-seat-functions,

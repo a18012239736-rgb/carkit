@@ -649,7 +649,7 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
   let html = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
   html += lad.trims.map((t) => `<th>${t.name}<br><span class="dim">${t.price_guide ?? ""}万</span></th>`).join("");
   html += "</tr></thead><tbody>";
-  for (const [rowIndex,it] of configurationDisplayOrder(lad.items).entries()) {
+  for (const [rowIndex,it] of configurationDisplayOrder(lad.items).filter(it=>Number(it.no)!==2).entries()) {
     const serial=rowIndex+1;
     if(it.no===36){
       const bySub=Object.fromEntries((it.subs||[]).map(sr=>[sr.sub,sr.values]));

@@ -23,6 +23,34 @@ function plain(value){return JSON.parse(JSON.stringify(value));}
 """
 
 
+def test_grouped_configuration_editors_hide_unused_rows_without_losing_saved_data():
+    run_node(HARNESS + r"""
+for(const kind of ['snapshot','ladder']) {
+  const trims=[{name:'A',mix:'40%'},{name:'B',mix:'60%'}];
+  const cells=[2,7,20,29,35,36,43,99].map(no=>({no,name:'配置'+no,
+    values:kind==='snapshot'?{A:'✕',B:'●'}:['✕','●']}));
+  const model={trims,[kind==='snapshot'?'cells':'items']:cells};
+  const original=JSON.stringify(model),editor=config(model,kind,true);
+  const groups=editor.groups.value,rows=groups.flatMap(group=>group.rows);
+  assert(!rows.some(row=>row.cell.no===2));
+  assert.strictEqual(new Set(rows.map(row=>row.key)).size,rows.length);
+  assert.deepStrictEqual(plain(rows.map(row=>row.serial)),plain(rows.map((_,i)=>i+1)));
+  assert.strictEqual(groups[groups.length-1].name,'其他配置');
+  assert.strictEqual(rows.filter(row=>row.cell.no===36).length,5);
+  assert(rows.every(row=>cells.includes(row.cell)));
+  assert.strictEqual(JSON.stringify(model),original);
+  assert(!definition.template.includes("key:'mix'"));
+  if(kind==='ladder') {
+    const mirror=rows.find(row=>row.cell.no===20);
+    editor.change(mirror.cell,1,null,'电调+折叠+加热');
+    assert.strictEqual(cells.find(cell=>cell.no===20).values[1],'电调+折叠+加热');
+    assert.strictEqual(cells.find(cell=>cell.no===2).values[1],'●');
+    assert.strictEqual(model.trims[1].mix,'60%');
+  }
+}
+""")
+
+
 def test_legacy_snapshot_opening_does_not_create_options_or_change_values():
     run_node(HARNESS + r"""
 const model={trims:[{name:'基础型'},{name:'舒适型',base:'基础型'}],cells:[{no:7,values:{基础型:'360影像',舒适型:'540影像'}}]};

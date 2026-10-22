@@ -5,6 +5,15 @@
   const mounted = new Map();
   const absent = value => /^(✕|×|无|无配置|-|不适用)$/.test(value);
   const defaultSeatAdjust = '主驾6向手调+副驾4向手调';
+  const categories = [
+    ['动力与底盘', [1,3,4,6,16]],
+    ['安全与辅助驾驶', [5,7,8,9]],
+    ['车身与外观', [11,12,13,14,15,18]],
+    ['灯光与视野', [17,19,20,31,44]],
+    ['座舱与智能互联', [21,22,23,24,29,30,32,33,37,38,39]],
+    ['方向盘与座椅', [25,26,27,28,34,35,36,45]],
+    ['空调与舒适', [40,41,43]],
+  ];
   const Cell = {
     props: ['value', 'no', 'sub', 'kind', 'choices', 'parseSeatAdjust'],
     emits: ['change'],
@@ -111,7 +120,7 @@
         const rows = computed(() => {
           revision.value;
           return [...cells].sort((a,b)=>(a.no===45?36.5:a.no)-(b.no===45?36.5:b.no)).flatMap(c => {
-            if (c.merged_into) return [];
+            if (c.merged_into || Number(c.no)===2) return [];
             if (c.no===36) {
               const rows = ['通风','加热','按摩','头枕音响'].map(f=>({cell:c,key:'36-'+f,name:'座椅'+f,subs:['主驾'+f,'副驾'+f]}));
               rows.push({cell:c,key:'36-rear',name:'座椅二排功能',rear:true,subs:['二排通风','二排加热','二排按摩','二排头枕音响']});
@@ -123,6 +132,19 @@
             const detailRows=subs.map(s=>({cell:c,key:c.no+'-'+s,name:name+' · '+s,sub:s}));
             return kind==='snapshot' && subs.length ? detailRows : [{cell:c,key:String(c.no),name}, ...detailRows];
           });
+        });
+        const groups = computed(() => {
+          const displayed = rows.value;
+          const remaining = new Set(displayed);
+          const grouped = categories.map(([name, numbers]) => {
+            const items = displayed.filter(row => numbers.includes(Number(row.cell.no)));
+            items.forEach(row => remaining.delete(row));
+            return {name, rows:items};
+          });
+          if(remaining.size) grouped.push({name:'其他配置', rows:[...remaining]});
+          let serial = 0;
+          return grouped.filter(group => group.rows.length).map(group => ({...group,
+            rows:group.rows.map(row => ({...row, serial:++serial}))}));
         });
         function get(c,i,sub) {
           revision.value;
@@ -181,16 +203,18 @@
           if(t.price_source==='TP价格') return `TP价格：${reference}，仅作参考；指导价请另填。`;
           return `原页价格：${reference}，口径未确定；请确认后填写指导价。`;
         }
-        return {rows,trims:model.trims,kind,get,change,choices,parseSeatAdjust,price,review,rename,metadata,priceSource,optionText,options};
+        return {rows,groups,trims:model.trims,kind,get,change,choices,parseSeatAdjust,price,review,rename,metadata,priceSource,optionText,options};
       },
       template: `<table class="grid ce-table"><thead><tr><th>#</th><th>配置项</th><th v-for="(t,i) in trims" :key="i">{{t.name}}</th><th v-if="review">依据</th></tr></thead><tbody>
         <tr v-if="review"><td class="no">—</td><td>版型名称</td><td v-for="(t,i) in trims" :key="i"><input type="text" aria-label="版型名称" :value="t.name" @change="rename(i,$event)"></td><td></td></tr>
         <tr v-if="kind==='snapshot'"><td class="no">—</td><td>指导价（万元）</td><td v-for="(t,i) in trims" :key="i"><input type="number" min="0.01" step="0.01" aria-label="指导价（万元）" :value="t.price_guide" @change="price(i,$event)"><small v-if="review && t.price_source">{{priceSource(t)}}</small></td><td v-if="review"></td></tr>
-        <template v-if="review"><tr v-for="field in [{key:'mix',name:'占比'},{key:'range',name:'续航备注'}]" :key="field.key"><td class="no">—</td><td>{{field.name}}</td><td v-for="(t,i) in trims" :key="i"><input type="text" :aria-label="field.name" :value="t[field.key] || ''" @change="metadata(t,field.key,$event.target.value)"></td><td></td></tr></template>
-        <tr v-for="(row,n) in rows" :key="row.key"><td class="no">{{n+1}}</td><td>{{row.name}}</td><td v-for="(t,i) in trims" :key="i">
+        <template v-if="review"><tr v-for="field in [{key:'range',name:'续航备注'}]" :key="field.key"><td class="no">—</td><td>{{field.name}}</td><td v-for="(t,i) in trims" :key="i"><input type="text" :aria-label="field.name" :value="t[field.key] || ''" @change="metadata(t,field.key,$event.target.value)"></td><td></td></tr></template>
+        <template v-for="group in groups" :key="group.name">
+        <tr class="ce-group-row"><th :colspan="trims.length+2+(review?1:0)"><span class="ce-group-title">{{group.name}}</span></th></tr>
+        <tr v-for="row in group.rows" :key="row.key"><td class="no">{{row.serial}}</td><td>{{row.name}}</td><td v-for="(t,i) in trims" :key="i">
           <div v-if="row.subs" class="ce-seat-functions" :class="{'ce-rear-functions':row.rear}"><label v-for="sub in row.subs" :key="sub">{{row.rear ? sub.slice(2) : sub.slice(0,2)}}<config-cell :no="row.cell.no" :sub="sub" :value="get(row.cell,i,sub)" @change="change(row.cell,i,sub,$event)"/></label></div>
           <config-cell v-else :no="row.cell.no" :sub="row.sub" :kind="kind" :choices="choices(row.cell.no,kind)" :parse-seat-adjust="parseSeatAdjust" :value="get(row.cell,i,row.sub)" @change="change(row.cell,i,row.sub,$event)"/>
-        </td><td v-if="review"><input type="text" aria-label="配置依据" :value="row.cell.basis || ''" @change="metadata(row.cell,'basis',$event.target.value)"></td></tr>
+        </td><td v-if="review"><input type="text" aria-label="配置依据" :value="row.cell.basis || ''" @change="metadata(row.cell,'basis',$event.target.value)"></td></tr></template>
         <tr v-if="kind==='snapshot'"><td class="no">—</td><td>选装配置<small>每行一项，仅本版型展示，不参与赋值</small></td><td v-for="(t,i) in trims" :key="i"><textarea :aria-label="t.name+'选装配置'" :value="optionText(i)" @change="options(i,$event.target.value)"></textarea></td><td v-if="review"></td></tr></tbody></table>`
     });
     root.classList.add('vue-config-editor');
