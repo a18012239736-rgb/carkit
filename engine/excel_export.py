@@ -51,6 +51,8 @@ def export_report(path, kind, data):
         for key, label in [('config_adv','配置优势（元）'), ('flat_adv','拉平指导价优势（元）'), ('overall','综合竞争力（元）')]:
             rows.append([label] + [g.get('valuation', {}).get(key) if g.get('valuation', {}).get(key) is not None else
                                   missing_metric_reason(g, key) for g in groups])
+        if any(g.get('chip_comparison') for g in groups):
+            rows.append(['车机芯片（暂不赋值）'] + [g.get('chip_comparison') or '—' for g in groups])
         for field, model in (('self_options', left), ('comp_options', right)):
             if any(g.get(field) for g in groups):
                 rows.append([model+'选装（仅展示，不参与赋值）'] + [

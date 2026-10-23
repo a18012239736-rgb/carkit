@@ -49,6 +49,11 @@ def _source(ladder, rules, trims):
     for row in saved.get('rows', []):
         for no in row_items.get(row.get('name'), ()):
             context['rows'].setdefault(no, []).append(row)
+    from .seat_adjust import support_source_rows
+    for no, item in rules.items_by_no.items():
+        if item.get('normalize') == 'seat_support':
+            names = {row.name for row in support_source_rows(raw, item['support_feature'])}
+            context['rows'][no] = [row for row in saved.get('rows', []) if row.get('name') in names]
     return context
 
 
@@ -76,7 +81,7 @@ def _seat_calculation(value, raw, index):
             cell = row.cells[index]
             motions = {}
             for text in parts(cell):
-                for match in re.finditer(r'([○✕×-]?)\s*(前后调节|靠背调节|高低调节|腿托调节|腿部支撑调节)(?:\s*[(（](\d+)向[)）])?', text):
+                for match in re.finditer(r'([○✕×-]?)\s*(前后调节|靠背调节|高低调节)(?:\s*[(（](\d+)向[)）])?', text):
                     if match[1]:
                         continue
                     motion = match[2].replace('腿部支撑', '腿托')
@@ -96,7 +101,7 @@ def _seat_calculation(value, raw, index):
         count, electric = components(value)
         lines.append('当前合计：' + (f'{count}向' if count is not None else '方向未知，不建立方向差额') +
                      '；' + (f'{electric}个电调座椅' if electric is not None else '电调数量未知'))
-    lines.append('前后、靠背、腿托各计2向；高低按原表注明方向；腰撑、侧翼等不计方向；选配不计入标配，电调加价保持原规则。')
+    lines.append('前后、靠背各计2向；高低按原表注明方向；腿托、腰托、侧翼不计方向，腿托和腰托独立展示；选配不计入标配，电调加价保持原规则。')
     return lines
 
 
@@ -214,7 +219,7 @@ def build_review(left, right, pairs, rules, valuation, cells, groups):
                  'rule': explanations[no],
                  'amount': detail['amount'] if detail is not None else None}
         vitem = valuation_items[no]
-        excluded = bool(cfg.get('exempt_from_valuation') or (vitem and vitem.get('rule') == 'excluded'))
+        excluded = bool(cfg.get('exempt_from_valuation') or (vitem and vitem.get('rule') in ('excluded', 'display_only')))
         if excluded:
             entry['rule'] = '本项不参与赋值计算。'
         for side, ladder, trim_key, value_key, context in (
@@ -224,6 +229,12 @@ def build_review(left, right, pairs, rules, valuation, cells, groups):
             value = cell.get(value_key, cell.get('self_val' if side == 'left' else 'comp_val', '✕'))
             item = context['items'].get(no)
             entry[side] = _side(ladder, pair[trim_key], no, value, vitem, context)
+            source_key = 'self_source_config' if side == 'left' else 'comp_source_config'
+            if source_key in cell:
+                if entry[side]['source_value'] is None:
+                    entry[side]['source_value'] = deepcopy(cell[source_key])
+                entry[side]['notes'].append('本次输入原文：'+str(cell[source_key]))
+                entry[side]['notes'].append('选装按无配置处理；有标配及选装升级时仅采用标配部分。')
             if excluded or not _active(value):
                 continue
             code = ('pending' if _pending(value, '[待定]') or str(value).strip() == '?' else

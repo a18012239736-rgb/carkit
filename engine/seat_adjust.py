@@ -108,14 +108,15 @@ def components(value):
     return directions, electric
 
 
-def raw_directions(cell):
+def raw_directions(cell, *, legacy_support=False):
     """Count only standard whole-seat motions; support adjustments are not axes."""
     from .stage_one import parts
     motions = {}
+    pattern = '前后调节|靠背调节|高低调节' + ('|腿托调节|腿部支撑调节' if legacy_support else '')
     for text in parts(cell):
         if '[待' in text:
             return None
-        for match in re.finditer(r'([○✕×-]?)\s*(前后调节|靠背调节|高低调节|腿托调节|腿部支撑调节)(?:\s*[(（](\d+)向[)）])?', text):
+        for match in re.finditer(r'([○✕×-]?)\s*('+pattern+r')(?:\s*[(（](\d+)向[)）])?', text):
             if match[1]:
                 continue
             motion = match[2].replace('腿部支撑', '腿托')
@@ -220,15 +221,114 @@ def zero_gravity_positions(raw, i, *, legacy_scope=False):
     return standard_front_positions(row.cells[i], legacy_scope=legacy_scope) if row and i < len(row.cells) else []
 
 
-def raw_details(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_display=False):
+_SUPPORTS = {'腿托': r'腿托|腿部支撑', '腰托': r'腰托|腰撑|腰部支撑|腰支撑'}
+_FRONT_SCOPE = re.compile(r'主副(?:驾)?|前排|第一排|' + POSITION + r'|驾驶位')
+
+
+def _support_positions(value, feature, default=(), *, named=False, absent=False, keep_unknown=False):
+    aliases = _SUPPORTS[feature]
+    text = re.sub(r'\s+', '', str(value or '')).replace('（', '(').replace('）', ')')
+    text = re.sub(r'主(?:驾)?(?:/|和|与|及)副(?:驾)?(?=[^驾●○✕×-]|$)', '主副', text)
+    if text.startswith('○') or '[待' in text:
+        return set()
+    positions, scope = set(), set(default)
+    for phrase in re.split(r'[+＋/／、,，;；\n]', text):
+        if re.search(r'后排|二排|第二排|第三排', phrase):
+            scope = set()
+            continue
+        scopes = list(_FRONT_SCOPE.finditer(phrase))
+        matches = list(re.finditer(aliases, phrase))
+        if not matches and named:
+            matches = [re.search(r'$', phrase)]
+        for match in matches:
+            before = [entry for entry in scopes if entry.end() <= match.start()]
+            active = before[-1] if before else None
+            current = set(scope)
+            if active:
+                name = active[0]
+                current = {0, 1} if name.startswith(('主副', '前排', '第一排')) else {1} if name.startswith('副') else {0}
+            # A local qualifier overrides a common front-row scope.
+            qualifier = re.match(r'(?:调节)?\((?:仅)?(主副(?:驾)?|前排|第一排|主驾(?:驶(?:位|座)?)?|驾驶位|副驾(?:驶(?:位|座)?)?)\)', phrase[match.end():])
+            if qualifier:
+                name = qualifier[1]
+                current = {0, 1} if name.startswith(('主副', '前排', '第一排')) else {1} if name.startswith('副') else {0}
+            prefix = _FRONT_SCOPE.sub('', phrase[:match.start()])
+            suffix = phrase[match.end():]
+            markers = re.findall(r'[●○✕×-]', prefix)
+            optional = bool(markers and markers[-1] == '○') or bool(re.search(r'选装|选配', phrase)) or bool(re.match(r'(?:调节)?○', suffix))
+            negative = r'无|取消|不支持|未配备|不再配备|不带'
+            missing = (bool(markers and markers[-1] in '✕×-')
+                       or bool(re.search(r'(?:'+negative+r')(?:座椅)?$', prefix))
+                       or bool(re.match(r'(?:调节)?(?:[：:]?\(?(?:'+negative+r')|[✕×-])', suffix)))
+            if not optional and missing == absent:
+                positions.update(current or ({None} if keep_unknown else set()))
+        if scopes:
+            name = scopes[-1][0]
+            scope = {0, 1} if name.startswith(('主副', '前排', '第一排')) else {1} if name.startswith('副') else {0}
+    return positions
+
+
+def _support_label(positions, feature):
+    known = positions - {None}
+    label = '前排'+feature if known == {0, 1} else '+'.join(NAMES[i]+feature for i in sorted(known))
+    if None in positions:
+        return '[待定]' + (label+'；另有' if label else '') + feature+'座位未说明'
+    return label or '✕'
+
+
+def support_from_text(value, feature):
+    """Read explicitly assigned front-seat supports, including old #35 notes."""
+    return _support_label(_support_positions(value, feature), feature)
+
+
+def update_support_text(previous, value, feature):
+    """Apply an explicit front-seat addition/removal without losing inherited seats."""
+    added = _support_positions(value, feature, keep_unknown=True)
+    removed = _support_positions(value, feature, absent=True, keep_unknown=True)
+    if not added and not removed:
+        return None  # Rear-only or optional text does not alter the front supports.
+    if None in added | removed or '[待' in str(previous):
+        return f'[待定]原配置：{previous}；原文：{value}（请确认{feature}座位及变更）'
+    return _support_label((_support_positions(previous, feature) | added) - removed, feature)
+
+
+def support_source_rows(raw, feature):
+    """Return the same front-seat source rows used for support normalization."""
+    return [row for row in raw.rows if not re.search(r'后排|二排|第二排|第三排', row.name)
+            and (row.name in ('主座椅调节方式', '副座椅调节方式', '前排座椅功能')
+                 or re.search(_SUPPORTS[feature], row.name))]
+
+
+def support_from_raw(raw, i, feature):
+    """Separate standard front supports; adjustment-row names establish the seat."""
+    from .stage_one import parts
+    positions = set()
+    for row in support_source_rows(raw, feature):
+        if i >= len(row.cells):
+            continue
+        named = bool(re.search(_SUPPORTS[feature], row.name))
+        if row.name in ('主座椅调节方式', '副座椅调节方式'):
+            default = (0,) if row.name.startswith('主') else (1,)
+        elif row.name == '前排座椅功能':
+            default = (0, 1)
+        else:
+            default = _support_positions(row.name, feature)
+        for text in parts(row.cells[i]):
+            positions.update(_support_positions(text, feature, default, named=named, keep_unknown=True))
+    return _support_label(positions, feature)
+
+
+def raw_details(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_display=False, legacy_support=False):
     return _raw_details(raw, i, _cells(raw, i), include_terms=include_terms,
-                        legacy_price_notes=legacy_price_notes, legacy_display=legacy_display)
+                        legacy_price_notes=legacy_price_notes, legacy_display=legacy_display,
+                        legacy_support=legacy_support)
 
 
-def _raw_details(raw, i, cells, *, include_terms, legacy_price_notes, legacy_display):
+def _raw_details(raw, i, cells, *, include_terms, legacy_price_notes, legacy_display, legacy_support=False):
     electric, main, passenger = cells
     count_directions = _legacy_raw_directions if legacy_display or legacy_price_notes else raw_directions
-    counts = [count_directions(cell) for cell in (main, passenger)]
+    counts = [count_directions(cell) if count_directions is _legacy_raw_directions
+              else raw_directions(cell, legacy_support=legacy_support) for cell in (main, passenger)]
     positions = zero_gravity_positions(raw, i, legacy_scope=legacy_price_notes) if include_terms else []
     # pjy confirmed this mapping for MG 07, not every brand's zero-gravity seat.
     if raw.series_id == '8563' or re.sub(r'\s+', '', raw.model).upper() == 'MG07':
@@ -272,11 +372,13 @@ def legacy_summary(raw, i):
     return base+_suffix(_extras(main), _extras(passenger))
 
 
-def from_raw(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_display=False):
+def from_raw(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_display=False, legacy_support=False):
+    """Normalize adjustment totals; legacy_support freezes the previous leg-rest count."""
     from .stage_one import clean, parts
     electric, main, passenger = _cells(raw, i)
     counts, modes, positions = _raw_details(raw, i, (electric, main, passenger), include_terms=include_terms,
-                                          legacy_price_notes=legacy_price_notes, legacy_display=legacy_display)
+                                          legacy_price_notes=legacy_price_notes, legacy_display=legacy_display,
+                                          legacy_support=legacy_support)
     gravity = raw.row('零重力座椅') if include_terms else None
     unknown = parts(gravity.cells[i]) if gravity and i < len(gravity.cells) else []
     if unknown and not positions and electric is None and main is None and passenger is None:
@@ -312,3 +414,54 @@ def from_raw(raw, i, *, include_terms=True, legacy_price_notes=False, legacy_dis
     elif unknown:
         suffix += '(零重力座椅座位未说明)'
     return label('+'.join(values)+suffix, include_notes=True)
+
+
+def upgrade_ladder_support(ladder):
+    """Upgrade normal file loads explicitly; frozen comparison plans skip this."""
+    from .models import LadderItem, RawTable
+    errors = (KeyError, TypeError, ValueError, IndexError, AttributeError)
+    items = {}
+    for item in ladder.items:
+        items.setdefault(item.no, item)
+    seat = items.get(35)
+    raw = None
+    try:
+        saved = ladder.evidence.get('raw') if isinstance(ladder.evidence, dict) else None
+        if isinstance(saved, dict):
+            raw = RawTable.from_dict(saved)
+    except errors:
+        pass  # An incomplete old source must not prevent opening hand edits.
+    values = {46: [], 47: []}
+    recovered = False
+    for i, trim in enumerate(ladder.trims):
+        old = seat.values[i] if seat and i < len(seat.values) else ''
+        try:
+            source_i = None
+            if raw is not None:
+                matches = [j for j, entry in enumerate(raw.trims) if entry.short == trim['name']]
+                if not matches:
+                    matches = [j for j, entry in enumerate(raw.trims) if entry.short.rstrip('版') == trim['name'].rstrip('版')]
+                if len(matches) == 1:
+                    source_i = matches[0]
+            if source_i is None:
+                raise ValueError('原始版型无法对应')
+            supports = {no: support_from_raw(raw, source_i, feature)
+                        for no, feature in ((46, '腿托'), (47, '腰托'))}
+            previous = [from_raw(raw, source_i, legacy_support=True),
+                        from_raw(raw, source_i, legacy_support=True, include_terms=False),
+                        from_raw(raw, source_i, legacy_display=True),
+                        from_raw(raw, source_i, legacy_display=True, include_terms=False),
+                        from_raw(raw, source_i, legacy_price_notes=True), legacy_summary(raw, source_i)]
+            if seat and i < len(seat.values) and old in previous:
+                seat.values[i] = from_raw(raw, source_i)
+        except errors:
+            _, notes = _notes(str(old or ''))
+            supports = {no: support_from_text(notes, feature) for no, feature in ((46, '腿托'), (47, '腰托'))}
+            recovered = True
+        for no in values:
+            values[no].append(supports[no])
+    for no, feature in ((46, '腿托'), (47, '腰托')):
+        if no not in items:
+            ladder.items.append(LadderItem(no=no, name='座椅'+feature, values=values[no],
+                note='旧文件仅从座椅调节附注恢复；未记录按无配置比较' if recovered else '从原始配置独立记录；不计入座椅调节方向'))
+    return ladder

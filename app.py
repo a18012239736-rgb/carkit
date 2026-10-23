@@ -33,12 +33,21 @@ def main():
             "carkit — 汽车产品分析工作台",
             ui,
             js_api=bridge,
-            width=1360,
-            height=900,
-            min_size=(1024, 700),
+            # 使用系统缩放；恢复窗口也能容纳在 2K 笔记本 200% 缩放后的工作区。
+            width=1180,
+            height=640,
+            min_size=(960, 560),
+            maximized=sys.platform != "darwin",
             background_color="#f5f7fa",
             text_select=True,
         )
+        if sys.platform == "darwin":
+            # Cocoa 的最大化使用整屏尺寸，改用当前屏幕扣除菜单栏和 Dock 的区域。
+            def fit_workarea():
+                native = window.native
+                native.setFrame_display_(native.screen().visibleFrame(), True)
+
+            window.events.before_show += fit_workarea
         window.events.closed += bridge.shutdown
         # Windows 上强制 WebView2（Edge Chromium）；缺失时 pywebview 会报错提示安装
         webview.start(debug=os.environ.get("CARKIT_DEBUG") == "1")

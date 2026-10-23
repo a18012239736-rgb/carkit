@@ -38,6 +38,20 @@ def _is_optional(v) -> bool:
     return isinstance(v, str) and (v.startswith("○") or "(选装)" in v or "○" in v)
 
 
+def _standard_configuration(value):
+    """Compare only standard equipment; keep optional source text separately."""
+    if isinstance(value, dict):
+        return {key: _standard_configuration(part) for key, part in value.items()}
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if (text.startswith('○') or text in ('选装', '选配')
+            or re.search(r'[（(]\s*(?:选装|选配)\s*[)）]\s*$', text)):
+        return '✕'
+    text = re.sub(r'[（(]\s*○(?:[^()（）]|[（(][^()（）]*[)）])*[)）]', '', text)
+    return re.split(r'[,，]\s*○', text, maxsplit=1)[0].strip()
+
+
 def _has(v) -> bool:
     """●才算有；○(选装)不算有（豁免规则 optional_not_have）"""
     if not isinstance(v, str):
@@ -248,7 +262,7 @@ def _pair_values(self_ladder, comp_ladder, no, si, ci, *, usb_base=3,
         result = entry.values[index] if entry and index < len(entry.values) else "✕"
         if no == 36 and entry and entry.subs:
             from .seat_functions import SUBS, normalize
-            result = dict(normalize(result))
+            result = dict(normalize(_standard_configuration(result)))
             # The summary cannot represent every seat. Both sides must use
             # the stored per-seat states, including absent/optional/pending.
             result.update({row['sub']: row['values'][index] if index < len(row['values']) else '✕'
@@ -305,16 +319,11 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
             sv, cv, cit = _pair_values(self_ladder, comp_ladder, no, si, ci,
                                       usb_base=(vitem.get('params') or {}).get('base_count', 3) if vitem else 3,
                                       self_items=self_items, comp_items=comp_items)
-            screen_optional = ''
+            source_values = (sv, cv)
+            sv, cv = _standard_configuration(sv), _standard_configuration(cv)
             if no in (21, 22, 29):
                 from .screen_config import normalize_screen
                 sv, cv = normalize_screen(sv, no), normalize_screen(cv, no)
-                if str(sv).startswith('○'):
-                    screen_optional += ' 左侧选装按无配置计'
-                    sv = '✕'
-                if str(cv).startswith('○'):
-                    screen_optional += ' 右侧选装按无配置计'
-                    cv = '✕'
             if no == 9:
                 sv, cv = normalize_adas(sv), normalize_adas(cv)
             comp_absent = bool(cit and cit.row_absent)
@@ -327,7 +336,7 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 not_applicable(self_ladder.trims[si].get('energy_type', ''), no)
                 or not_applicable(comp_ladder.trims[ci].get('energy_type', ''), no))
             if range_excluded or sv == '不适用' or cv == '不适用':
-                cells.append(_cell(no, pi, NA, '不计(动力类型不适用)', sv, cv, 'not_applicable', '', ''))
+                cells.append(_cell(no, pi, NA, '不计(动力类型不适用)', sv, cv, 'not_applicable', '', '', source_values))
                 continue
 
             # ---- 全局豁免：待定 ----
@@ -335,14 +344,21 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 verdict, exempt = NA, "pending"
                 comp_core = _strip_dot(cv) if not _plain(cv) else "✕"
                 disp = f"不计(待定vs{comp_core})" if pi == 0 else "不计(待定)"
-                cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt, "", ""))
+                cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt, "", "", source_values))
+                continue
+
+            if no == 48:
+                # Chip model names alone do not establish a performance ranking.
+                ss, cs = _strip_dot(str(sv)), _strip_dot(str(cv))
+                cells.append(_cell(no, pi, NA, f'{ss} vs {cs}（暂不赋值）',
+                                   sv, cv, 'display_only', '', '', source_values))
                 continue
 
             # ---- #24 车载KTV 豁免 ----
             if no == 24:
                 verdict, exempt = EXEMPT, "ktv"
                 disp = f"豁免 {_short_bool(sv)}({_short_bool(cv)})" if pi == 0 else "豁免"
-                cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt, "", ""))
+                cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt, "", "", source_values))
                 continue
 
             # ---- #31 内后视镜：只计流媒体差异，显示保留防眩目类型 ----
@@ -361,7 +377,7 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                     disp = f'少 {ss}({cs})'
                 cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt,
                                    '流媒体后视镜' if verdict == MORE else '',
-                                   '流媒体后视镜' if verdict == LESS else ''))
+                                   '流媒体后视镜' if verdict == LESS else '', source_values))
                 continue
 
             # ---- #1 续航：微差豁免（band）----
@@ -371,13 +387,13 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                     if band(s_km) == band(c_km):
                         verdict, exempt = EXEMPT, "range_micro"
                         disp = f"豁免(微差{s_km:g}/{c_km:g})"
-                        cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt, "", ""))
+                        cells.append(_cell(no, pi, verdict, disp, sv, cv, exempt, "", "", source_values))
                         continue
                     verdict = MORE if s_km > c_km else LESS
                     disp = f"{verdict} {s_km:g}({c_km:g})"
                     bk = f"{s_km:g}km({c_km:g})"
                     backup_more, backup_less = (bk, "") if verdict == MORE else ("", bk)
-                    cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less))
+                    cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less, source_values))
                     continue
 
             # ---- #36 座椅功能 ----
@@ -390,7 +406,7 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 s_cost, ss = front(sv)
                 c_cost, cs = front(cv)
                 if s_cost is None or c_cost is None:
-                    cells.append(_cell(no, pi, NA, '不计(请确认前备箱开启方式)', sv, cv, 'pending', '', ''))
+                    cells.append(_cell(no, pi, NA, '不计(请确认前备箱开启方式)', sv, cv, 'pending', '', '', source_values))
                     continue
                 verdict = MORE if s_cost > c_cost else LESS if s_cost < c_cost else SAME
                 if vitem:
@@ -399,7 +415,7 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                     verdict = MORE if amount > 0 else LESS if amount < 0 else SAME
                 label = f'{ss}({cs})' if s_cost and c_cost else ss if s_cost else cs
                 cells.append(_cell(no, pi, verdict, f'{verdict} {label}', sv, cv, '',
-                                   label if verdict == MORE else '', label if verdict == LESS else ''))
+                                   label if verdict == MORE else '', label if verdict == LESS else '', source_values))
                 continue
 
             if no == 36:
@@ -407,7 +423,7 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 sv, cv = dict(normalize(sv)), dict(normalize(cv))
                 verdict, disp, backup = cmp_seat36(sv, cv, params=vitem.get('params') if vitem else None)
                 backup_more, backup_less = (backup, "") if verdict == MORE else (("", backup) if verdict == LESS else ("", ""))
-                cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less))
+                cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less, source_values))
                 continue
 
             # ---- 通用 value_type 分派 ----
@@ -479,23 +495,25 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 amount = dynamic_delta(no, sv, cv, vitem.get('params'))
                 if amount or no == 6:
                     verdict = MORE if amount > 0 else LESS if amount < 0 else SAME
-            # ○选装注记：对方仅○ → 按无比较但显示注记
             disp = f"{verdict} {ss}({cs})"
-            if screen_optional:
-                disp += screen_optional
             # BACKUP 显示串
             bm, bl = _backup_display(no, verdict, sv, cv, ss, cs, item['name'])
             backup_more, backup_less = bm, bl
-            cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less))
+            cells.append(_cell(no, pi, verdict, disp, sv, cv, "", backup_more, backup_less, source_values))
     return cells
 
 
-def _cell(no, pi, verdict, disp, sv, cv, exempt, bm, bl):
-    return {"no": no, "pair": pi, "verdict": verdict, "display": disp,
+def _cell(no, pi, verdict, disp, sv, cv, exempt, bm, bl, source_values=None):
+    cell = {"no": no, "pair": pi, "verdict": verdict, "display": disp,
             "self_val": sv if isinstance(sv, str) else str(sv),
             "comp_val": cv if isinstance(cv, str) else str(cv),
             "self_config": sv, "comp_config": cv,
             "exempt_id": exempt, "backup_more": bm, "backup_less": bl}
+    if source_values is not None:
+        for side, source in zip(('self', 'comp'), source_values):
+            if _standard_configuration(source) != source:
+                cell[side+'_source_config'] = source
+    return cell
 
 
 _RANKS = {
@@ -659,6 +677,11 @@ def _backup_display(no, verdict, sv, cv, ss, cs, name=''):
     """返回 (backup_more, backup_less)；非多/少为空串"""
     if verdict not in (MORE, LESS):
         return "", ""
+    sv, cv = _standard_configuration(sv), _standard_configuration(cv)
+    if not _has(sv):
+        ss = '✕'
+    if not _has(cv):
+        cs = '✕'
     # A one-sided difference names only the equipment that exists.
     if not _has(sv) and _has(cv):
         out, _ = _backup_display(no, MORE, cv, '✕', cs, '✕', name)
@@ -824,6 +847,6 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
             g["valuation"] = {"config_adv": None, "flat_adv": None, "overall": None,
                               "config_adv_reason": '缺少配置赋值规则', "flat_adv_reason": '缺少配置赋值规则',
                               "overall_reason": '缺少配置赋值规则',
-                              "missing": sorted(set(list(more_map) + list(less_map)))}
+                              "missing": sorted((set(more_map) | set(less_map)) - {46, 47})}
         groups.append(g)
     return groups

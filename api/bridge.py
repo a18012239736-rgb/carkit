@@ -187,6 +187,8 @@ class Bridge:
             output = os.path.join(self.workdir, '阶梯', 'compare-'+key+'.json')
             if os.path.exists(output):
                 lad = Ladder.load(output)
+                lad.evidence = {'raw': raw.to_dict()}
+                ladder_mod.upgrade_ladder(lad, self.rules)
                 # Upgrade only untouched source-backed values, in the same cache.
                 # Marketing terms never override a user's different correction.
                 from engine.seat_adjust import from_raw, legacy_summary
@@ -551,7 +553,11 @@ class Bridge:
 
     def load_ladder(self, path: str):
         try:
-            return {"ok": True, "ladder": Ladder.load(path).to_dict()}
+            lad = Ladder.load(path)
+            if not any(os.path.abspath(path) in (s['paths']['left'], s['paths']['right'])
+                       for s in self._plan_sessions.values()):
+                ladder_mod.upgrade_ladder(lad, self.rules)
+            return {"ok": True, "ladder": lad.to_dict()}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -735,6 +741,8 @@ class Bridge:
             if left_is_competitor:
                 from types import SimpleNamespace
                 self_lad = Ladder.load(snapshot_path)
+                if not plan_session:
+                    ladder_mod.upgrade_ladder(self_lad, rules)
                 snap = SimpleNamespace(model=self_lad.model, pending=[])
                 left_input = self_lad.to_dict()
             else:
@@ -744,6 +752,8 @@ class Bridge:
                 self_lad = snap.to_ladder(rules.checklist["items"])
                 left_input = snap.to_dict()
             comp_lad = Ladder.load(ladder_path)
+            if not plan_session:
+                ladder_mod.upgrade_ladder(comp_lad, rules)
             missing_items = {it['no'] for it in rules.items} - {it.no for it in comp_lad.items}
             if missing_items:
                 raise ValueError('右侧竞品阶梯缺少新配置项，请重新抓取或从历史车型重新生成后再对比。')

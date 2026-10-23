@@ -103,6 +103,8 @@ def default_valuation(rules):
         rule = "dynamic" if no in DEFAULT_DYNAMIC_PARAMS else "flat"
         if no in EXCLUDED_ITEMS:
             rule = 'excluded'
+        if item.get('display_only'):
+            rule = 'display_only'
         items.append({"no": no, "name": item.get("md_name") or item["name"],
                       "pricing": "manual", "val": 0 if no in ZERO_ITEMS else DEFAULT_FLAT.get(no),
                       "unit_val": None, "bands": [], "rule": rule,
@@ -121,6 +123,8 @@ def normalize_valuation(data, rules):
         for key in ('pricing', 'val', 'unit_val', 'bands', 'note', 'rule'):
             if key in custom:
                 item[key] = custom[key]
+        if rules.items_by_no[item['no']].get('display_only'):
+            item['rule'] = 'display_only'
         params = dict(item.get('params') or {})
         for key, value in (custom.get('params') or {}).items():
             if key not in params:
@@ -242,7 +246,7 @@ def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
             if verdict not in ('多', '少', '同'):
                 continue
             item = valuation.item(no)
-            if item and item.get('rule') == 'excluded':
+            if item and item.get('rule') in ('excluded', 'display_only'):
                 continue
             if item and (item.get('rule') == 'dynamic' or no == 12):
                 amt = dynamic_delta(no, cell['self_config'], cell['comp_config'], item.get('params'))
@@ -267,6 +271,8 @@ def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
         for side, mapping in (('多', more_map), ('少', less_map)):
             for no, disp in mapping.items():
                 item = valuation.item(no)
+                if item and item.get('rule') in ('excluded', 'display_only'):
+                    continue
                 amt = _amount_for_item(item, no, disp, side='more' if side == '多' else 'less')
                 amounts.append((no, disp, None if amt is None else abs(amt) * (1 if side == '多' else -1), side, item))
     for no, disp, amt, verdict, item in amounts:
@@ -320,7 +326,7 @@ _DYNAMIC_RULE_TEXT = {
     32: 'USB/Type-C默认{base_count}个为0元，每个接口差额{per_port}元',
     33: '无线充电≥40W为快充，每个{per_charger}元；低于40W为慢充，每个{slow_charger}元；前后排分别计，未标功率沿用快充单价但不补写功率',
     34: '座椅：织物{fabric}元、仿皮{faux}元、真皮{leather}元、翻毛皮{suede}元、NAPPA {nappa}元',
-    35: '座椅每向{per_direction}元，每个电调座椅另加{electric_bonus}元；主副驾合计',
+    35: '座椅每向{per_direction}元，每个电调座椅另加{electric_bonus}元；主副驾合计，腿托和腰托不计方向',
     36: '每座：通风{ventilation}元、加热{heating}元、按摩{massage}元、头枕音响{headrest}元；前排含主副驾',
     37: '扬声器每个{per_speaker}元',
     38: '车外扬声器每个{per_speaker}元',
@@ -334,6 +340,8 @@ def explain_rule(valuation, no):
 
 
 def _explain_item_rule(item, no):
+    if item.get('rule') == 'display_only':
+        return '独立展示配置差异，暂不单独赋值' + ('；不计入座椅调节方向' if no in (46, 47) else '')
     if item.get('rule') != 'dynamic':
         return f"{item.get('pricing', 'flat')}：{item.get('val')} 元；{item.get('note', '')}"
     params = dict(DEFAULT_DYNAMIC_PARAMS.get(no, {}))
@@ -352,6 +360,8 @@ def _amount_for(valuation, no, disp, side):
 def _amount_for_item(vitem, no, disp, side):
     if vitem is None:
         return None
+    if vitem.get('rule') == 'display_only':
+        return 0
     if no == 12 or vitem.get("rule") == "dynamic":
         return _default_rule_amount(no, disp, side, vitem.get('params'))
     pricing = vitem.get("pricing", "flat")

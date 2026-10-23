@@ -60,7 +60,7 @@ def cmd_diff(args):
     from engine.snapshot import resolve
     snap = resolve(snap)
     self_lad = snap.to_ladder(rules.checklist["items"])
-    comp_lad = Ladder.load(args.ladder)
+    comp_lad = ladder_mod.upgrade_ladder(Ladder.load(args.ladder), rules)
     pairs = []
     for p in args.pairs.split(","):
         s, c = p.split(":")
@@ -77,12 +77,12 @@ def cmd_diff(args):
     comp_prices = {t["name"]: t.get("price_guide") for t in comp_lad.trims}
     valuation = None
     if args.valuation:
-        from engine.models import ValuationTable
         if args.valuation.lower().endswith(".xlsx"):
             vd = valuer.load_xlsx(args.valuation)
-            valuation = _vt(vd)
         else:
-            valuation = ValuationTable.load(args.valuation)
+            with open(args.valuation, encoding='utf-8') as source:
+                vd = json.load(source)
+        valuation = _vt(valuer.normalize_valuation(vd, rules))
     cells = differ.diff(self_lad, comp_lad, pairs, rules, valuation=valuation)
     if valuation is not None:
         excluded = {item.no for item in valuation.items if item.rule == 'excluded'}
@@ -94,6 +94,7 @@ def cmd_diff(args):
     groups = differ.assemble_backup(cells, pairs, snap.model, comp_lad.model,
                                     self_prices, comp_prices, valuation,
                                     self_options=self_lad.options, comp_options=comp_lad.options)
+    render_backup.format_configurations(cells, groups)
     notes = [f"[暂定/待定]：{p.get('reason')}（{p.get('handling')}）" for p in snap.pending]
     md = render_backup.render_md(snap.model or "自产品", comp_lad.model or "竞品",
                                  groups, cells, rules_version=rules.version,

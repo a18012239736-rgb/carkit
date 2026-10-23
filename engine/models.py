@@ -181,6 +181,7 @@ class Ladder:
         d['options'] = normalize_product_options(d.get('options', {}), [t['name'] for t in d.get('trims', [])])
         items = [LadderItem(**it) for it in d.get("items", [])]
         from .usb import usb_label
+        from .differ import _standard_configuration
         from .seat_functions import SUBS, normalize
         for item in items:
             if item.no == 32:
@@ -188,13 +189,13 @@ class Ladder:
             if item.no == 36 and not item.subs:
                 converted = []
                 for value in item.values:
-                    # Keep unknown/optional legacy descriptions visible rather
-                    # than showing twelve false "absent" controls.
-                    if isinstance(value, str) and value not in ('', '✕', '×', '-', '无', '无配置') and (
-                            '[待' in value or '○' in value or not any(feature in value for feature in ('通风', '加热', '按摩', '头枕'))):
+                    # Preserve unknown descriptions; optional features are absent.
+                    standard = _standard_configuration(value)
+                    if isinstance(standard, str) and standard not in ('', '✕', '×', '-', '无', '无配置') and (
+                            '[待' in standard or not any(feature in standard for feature in ('通风', '加热', '按摩', '头枕'))):
                         converted.append({sub: '[待定]原文：'+value for sub in SUBS})
                     else:
-                        converted.append(normalize(value))
+                        converted.append(normalize(standard))
                 item.subs = [{'sub': sub, 'values': [value[sub] for value in converted]} for sub in SUBS]
             if item.no == 36 and item.subs and any(row['sub'] not in SUBS for row in item.subs):
                 old = {row['sub']:row['values'] for row in item.subs}

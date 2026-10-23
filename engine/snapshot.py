@@ -17,10 +17,61 @@ def prepare_snapshot(snap):
     """Fill baseline tiers and establish links once; edited overrides keep no link."""
     snap.options = normalize_product_options(snap.options, [t['name'] for t in snap.trims])
     by_no = {c['no']: c for c in snap.cells}
+    if 48 not in by_no:
+        pending = '[待定]未记录车机芯片'
+        values = {t['name']: pending for t in snap.trims}
+        source = next((r.get('draft') for r in snap.rulings
+                       if r.get('type') == 'ppt_import' and isinstance(r.get('draft'), dict)), None)
+        traces = []
+        declared = set()
+        if source:
+            from .ppt_import import _apply, _split_options
+            columns = {c['name']: c for c in source.get('columns', []) if isinstance(c, dict) and c.get('name')}
+            recovered = {}
+            def chip_value(name, stack=()):
+                if name in recovered:
+                    return recovered[name]
+                if name not in columns or name in stack:
+                    return pending
+                column = columns[name]
+                base = column.get('base')
+                current = {48: chip_value(base, (*stack, name)) if base else pending}
+                standard, _ = _split_options(column.get('text', ''))
+                evidence = {}
+                _apply(standard, current, evidence, [])
+                if evidence.get(48):
+                    declared.add(name)
+                    traces.append(name+'：'+'；'.join(dict.fromkeys(evidence[48])))
+                recovered[name] = current[48]
+                return current[48]
+            values = {name: chip_value(name) for name in values}
+        cell = {'no': 48, 'values': values,
+                'basis': ('从原PPT草稿恢复车机芯片；未说明时保留待核' if source else '历史快照未记录车机芯片，请核对后填写')
+                         + (' | '+' | '.join(traces) if traces else '')}
+        if source:
+            cell['links'] = {t['name']: t['base'] for t in snap.trims
+                             if t.get('base') in values and t['name'] not in declared
+                             and values[t['name']] == values[t['base']]}
+        snap.cells.append(cell)
+        by_no[48] = cell
+    from .seat_adjust import support_from_text
+    adjustment = by_no.get(35, {}).get('values', {})
+    for no, feature in ((46, '腿托'), (47, '腰托')):
+        if no not in by_no:
+            cell = {'no': no, 'values': {t['name']: support_from_text(adjustment.get(t['name'], ''), feature)
+                                       for t in snap.trims},
+                    'basis': '从已有座椅调节附注恢复；未注明时按未提供此配置处理'}
+            snap.cells.append(cell)
+            by_no[no] = cell
     seat = by_no.get(36)
     if seat:
         from .seat_functions import normalize
+        from .differ import _standard_configuration
         old = seat['values']
+        sources = [name+'：'+str(value) for name, value in old.items()
+                   if _standard_configuration(value) != value]
+        if sources:
+            seat['basis'] = (seat.get('basis', '')+'\n选装原文（按无配置处理）：'+'；'.join(sources)).strip()
         seat['values'] = {name: normalize(value) for name, value in old.items()}
         if seat['values'] != old:
             seat.pop('links', None)

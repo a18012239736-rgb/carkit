@@ -379,6 +379,12 @@ def _apply(text, values, evidence, leftovers):
         if 'LED' in t and '灯' in t:setv(17,'LED大灯')
         if '后雨刮' in t or '后雨刷' in t:setv(19,'●')
         if '外后视镜' in t:setv(20,'●'+t.split('外后视镜',1)[1])
+        for phrase in re.split(r'[+＋、，,；;]', t):
+            chip_label = r'(?:车机\s*(?:智能)?|(?:智能)?座舱)\s*(?:域控)?\s*芯片'
+            if re.search(chip_label, phrase) and not re.search(r'驾驶|智驾|ADAS', phrase, re.I):
+                chip = re.sub(chip_label, '', phrase).strip(' :：●')
+                chip = re.sub(r'^(?:升级为|升级|搭载|采用|新增|配备|标配)\s*', '', chip).strip(' :：')
+                setv(48, chip if chip and chip not in ('有', '支持', '是') else '[待定]车机芯片型号未说明')
         from .screen_config import normalize_screen
         for phrase in re.split(r'[+＋；;]', t):
             screens = [no for no, keyword in ((21,'中控'), (22,'副驾'), (29,'仪表'))
@@ -409,6 +415,12 @@ def _apply(text, values, evidence, leftovers):
         elif '座椅电调' in t or re.search(r'[主副]驾\d+向',t):
             # A known power adjustment without a direction count is still unresolved for valuation.
             setv(35,'[待定]'+t+'（请确认主副驾方向数）')
+        from .seat_adjust import update_support_text
+        for no, feature, aliases in ((46, '腿托', r'腿托|腿部支撑'), (47, '腰托', r'腰托|腰撑|腰部?支撑')):
+            if re.search(aliases, t):
+                support = update_support_text(values.get(no, '✕'), t, feature)
+                if support is not None:
+                    setv(no, support)
         if any(feature in t for feature in ('通风','加热','按摩','头枕音响')) and any(scope in t for scope in ('座椅','主驾','副驾','前排','二排','后排','头枕音响')):
             from .seat_functions import from_text
             subs=copy.deepcopy(values.get(36,{}))
@@ -497,6 +509,7 @@ def make_snapshot(draft):
             expand(base,stack+[name]); vals=copy.deepcopy(expanded[base]); ev=copy.deepcopy(traces[base])
         else:
             vals={it['no']:'✕' for it in items}
+            vals[48]='[待定]PPT未说明车机芯片'
             from .seat_functions import empty
             vals[36]=empty();ev={}
         before={no:len(lines) for no,lines in ev.items()}

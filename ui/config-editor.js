@@ -5,6 +5,7 @@
   const mounted = new Map();
   const absent = value => /^(✕|×|无|无配置|-|不适用)$/.test(value);
   const defaultSeatAdjust = '主驾6向手调+副驾4向手调';
+  const configurationOrderKey = no => ({45:36.5,46:35.1,47:35.2,48:22.5})[no] ?? Number(no);
   // Use Autohome's category names and order; keep merged configuration items together.
   const categories = [
     ['基本参数', [1]],
@@ -18,10 +19,10 @@
     ['车外灯光', [17]],
     ['天窗/玻璃', [18,19,44]],
     ['外后视镜', [20]],
-    ['互联/智能化', [21,22,23,24]],
+    ['互联/智能化', [21,22,48,23,24]],
     ['方向盘/内后视镜', [25,26,27,28,29,30,31]],
     ['车内充电', [32,33]],
-    ['座椅配置', [34,35,36,45]],
+    ['座椅配置', [34,35,46,47,36,45]],
     ['音响/车内灯光', [37,38,39]],
     ['空调/冰箱', [40,41,43]],
   ];
@@ -40,8 +41,6 @@
       watch(()=>props.value,v=>{if(v!==lastEmitted)screenDraft.value=null;});
       const options = computed(() => [...new Set([value.value, ...(props.sub ? ['✕','●','[待定]'] : props.choices || [])])]);
       function label(v) {
-        if(props.kind==='snapshot' && props.no===35 && [defaultSeatAdjust,'主驾手调+副驾手调','主副手调'].includes(v)) return '默认手调（主驾6向＋副驾4向）';
-        if(props.no===35 && v===value.value && seatDetail.value.editable) return seats.value.filter(s=>s.count || s.mode).map(s=>s.name+(s.count?s.count+'向':'')+(s.mode || '')).join('，');
         if(props.no===32 && v==='✕') return '未注明（按基础接口数）';
         return v === '✕' ? '无' : v === '●' ? '有' : v;
       }
@@ -90,11 +89,36 @@
         const parts = ['电调','折叠','加热'].filter(p => p === part ? v === '●' : mirrorText.value.includes(p));
         send(parts.join('+') || '✕');
       }
-      return {value, custom, options, label, choose, send, count, simpleCount, screen, screenChange, seats, seatDetail, seatChange, mirrorText, simpleMirror, mirrorChange, absent};
+      const supportFeature = computed(() => props.no===46 ? '腿托' : '腰托');
+      const supportSeats = computed(() => {
+        if(![46,47].includes(props.no)) return null;
+        const configured = new Set();
+        const text = value.value.trim();
+        if(text && !absent(text)) {
+          for(const part of text.replace(/^●\s*/, '').split(/[+＋、]/)) {
+            const scope = part.trim().replace(supportFeature.value, '');
+            if(part.trim() !== scope+supportFeature.value || !['主驾','副驾','前排'].includes(scope)) return null;
+            (scope==='前排' ? ['主驾','副驾'] : [scope]).forEach(name=>configured.add(name));
+          }
+        }
+        return ['主驾','副驾'].map(name=>({name,present:configured.has(name)}));
+      });
+      function supportChange(index, state) {
+        const selected = supportSeats.value.filter((seat,i)=>i===index ? state==='●' : seat.present);
+        send(selected.length===2 ? '前排'+supportFeature.value : selected.length ? selected[0].name+supportFeature.value : '✕');
+      }
+      return {value, custom, options, label, choose, send, count, simpleCount, screen, screenChange, seats, seatDetail, seatChange, mirrorText, simpleMirror, mirrorChange, supportFeature, supportSeats, supportChange, absent};
     },
     template: `
-      <div class="ce-cell">
+      <div class="ce-cell" :class="{'ce-seat-support':[46,47].includes(no)}">
         <select v-if="sub" :value="value" class="ce-binary" :aria-label="sub" @change="send($event.target.value)"><option v-for="v in options" :key="v" :value="v">{{label(v)}}</option></select>
+        <template v-else-if="no===35">
+          <div class="ce-seat-adjust">
+            <label v-for="(seat,i) in seats" :key="seat.name">{{seat.name}}<select :aria-label="seat.name+'调节方式'" :value="seat.mode || ''" :disabled="!seatDetail.editable" @change="seatChange(i,'mode',$event.target.value)"><option value="" disabled>待核</option><option>手调</option><option>电调</option></select><input type="number" min="2" max="30" step="1" placeholder="未注明" :aria-label="seat.name+'调节方向'" :value="seat.count" :disabled="!seatDetail.editable" @change="seatChange(i,'count',$event.target.value)">向</label>
+          </div>
+          <small v-if="seatDetail.hint">{{seatDetail.hint}}</small>
+          <details v-if="!seatDetail.editable" class="ce-seat-source"><summary>核对调节原文</summary><input type="text" aria-label="座椅调节原文" :value="value" @change="send($event.target.value.trim() || '✕')"></details>
+        </template>
         <template v-else-if="[1,37].includes(no) && simpleCount">
           <input type="number" min="0" step="1" :aria-label="no===1?'纯电续航':'扬声器数量'" :value="count" @input="send($event.target.value ? $event.target.value+(no===1?'km':'扬声器') : '[待定]')">
           <span>{{no===1?'km':'个'}}</span>
@@ -108,14 +132,14 @@
         <template v-else-if="no===20 && simpleMirror">
           <label v-for="part in ['电调','折叠','加热']" :key="part">{{part}}<select class="ce-binary" :aria-label="part" :value="mirrorText.includes(part)?'●':'✕'" @change="mirrorChange(part,$event.target.value)"><option value="✕">无</option><option value="●">有</option></select></label>
         </template>
+        <template v-else-if="supportSeats">
+          <label v-for="(seat,i) in supportSeats" :key="seat.name">{{seat.name}}<select class="ce-binary" :aria-label="seat.name+supportFeature" :value="seat.present?'●':'✕'" @change="supportChange(i,$event.target.value)"><option value="✕">无</option><option value="●">有</option></select></label>
+        </template>
         <template v-else>
           <select v-if="choices && !custom" class="ce-main-choice" :value="value" aria-label="配置" @change="choose"><option v-for="v in options" :key="v" :value="v">{{label(v)}}</option><option value="__custom__">自定义填写…</option></select>
           <input v-else type="text" aria-label="配置自定义值" :value="value" @change="send($event.target.value.trim() || '✕')">
           <small v-if="[1,20,37].includes(no) && !absent(value)">保留原文；{{no===20?'分项未完整展开，请核对后选择配置。':'请核对后填写明确的数值和单位。'}}</small>
-          <div v-if="no===35 && !absent(value)" class="ce-seat-adjust">
-            <label v-for="(seat,i) in seats" :key="seat.name">{{seat.name}}<select :aria-label="seat.name+'调节方式'" :value="seat.mode || ''" :disabled="!seatDetail.editable" @change="seatChange(i,'mode',$event.target.value)"><option value="" disabled>待核</option><option>手调</option><option>电调</option></select><input type="number" min="2" max="30" step="1" placeholder="未注明" :aria-label="seat.name+'调节方向'" :value="seat.count" :disabled="!seatDetail.editable" @change="seatChange(i,'count',$event.target.value)">向</label>
-          </div>
-          <small v-if="no===35 && seatDetail.hint">{{seatDetail.hint}}</small>
+          <small v-if="[46,47].includes(no)">原文座位未完整说明，请核对后选择主驾、副驾或前排配置。</small>
         </template>
       </div>`
   };
@@ -130,7 +154,7 @@
         const cells = kind === 'snapshot' ? model.cells : model.items;
         const rows = computed(() => {
           revision.value;
-          return [...cells].sort((a,b)=>(a.no===45?36.5:a.no)-(b.no===45?36.5:b.no)).flatMap(c => {
+          return [...cells].sort((a,b)=>configurationOrderKey(a.no)-configurationOrderKey(b.no)).flatMap(c => {
             if (c.merged_into || Number(c.no)===2) return [];
             if (c.no===36) {
               const rows = ['通风','加热','按摩','头枕音响'].map(f=>({cell:c,key:'36-'+f,name:'座椅'+f,subs:['主驾'+f,'副驾'+f]}));

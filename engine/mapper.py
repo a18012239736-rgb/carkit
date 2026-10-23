@@ -529,6 +529,11 @@ def n_seat_adjust(raw, i, cfg):
     return from_raw(raw, i)
 
 
+def n_seat_support(raw, i, cfg):
+    from .seat_adjust import support_from_raw
+    return support_from_raw(raw, i, cfg['support_feature'])
+
+
 _SEAT_FUNCS = ["加热", "通风", "按摩"]
 
 
@@ -738,6 +743,7 @@ NORMALIZERS = {
     "usb": n_usb,
     "wireless_charge": n_wireless_charge,
     "seat_adjust": n_seat_adjust,
+    "seat_support": n_seat_support,
     "seat_func": n_seat_func,
     "seat_memory": n_seat_memory,
     "speaker_count": n_speaker,
@@ -753,6 +759,9 @@ def map_raw_to_ladder(raw: RawTable, rules) -> dict:
         no, vt = item["no"], item.get("normalize", "bool")
         rows = item.get("source_rows", [])
         row_absent = rows and not _has_row(raw, rows)
+        if vt == 'seat_support':
+            from .seat_adjust import support_source_rows
+            row_absent = not support_source_rows(raw, item['support_feature'])
         fn = NORMALIZERS.get(vt, n_bool)
         values = []
         airbag_comps = []

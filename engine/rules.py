@@ -9,7 +9,7 @@ RULES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules")
 
 def display_order_key(no):
     """Business display order: seat memory follows the expanded seat features."""
-    return 36.5 if int(no) == 45 else int(no)
+    return {45: 36.5, 46: 35.1, 47: 35.2, 48: 22.5}.get(int(no), int(no))
 
 
 def _load(name):

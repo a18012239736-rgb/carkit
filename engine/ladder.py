@@ -1,8 +1,8 @@
 """ladder — RawTable → 竞品阶梯 Ladder（41项×N版型）+ md 渲染"""
 from __future__ import annotations
 import datetime
-from .models import Ladder, LadderItem
-from .mapper import map_raw_to_ladder
+from .models import Ladder, LadderItem, RawTable
+from .mapper import map_raw_to_ladder, n_text
 from .powertrain import energy_types, not_applicable
 from .rules import display_order_key
 
@@ -38,6 +38,34 @@ def build_ladder(raw, rules, model: str = "", date: str = "", series_id: str = "
                   date=date or datetime.date.today().isoformat(),
                   source=f"汽车之家 config/series/{series_id or raw.series_id}.html 现抓",
                   trims=trims, items=items, evidence={"raw": raw.to_dict()})
+
+
+def upgrade_ladder(ladder, rules):
+    """Recover new items on normal loads; frozen plans retain their saved rules."""
+    from .seat_adjust import upgrade_ladder_support
+    upgrade_ladder_support(ladder)
+    cfg = rules.items_by_no.get(48)
+    if not cfg or ladder.item(48) is not None:
+        return ladder
+    raw = None
+    try:
+        saved = ladder.evidence.get('raw') if isinstance(ladder.evidence, dict) else None
+        if isinstance(saved, dict):
+            raw = RawTable.from_dict(saved)
+    except (KeyError, TypeError, ValueError, IndexError, AttributeError):
+        pass
+    values = []
+    for trim in ladder.trims:
+        matches = [i for i, source in enumerate(raw.trims) if source.short == trim['name']] if raw else []
+        if not matches and raw:
+            matches = [i for i, source in enumerate(raw.trims)
+                       if source.short.rstrip('版') == trim['name'].rstrip('版')]
+        values.append(n_text(raw, matches[0], cfg) if len(matches) == 1
+                      else '[待定]旧文件未记录车机芯片，请核对补录')
+    ladder.items.append(LadderItem(no=48, name=cfg['name'], values=values,
+                                  row_absent=raw is not None and raw.row(*cfg['source_rows']) is None,
+                                  note=cfg['fill_rule']))
+    return ladder
 
 
 def _airbag_display(counts, comps):

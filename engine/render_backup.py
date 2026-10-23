@@ -6,19 +6,29 @@ import re
 from .rules import display_order_key
 
 VERDICT_MARK = {"多": "**多**", "少": "**少**", "同": "同", "豁免": "豁免", "不计": "不计"}
+BOOLEAN_LABELS = {
+    11: '电动吸合门', 13: '电动后备箱', 14: '车顶行李架', 15: '主动闭合式进气格栅',
+    19: '后雨刷', 27: '方向盘加热', 28: '方向盘记忆', 40: '热泵空调',
+    41: '后排出风口', 43: '车载冰箱', 44: '感应雨刮',
+}
 
 
 def _configuration_label(no, value):
     """Format evidence for reading, never normalize the calculation values."""
+    from .differ import _standard_configuration
     from .seat_adjust import parse
+    value = _standard_configuration(value)
     text = str(value or '').strip()
     if text in {'', '✕', '×', 'X', '-', '—', '无', '无配置'}:
         return '无'
     if '[待' in text or text == '不适用':
         return text
-    if text.startswith('○'):
-        return '选配：' + _configuration_label(no, text[1:].replace('(选装)', ''))
     text = text.lstrip('●').strip()
+    if no in BOOLEAN_LABELS:
+        label = BOOLEAN_LABELS[no]
+        if text in ('', '有', '支持', '是', '标配'):
+            return label
+        return text if label in text else label+'（'+text.strip('()（）')+'）'
     if no == 3:
         voltage = re.search(r'(\d+(?:\.\d+)?)\s*[Vv]', text)
         return voltage[1]+'V' if voltage else '800V' if text in {'', '有', '支持', '高压平台', '高压快充'} else text
@@ -79,7 +89,7 @@ def _configuration_difference(no, left, right):
 def format_configurations(cells, groups):
     """Apply ladder wording after pricing; UI and both exports share the result."""
     from .differ import MORE, LESS, SAME, _has, _merge_seat_labels, BACKUP_MORE_ORDER, BACKUP_LESS_ORDER
-    affected = {3, 18, 20, 21, 22, 29, 34, 35}
+    affected = {3, 18, 20, 21, 22, 29, 34, 35, 46, 47, 48} | BOOLEAN_LABELS.keys()
     cells_by_pair = {}
     for cell in cells:
         cells_by_pair.setdefault(cell['pair'], {})[cell['no']] = cell
@@ -91,8 +101,7 @@ def format_configurations(cells, groups):
         if verdict not in (MORE, LESS, SAME):
             continue  # Keep the original pending / exemption explanation.
         difference = _configuration_difference(no, left, right)
-        option_notes = ''.join(re.findall(r' (?:左侧|右侧)选装按无配置计', cell['display']))
-        cell['display'] = verdict+' '+difference+option_notes
+        cell['display'] = verdict+' '+difference
         if verdict in (MORE, LESS):
             summary = difference
             if no == 3:
@@ -101,6 +110,9 @@ def format_configurations(cells, groups):
             cell['backup_more'], cell['backup_less'] = (summary, '') if verdict == MORE else ('', summary)
     for pi, group in enumerate(groups):
         pair_cells = cells_by_pair.get(pi, {})
+        if chip := pair_cells.get(48):
+            group['chip_comparison'] = (_configuration_label(48, chip['self_config']) + ' vs ' +
+                                        _configuration_label(48, chip['comp_config']))
         for side, order, field in (('more', BACKUP_MORE_ORDER, 'backup_more'), ('less', BACKUP_LESS_ORDER, 'backup_less')):
             labels = {no: cell[field] for no, cell in pair_cells.items() if cell[field]}
             group[side] = _merge_seat_labels([labels[no] for no in order+sorted(labels.keys()-set(order)) if no in labels])
@@ -168,11 +180,16 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
     money_row("config_adv", "配置优势（元）")
     money_row("flat_adv", "拉平指导价优势（元）")
     money_row("overall", "综合竞争力（元）")
+
+    def safe(text):
+        text = html.escape(str(text)).replace('|', '&#124;')
+        return re.sub(r'([\\`*_\[\]~])', r'\\\1', text).replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br>')
+
+    if any(g.get('chip_comparison') for g in groups):
+        lines.append("| 车机芯片（暂不赋值） | " + " | ".join(
+            safe(g.get('chip_comparison') or '—') for g in groups) + " |")
     for field, model in (('self_options', self_model), ('comp_options', comp_model)):
         if any(g.get(field) for g in groups):
-            def safe(text):
-                text = html.escape(str(text)).replace('|', '&#124;')
-                return re.sub(r'([\\`*_\[\]~])', r'\\\1', text).replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br>')
             lines.append(f"| {safe(model)}选装（仅展示，不参与赋值） | " + " | ".join(
                 '<br>'.join(safe(option) for option in g.get(field, []) or []) or '—' for g in groups) + " |")
     lines.append("")

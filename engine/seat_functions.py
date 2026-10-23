@@ -27,6 +27,9 @@ def _front_scopes(phrase, *, legacy=False, previous_mapping=False):
 
 def from_text(front='', rear='', headrest='', *, legacy=False, front_scope_known=False, headrest_scope_known=False,
               previous_mapping=False):
+    if not legacy and not previous_mapping:
+        from .differ import _standard_configuration
+        front, rear, headrest = (_standard_configuration(value) for value in (front, rear, headrest))
     out = empty()
     for text, seats in ((front, ('主驾', '副驾')), (rear, ('二排',))):
         text = str(text)
@@ -41,7 +44,7 @@ def from_text(front='', rear='', headrest='', *, legacy=False, front_scope_known
                         out[seat + feature] = ('[待定]请确认头枕音响座位' if feature == '头枕音响'
                             and seat != '二排' and not front_scope_known
                             and not any(scope in phrase for scope in ('主驾','副驾','前排','主副','驾驶位')) else '●')
-    if headrest:
+    if headrest and headrest not in ('✕', '×', '-', '无', '无配置'):
         if not legacy and not previous_mapping:
             headrest = str(headrest).replace('（', '(').replace('）', ')')
         scopes = ('二排',) if '二排' in headrest or '后排' in headrest else _front_scopes(headrest, legacy=legacy, previous_mapping=previous_mapping)
@@ -57,6 +60,8 @@ def from_text(front='', rear='', headrest='', *, legacy=False, front_scope_known
 
 
 def normalize(value):
+    from .differ import _standard_configuration
+    value = _standard_configuration(value)
     if isinstance(value, dict) and all(key in value for key in SUBS):
         return value
     if isinstance(value, dict):

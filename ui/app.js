@@ -82,6 +82,7 @@ function configurationChoices(no, kind='ladder') {
     6:['悬架软硬调节','悬架高低调节','悬架软硬+高低调节','空气悬架','魔毯悬架'],
     23:['4G','5G'],34:['织物','仿皮','真皮','翻毛皮','NAPPA真皮'],
     43:['●'],44:['●'],45:['主驾座椅记忆','副驾座椅记忆','前排座椅记忆'],
+    46:['主驾腿托','副驾腿托','前排腿托'],47:['主驾腰托','副驾腰托','前排腰托'],
   };
   return choices[no]?base.concat(choices[no]):null;
 }
@@ -166,7 +167,7 @@ function seatSubLabel(sub){
   return m?`座椅${m[2]} · ${m[1]}`:sub;
 }
 function configurationOrderKey(no){
-  return Number(no)===45?36.5:Number(no);
+  return ({45:36.5,46:35.1,47:35.2,48:22.5})[no] ?? Number(no);
 }
 function configurationDisplayOrder(items){
   return [...items].sort((a,b)=>configurationOrderKey(a.no)-configurationOrderKey(b.no));
@@ -1074,6 +1075,10 @@ function renderDiff(res) {
       return `<td>${v == null ? `<span class="dim">${esc(reason(g,k))}</span>` : fmtMoney(v)}</td>`;
     }).join("") + "</tr>";
   h += money("config_adv", "配置优势（元）") + money("flat_adv", "拉平指导价优势（元）") + money("overall", "综合竞争力（元）");
+  if (groups.some(g => g.chip_comparison)) {
+    h += '<tr><th class="backup-label">车机芯片（暂不赋值）</th>' + groups.map(g =>
+      `<td>${esc(g.chip_comparison || '—')}</td>`).join('') + '</tr>';
+  }
   for (const [field, model] of [['self_options', res.self_model || '本品'], ['comp_options', res.comp_model || '竞品']]) {
     if (groups.some(g => g[field]?.length)) {
       h += `<tr><th class="backup-label">${esc(model)}选装<br><span class="dim">仅展示，不参与赋值</span></th>` + groups.map(g =>

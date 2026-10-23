@@ -22,6 +22,7 @@
 .vue-config-editor .ce-table td:last-child { border-right:0; }
 .vue-config-editor .ce-table tbody tr:last-child td { border-bottom:0; }
 .vue-config-editor .ce-table td { overflow:visible; max-width:none; }
+.vue-config-editor .ce-table td:nth-child(n+3) { padding-left:10px; padding-right:10px; }
 .vue-config-editor .ce-table thead th {
   position:sticky;
   top:0;
@@ -34,6 +35,7 @@
   font-weight:600;
   letter-spacing:0;
 }
+.vue-config-editor .ce-table thead th:nth-child(n+3) { white-space:normal; overflow-wrap:anywhere; }
 .vue-config-editor .ce-table th:first-child,
 .vue-config-editor .ce-table td:first-child {
   position:sticky;
@@ -85,14 +87,19 @@
 .vue-config-editor .ce-seat-functions,
 .vue-config-editor .ce-seat-adjust { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; }
 .vue-config-editor .ce-cell { min-width:210px; font-size:12px; }
+.vue-config-editor .ce-table td > .ce-cell,
+.vue-config-editor .ce-table td > .ce-seat-functions { width:220px; min-width:0; max-width:220px; }
 .vue-config-editor .ce-seat-functions .ce-cell { min-width:0; }
-.vue-config-editor .ce-rear-functions { display:grid; grid-template-columns:repeat(2,max-content); }
+.vue-config-editor .ce-seat-functions,
+.vue-config-editor .ce-seat-adjust,
+.vue-config-editor .ce-seat-support { flex-direction:column; align-items:flex-start; }
 .vue-config-editor label { display:inline-flex; align-items:center; gap:6px; color:#556574; white-space:nowrap; font-size:12px; }
 .vue-config-editor .ce-cell > small {
   flex-basis:100%;
-  max-width:360px;
+  max-width:100%;
   color:#8b6429;
   white-space:normal;
+  overflow-wrap:anywhere;
   line-height:1.6;
 }
 .vue-config-editor .ce-seat-adjust { flex-basis:100%; }
@@ -115,10 +122,10 @@
   font-variant-numeric:tabular-nums;
 }
 #main .vue-config-editor select { padding-right:25px !important; background-position:right 7px center; background-size:11px; }
-#main .vue-config-editor .ce-binary { min-width:66px !important; max-width:260px; }
-#main .vue-config-editor .ce-main-choice { max-width:360px; }
+#main .vue-config-editor .ce-binary { min-width:66px !important; max-width:170px; }
+#main .vue-config-editor .ce-main-choice { max-width:100%; }
 #main .vue-config-editor input[type=number] { width:85px !important; }
-#main .vue-config-editor input[type=text] { width:220px !important; }
+#main .vue-config-editor input[type=text] { width:100% !important; min-width:0; }
 #main .vue-config-editor .ce-seat-adjust select { width:74px !important; }
 #main .vue-config-editor .ce-seat-adjust input { width:78px !important; }
 #main .vue-config-editor input[type=checkbox] {
@@ -132,7 +139,7 @@
 #main .vue-config-editor textarea {
   box-sizing:border-box;
   width:100%;
-  min-width:220px;
+  min-width:0;
   min-height:90px;
   padding:9px 10px;
   border:1px solid #d8e1e6;
@@ -157,3 +164,5 @@
   opacity:1;
 }
 .vue-config-editor td > small { display:block; margin-top:6px; color:var(--muted,#71808d); font-weight:400; line-height:1.6; }
+.vue-config-editor .ce-seat-source { width:100%; white-space:normal; }
+.vue-config-editor .ce-seat-source summary { padding:3px 0; color:var(--dim); font-size:11px; }
