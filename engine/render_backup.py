@@ -69,7 +69,7 @@ def _configuration_difference(no, left, right):
     a, b = _configuration_label(no, left), _configuration_label(no, right)
     if no == 48:
         detail = a+'('+b+')' if a != b else a
-        return detail+"芯片"
+        return detail
     if a == b:
         return a
     if no == 35:
