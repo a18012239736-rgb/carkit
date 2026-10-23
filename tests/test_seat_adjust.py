@@ -103,12 +103,12 @@ def test_raw_direction_count_uses_only_standard_motion_not_lumbar():
     cell = Cell(dot='●', text='前后调节', subs=[Cell(dot='●', text='靠背调节'),
         Cell(dot='●', text='高低调节(2向)'), Cell(dot='●', text='腿托调节'),
         Cell(dot='●', text='腰部支撑(4向)'), Cell(dot='○', text='腿部支撑调节(4向)')])
-    assert seat_adjust.raw_directions(cell) == 8
+    assert seat_adjust.raw_directions(cell) == 6
     assert seat_adjust.raw_directions(Cell(dot='○', text='10向电动')) is None
     assert seat_adjust.raw_directions(Cell(dot='●', text='腰部支撑(4向)')) is None
 
 
-@pytest.mark.parametrize('height,legrest,expected', [(4, '●', 10), (2, '○', 6), (2, '●', 8)])
+@pytest.mark.parametrize('height,legrest,expected', [(4, '●', 8), (2, '○', 6), (2, '●', 6)])
 def test_confirmed_directions_ignore_support_and_optional_legrest(height, legrest, expected):
     cell = Cell(dot='●', text='前后调节', subs=[
         Cell(dot='●', text='靠背调节'), Cell(dot='●', text=f'高低调节({height}向)'),
@@ -120,11 +120,11 @@ def test_confirmed_directions_ignore_support_and_optional_legrest(height, legres
 
 
 def test_motion_axes_are_fixed_deduplicated_and_height_requires_actual_annotation():
-    assert seat_adjust.raw_directions(Cell(dot='●', text='前后调节(4向)+靠背调节(4向)+腿托调节(4向)')) == 6
+    assert seat_adjust.raw_directions(Cell(dot='●', text='前后调节(4向)+靠背调节(4向)+腿托调节(4向)')) == 4
     assert seat_adjust.raw_directions(Cell(dot='●', text='前后调节', subs=[
         Cell(dot='●', text='前后调节(2向)'), Cell(dot='●', text='腿托调节'),
         Cell(dot='●', text='腿部支撑调节(2向)'),
-    ])) == 4
+    ])) == 2
     for height in ('高低调节', '高低调节(0向)', '[待定]高低调节(2向)'):
         assert seat_adjust.raw_directions(Cell(dot='●', text='前后调节+靠背调节+'+height)) is None
     assert seat_adjust.raw_directions(Cell(dot='●', text='高低调节(2向)', subs=[Cell(dot='●', text='高低调节(4向)')])) is None
@@ -145,14 +145,17 @@ def test_screenshot_mapping_keeps_direction_and_electric_valuation_without_notes
         ])]),
     ])
     source = raw.to_dict()
-    assert seat_adjust.from_raw(raw, 0) == '主驾10向电调+副驾6向电调'
-    assert map_raw_to_ladder(raw, Rules())[35]['values'] == ['主驾10向电调+副驾6向电调']
+    assert seat_adjust.from_raw(raw, 0) == '主驾8向电调+副驾6向电调'
+    mapped = map_raw_to_ladder(raw, Rules())
+    assert mapped[35]['values'] == ['主驾8向电调+副驾6向电调']
+    assert mapped[46]['values'] == ['主驾腿托']
+    assert mapped[47]['values'] == ['前排腰托']
     features = {f['key']: f['values'] for f in stage_one.features(raw, excluded_rows=[])}
-    assert features['主驾座椅调节'] == [['主驾10向电调']]
+    assert features['主驾座椅调节'] == [['主驾8向电调']]
     assert features['副驾座椅调节'] == [['副驾6向电调']]
     assert not any('支撑' in key for key in features)
     assert '副座椅调节方式：腿托调节' in stage_one._option_lines(raw, 0)
-    assert dynamic_delta(35, seat_adjust.from_raw(raw, 0), '主副手调') == 1100
+    assert dynamic_delta(35, seat_adjust.from_raw(raw, 0), '主副手调') == 1000
     assert raw.to_dict() == source
 
 
@@ -179,8 +182,11 @@ def test_unknown_height_is_not_indirectly_defaulted_even_for_manual_seats(electr
 
 def test_q05_raw_map_stage_and_calculation_share_the_same_evidence():
     raw = rawschema.detect_and_load(str(Path(__file__).parent/'golden'/'raw-Q05-汽车之家全表-2026-09-11.json'))
-    values = map_raw_to_ladder(raw, Rules())[35]['values']
-    assert [seat_adjust.components(value) for value in values] == [(10, 0), (10, 2), (10, 2), (12, 2), (12, 2), (10, 2), (12, 2)]
+    mapped = map_raw_to_ladder(raw, Rules())
+    values = mapped[35]['values']
+    assert [seat_adjust.components(value) for value in values] == [(10, 0)] + [(10, 2)]*6
+    assert mapped[46]['values'] == ['✕', '✕', '✕', '副驾腿托', '副驾腿托', '✕', '副驾腿托']
+    assert mapped[47]['values'] == ['✕', '主驾腰托', '主驾腰托', '前排腰托', '前排腰托', '主驾腰托', '前排腰托']
     assert seat_adjust.legacy_summary(raw, 0) == '主副手调'
     assert seat_adjust.legacy_summary(raw, 1) == '主副电调(主含腰撑4向)'
     assert seat_adjust.legacy_summary(raw, 3) == '主副电调(主腰撑4向/副腿托+腰撑4向)'
@@ -188,9 +194,9 @@ def test_q05_raw_map_stage_and_calculation_share_the_same_evidence():
     assert '座椅电调' not in features
     assert features['主驾座椅调节'] == [['主驾6向手调']] + [['主驾6向电调']]*6
     assert features['副驾座椅调节'] == [[f'副驾{count}向'+('手调' if i == 0 else '电调')]
-                                    for i, count in enumerate((4, 4, 4, 6, 6, 4, 6))]
-    assert dynamic_delta(35, values[3], values[1]) == 100
-    assert dynamic_delta(35, values[1], values[3]) == -100
+                                    for i, count in enumerate((4, 4, 4, 4, 4, 4, 4))]
+    assert dynamic_delta(35, values[3], values[1]) == 0
+    assert dynamic_delta(35, values[1], values[3]) == 0
     assert dynamic_delta(35, values[1], '主副手调') == 800
 
 

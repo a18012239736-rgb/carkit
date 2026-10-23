@@ -65,9 +65,15 @@ def q05_mapping():
 def test_self_seat_default_is_explicit_and_competitor_none_remains_available():
     run_editor(r"""
 load('function configurationChoices(', 'function addConfigurationChoices(');
-const baseline=values[0],label='默认手调（主驾6向＋副驾4向）';
+const baseline=values[0];
 assert(definition.template.includes(':kind="kind"'));
 assert(definition.template.includes('choices(row.cell.no,kind)'));
+const seatTemplate=Cell.template.match(/<template v-else-if="no===35">([\s\S]*?)<\/template>/)[1];
+assert(!seatTemplate.includes('ce-main-choice'));
+assert(seatTemplate.includes(':value="seat.mode || \'\'"'));
+assert(seatTemplate.includes(':value="seat.count"'));
+assert(seatTemplate.includes('<details v-if="!seatDetail.editable"'));
+assert(seatTemplate.includes('aria-label="座椅调节原文" :value="value"'));
 const selfChoices=context.configurationChoices(35,'snapshot');
 assert(!selfChoices.includes('✕'));
 assert(selfChoices.includes(baseline));
@@ -81,20 +87,29 @@ for(let no=1;no<=45;no++) {
 for(const value of ['✕','×','X','-','无','',null,undefined]) {
   const self=makeCell(value,35,undefined,undefined,'snapshot');await self.settle();
   assert.strictEqual(self.cell.value.value,baseline);
-  assert.strictEqual(self.cell.label(self.cell.value.value),label);
+  assert.strictEqual(self.cell.seatDetail.value.editable,true);
   assert.deepStrictEqual(self.cell.seats.value.map(s=>s.count),[6,4]);
   assert.deepStrictEqual(self.cell.seats.value.map(s=>s.mode),['手调','手调']);
   assert.deepStrictEqual(self.emitted,[]);  // Viewing alone does not alter stored data.
 }
 const oldManual=makeCell(values[1],35,undefined,undefined,'snapshot');await oldManual.settle();
 assert.strictEqual(oldManual.cell.value.value,values[1]);
-assert.strictEqual(oldManual.cell.label(values[1]),label);
+assert.deepStrictEqual(oldManual.cell.seats.value.map(s=>s.count),[6,4]);
+assert.deepStrictEqual(oldManual.cell.seats.value.map(s=>s.mode),['手调','手调']);
 for(const value of [values[2],'[待定]','不适用']) {
   const self=makeCell(value,35,undefined,undefined,'snapshot');await self.settle();
   assert.strictEqual(self.cell.value.value,value);assert.deepStrictEqual(self.emitted,[]);
 }
 const rival=makeCell('✕');await rival.settle();
-assert.strictEqual(rival.cell.value.value,'✕');assert.strictEqual(rival.cell.label('✕'),'无');
+assert.strictEqual(rival.cell.value.value,'✕');
+assert.strictEqual(rival.cell.seatDetail.value.editable,false);
+assert(rival.cell.seats.value.every(s=>s.count===null && s.mode===null));
+const unknown=makeCell('[待定]');await unknown.settle();
+assert.strictEqual(unknown.cell.seatDetail.value.editable,false);
+assert(unknown.cell.seatDetail.value.hint);
+const correctSource=seatTemplate.match(/@change="(send\(\$event.target.value.trim\(\)[^"]+)"/)[1];
+vm.runInNewContext(correctSource,{...unknown.cell,$event:{target:{value:' '+baseline+' '}}});
+assert.deepStrictEqual(unknown.emitted,[baseline]);
 const other=makeCell('✕',34,undefined,undefined,'snapshot');
 assert.strictEqual(other.cell.value.value,'✕');
 const oldNotApplicable=makeCell('不适用',34);
@@ -108,7 +123,7 @@ for(const kind of ['snapshot','ladder']) {
   assert.deepStrictEqual(usb.emitted,[]);
 }
 const self=makeCell('✕',35,undefined,undefined,'snapshot');await self.settle();
-self.cell.choose({target:{value:baseline}});
+self.cell.seatChange(0,'mode','手调');
 assert.deepStrictEqual(self.emitted,[baseline]);
 """, ['主驾6向手调+副驾4向手调', '主驾手调+副驾手调',
         '主驾6向电调+副驾4向手调', '[待定]', '不适用', '✕'])
@@ -123,7 +138,7 @@ for(let i=0;i<values.length;i++) {
   const instance=makeCell(editor.get(model.items[0],i));await instance.settle();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(instance.cell.seats.value)),backend[values[i]].seats);
   assert.strictEqual(instance.cell.seatDetail.value.editable,true);
-  assert.deepStrictEqual(instance.cell.seats.value.map(s=>s.count),[6,[4,4,4,6,6,4,6][i]]);
+  assert.deepStrictEqual(instance.cell.seats.value.map(s=>s.count),[6,4]);
   assert.deepStrictEqual(instance.cell.seats.value.map(s=>s.mode),i===0?['手调','手调']:['电调','电调']);
   assert.deepStrictEqual(instance.emitted,[]);
 }
@@ -165,7 +180,8 @@ const model={trims:[{name:'A'}],items:[{no:35,values:[values[0]]}]};
 const editor=mountModel(model),row=model.items[0];
 const instance=makeCell(editor.get(row,0),35,undefined,value=>editor.change(row,0,'',value));
 await instance.settle();
-assert.strictEqual(instance.cell.label(values[0]),'主驾10向电调，副驾4向手调');
+assert.deepStrictEqual(instance.cell.seats.value.map(s=>s.count),[10,4]);
+assert.deepStrictEqual(instance.cell.seats.value.map(s=>s.mode),['电调','手调']);
 assert.strictEqual(row.values[0],values[0]); // Display alone never changes the manual notes.
 instance.cell.seatChange(0,'count','12');
 const expected='●主驾12向电调+副驾4向手调'+backend[values[0]].suffix;

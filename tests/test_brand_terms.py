@@ -39,12 +39,14 @@ def test_live_roof_and_seat_terms_are_visible_but_never_double_priced():
         parsed = seat_adjust.parse(seat)
         assert parsed['editable']
         assert parsed['seats'][0]['count'] == 6
-        assert parsed['seats'][1]['count'] == (10 if flagship else 4)
+        assert parsed['seats'][1]['count'] == (8 if flagship else 4)
+        assert mapped[46]['values'][i] == ('副驾腿托' if flagship else '✕')
+        assert mapped[47]['values'][i] == '前排腰托'
         assert [s['mode'] for s in parsed['seats']] == ['电调', '电调']
         # Separate source labels retain the term; existing direction/roof rules still apply.
         assert dynamic_delta(18, roof, n_sunroof(raw, i, {}, include_terms=False)) == 0
         assert dynamic_delta(35, seat, seat_adjust.from_raw(raw, i, include_terms=False)) == 0
-    assert dynamic_delta(35, mapped[35]['values'][4], mapped[35]['values'][3]) == 300
+    assert dynamic_delta(35, mapped[35]['values'][4], mapped[35]['values'][3]) == 200
     assert not mapped[18]['row_absent'] and not mapped[35]['row_absent']
 
 

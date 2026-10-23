@@ -122,11 +122,13 @@ def test_optional_and_pending_descriptions_do_not_become_standard_or_change_amou
     render_backup.format_configurations(cells, groups)
     by_no = {cell['no']: cell for cell in cells}
     assert by_no[18]['verdict'] == '同' and not by_no[18]['backup_more'] and not by_no[18]['backup_less']
-    assert ('选装' in by_no[18]['self_val'] or '选配' in by_no[18]['self_val'] or '○' in by_no[18]['self_val'])
-    assert by_no[29]['self_val'].startswith('8.8寸仪表')
-    assert '全液晶' in by_no[29]['self_val']
-    assert any(marker in by_no[29]['self_val'] for marker in ('○', '选装', '选配'))
-    assert not by_no[29]['self_val'].startswith('全液晶')
+    assert by_no[18]['self_val'] == '无' and by_no[18]['self_config'] == '✕'
+    assert by_no[18]['self_source_config'] == '○不可开启全景(光感天幕)(选装)'
+    assert by_no[29]['self_val'] == '8.8寸仪表'
+    assert by_no[29]['self_config'] == '8.8寸仪表'
+    assert by_no[29]['self_source_config'] == '8.8寸仪表(○全液晶选装)'
+    assert by_no[29]['verdict'] == '少'
+    assert not any(marker in by_no[29]['display'] for marker in ('○', '选装', '选配'))
     assert '[待定]' in by_no[35]['self_val'] and by_no[35]['verdict'] == '不计'
     assert not by_no[35]['backup_more'] and not by_no[35]['backup_less']
     assert [cell['verdict'] for cell in cells] == [cell['verdict'] for cell in original_cells]

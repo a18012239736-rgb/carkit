@@ -28,8 +28,10 @@ def test_q05_old_cache_recovers_directions_without_overwriting_manual_edits(tmp_
         updated = Ladder.from_dict(refreshed['ladder'])
         assert updated.item(35).values[1] == manual
         assert [s['count'] for s in parse(updated.item(35).values[0])['seats']] == [6, 4]
-        assert [s['count'] for s in parse(updated.item(35).values[3])['seats']] == [6, 6]
+        assert [s['count'] for s in parse(updated.item(35).values[3])['seats']] == [6, 4]
         assert [s['mode'] for s in parse(updated.item(35).values[3])['seats']] == ['电调', '电调']
+        assert updated.item(46).values[3] == '副驾腿托'
+        assert updated.item(47).values[3] == '前排腰托'
         assert updated.trims == before['trims']
         for previous in before['items']:
             if previous['no'] != 35:
@@ -54,7 +56,7 @@ def test_legacy_seat_functions_without_subrows_show_known_and_unknown_values():
     assert expanded['主驾通风'][0] == '●'
     assert expanded['副驾通风'][0] == '✕'
     assert all('[待定]' in values[1] for values in expanded.values())
-    assert all('○前排座椅加热' in values[2] for values in expanded.values())
+    assert all(values[2] == '✕' for values in expanded.values())
     assert all('舒适座椅包' in values[3] for values in expanded.values())
     assert all(values[4] == '✕' for values in expanded.values())
     assert Ladder.from_dict(ladder.to_dict()).to_dict() == ladder.to_dict()

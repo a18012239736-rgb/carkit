@@ -74,4 +74,6 @@ def test_optional_screen_not_compared_as_standard():
     b = Ladder(trims=[{'name':'B'}], items=[LadderItem(no=21,name='中控屏',values=['○15.6寸'])])
     cell = next(c for c in diff(a,b,[{'self_trim':'A','comp_trim':'B'}],Rules()) if c['no']==21)
     assert cell['verdict']=='多'
-    assert '选装按无配置计' in cell['display']
+    assert cell['self_config'] == '12.3寸' and cell['comp_config'] == '✕'
+    assert cell['comp_source_config'] == '○15.6寸'
+    assert cell['display'] == '多 12.3(✕)'

@@ -61,10 +61,12 @@ def test_original_markers_and_seat_counting_are_traceable_without_price_changes(
     row = evidence(result, 35)
     original = next(row for row in row['right']['rows'] if row['name'] == '主/副驾驶座电动调节')
     assert original['cell'] == {'dot': '', 'text': '主●/副○', 'subs': []}
-    assert row['right']['source_value'] == '主驾10向电调+副驾6向手调'
-    assert any('主驾原文：' in line and '＝10向' in line for line in row['right']['calculation'])
+    assert row['right']['source_value'] == '主驾8向电调+副驾6向手调'
+    assert any('主驾原文：' in line and '＝8向' in line for line in row['right']['calculation'])
     assert any('副驾原文：' in line and '＝6向' in line for line in row['right']['calculation'])
-    assert any('腰撑、侧翼等不计方向' in line for line in row['right']['calculation'])
+    assert any('腿托、腰托、侧翼不计方向' in line for line in row['right']['calculation'])
+    assert evidence(result, 46)['right']['source_value'] == '主驾腿托'
+    assert evidence(result, 47)['right']['source_value'] == '前排腰托'
     assert any('1个电调座椅' in line for line in row['right']['calculation'])
     assert row['right']['source_url'] == 'https://www.autohome.com.cn/config/series/1234.html'
     assert row['right']['captured_at'] == raw.scraped_at

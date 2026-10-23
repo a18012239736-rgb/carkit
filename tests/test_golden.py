@@ -29,21 +29,35 @@ PAIRS = [{"self_trim": "基础型", "comp_trim": "405Max"},
 VERDICTS = ("多", "少", "同", "豁免", "不计")
 
 # Historical Markdown discarded seat direction totals. The original raw fixture
-# explicitly has driver 6 directions, passenger 4 (6 with standard leg rest).
-# Keep that historical document unchanged; assert the corrected row exactly.
+# explicitly has driver 6 directions and passenger 4; leg/lumbar supports are
+# independent configurations and add no adjustment directions or valuation.
+# Keep that historical document unchanged; assert the current rules exactly.
 SEAT_VALUES = [
     '主驾6向手调+副驾4向手调',
     '主驾6向电调+副驾4向电调',
     '主驾6向电调+副驾4向电调',
-    '主驾6向电调+副驾6向电调',
-    '主驾6向电调+副驾6向电调',
     '主驾6向电调+副驾4向电调',
-    '主驾6向电调+副驾6向电调',
+    '主驾6向电调+副驾4向电调',
+    '主驾6向电调+副驾4向电调',
+    '主驾6向电调+副驾4向电调',
 ]
-SEAT_VERDICTS = ['同', '少', '少']
+SEAT_VERDICTS = ['同', '同', '同']
 SEAT_DISPLAYS = [f'{verdict} 主6副4电调({SEAT_VALUES[i]})'
                  for verdict, i in zip(SEAT_VERDICTS, (1, 3, 6))]
-SEAT_LESS = ['', SEAT_DISPLAYS[1][2:], SEAT_DISPLAYS[2][2:]]
+SUPPORT_LESS = [['主驾腰托'], ['副驾腿托', '前排腰托'], ['副驾腿托', '前排腰托']]
+CURRENT_LADDER_VALUES = {
+    35: SEAT_VALUES,
+    46: ['✕', '✕', '✕', '副驾腿托', '副驾腿托', '✕', '副驾腿托'],
+    47: ['✕', '主驾腰托', '主驾腰托', '前排腰托', '前排腰托', '主驾腰托', '前排腰托'],
+    48: ['✕', '✕', '✕', '✕', '✕', '天玑P1 Ultra', '天玑P1 Ultra'],
+}
+# Optional upgrades remain in source_config, not in the standard-equipment display.
+STANDARD_DISPLAYS = {
+    (6, 1): '同 ✕(✕)',
+    (9, 1): '同 基础L2(基础L2)',
+    (18, 1): '同 ✕(✕)',
+    (21, 1): '多 15.6(14.6)',
+}
 
 
 # ---------- golden md 解析 ----------
@@ -153,9 +167,10 @@ def test_rawschema_both_formats():
 
 def test_ladder_matches_golden(rules, comp_ladder):
     golden = parse_golden_ladder(os.path.join(GOLDEN, "竞品阶梯-启源Q05-2026-09-11.md"))
+    assert CURRENT_LADDER_VALUES.keys() <= {item.no for item in comp_ladder.items}
     mismatches = []
     for it in comp_ladder.items:
-        g = SEAT_VALUES if it.no == 35 else golden.get(it.no)
+        g = CURRENT_LADDER_VALUES.get(it.no, golden.get(it.no))
         if it.no == 5:
             # Confirmed front/rear head markers each count one; retain both in the trace.
             g = ['4(主副+前侧)', '6(+前气帘+后气帘)', '6', '6', '6', '6', '6']
@@ -165,6 +180,7 @@ def test_ladder_matches_golden(rules, comp_ladder):
         if g is None:
             continue
         mine = it.values
+        assert len(mine) == len(g), f'#{it.no} 版型数量不一致'
         # 归一比较：✕(无行)≈✕；○软硬调节(选装) 等全串比较
         for i, (mv, gv) in enumerate(zip(mine, g)):
             mv_n = str(mv).replace("✕(无行)", "✕")
@@ -184,6 +200,10 @@ def test_verdicts_100_percent(rules, diff_cells):
         mv = mine.get(key)
         if mv != gv:
             errors.append(f"#{key[0]} 组{key[1]+1}: golden={gv} mine={mv} (golden显示: {gdisp})")
+    for no, expected in {46: ['同', '少', '少'], 47: ['少', '少', '少'],
+                         48: ['不计', '不计', '不计']}.items():
+        # The historical snapshot has no confirmed chip; do not invent a model.
+        assert [mine.get((no, pi)) for pi in range(len(PAIRS))] == expected
     assert not errors, "判定词不一致:\n" + "\n".join(errors)
 
 
@@ -218,6 +238,7 @@ def test_displays_match(diff_cells):
         if key not in golden:
             continue
         gv, gdisp = golden[key]
+        gdisp = STANDARD_DISPLAYS.get(key, gdisp)
         if c['no'] == 35:
             gv, gdisp = SEAT_VERDICTS[key[1]], SEAT_DISPLAYS[key[1]]
         if c['no'] == 33:
@@ -258,11 +279,14 @@ def test_backup_rows_match(rules, self_ladder, comp_ladder, diff_cells):
         new_less = {c['backup_less'] for c in diff_cells if c['pair']==i and c['no']>41}
         historical_less = [v for v in g['less'] if '座椅' not in v and v not in new_less]
         expected_less = [v for v in gl if '座椅' not in v]
-        if SEAT_LESS[i]:
-            expected_less.append(SEAT_LESS[i])
         seat_amounts = [d['amount'] for d in g['valuation']['detail'] if d['no'] == 35]
-        assert seat_amounts == ([] if i == 0 else [-100])
-        assert 35 not in g['valuation']['missing']
+        assert seat_amounts == []
+        support_less = [c['backup_less'] for c in diff_cells
+                        if c['pair'] == i and c['no'] in (46, 47) and c['backup_less']]
+        assert support_less == SUPPORT_LESS[i]
+        assert all(label in g['less'] for label in support_less)
+        assert not {35, 46, 47, 48}.intersection(g['valuation']['missing'])
+        assert not {46, 47, 48}.intersection(d['no'] for d in g['valuation']['detail'])
         if historical_less != expected_less:
             errors.append(f"组{i+1} 少栏:\n  mine  ={historical_less}\n  golden={expected_less}")
     assert not errors, "BACKUP 多/少栏不一致:\n" + "\n".join(errors)

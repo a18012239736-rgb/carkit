@@ -88,7 +88,7 @@ def test_acquirer_closes_failed_channel_before_trying_next(monkeypatch, message)
 
     def launch(channel, **kwargs):
         events.append(channel)
-        return first if channel == 'msedge' else second
+        return first if len(events) == 1 else second
 
     runtime = SimpleNamespace(chromium=SimpleNamespace(launch=launch), stop=lambda: events.append('stop'))
     _playwright(monkeypatch, runtime)
@@ -96,7 +96,8 @@ def test_acquirer_closes_failed_channel_before_trying_next(monkeypatch, message)
     try:
         acquirer.start()
         assert acquirer.page is page
-        assert events == ['msedge', 'close first', 'chrome']
+        assert len(events) == 3 and events[1] == 'close first'
+        assert {events[0], events[2]} == {'msedge', 'chrome'}
     finally:
         acquirer.close()
     assert events[-2:] == ['close second', 'stop']

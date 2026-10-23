@@ -451,7 +451,10 @@ def upgrade_ladder_support(ladder):
                         from_raw(raw, source_i, legacy_support=True, include_terms=False),
                         from_raw(raw, source_i, legacy_display=True),
                         from_raw(raw, source_i, legacy_display=True, include_terms=False),
-                        from_raw(raw, source_i, legacy_price_notes=True), legacy_summary(raw, source_i)]
+                        from_raw(raw, source_i, legacy_price_notes=True)]
+            # A legacy manual default without adjustment rows is not source evidence.
+            if raw.row('主座椅调节方式', '副座椅调节方式') is not None:
+                previous.append(legacy_summary(raw, source_i))
             if seat and i < len(seat.values) and old in previous:
                 seat.values[i] = from_raw(raw, source_i)
         except errors:

@@ -37,10 +37,10 @@ def test_q05_mixed_auto_generations_and_manual_seats_survive_reordered_cache(tmp
         '主驾6向手调+副驾4向手调',
         '主驾6向电调+副驾4向电调',
         '主驾6向电调+副驾4向电调',
-        '主驾6向电调+副驾6向电调',
-        '主驾6向电调+副驾6向电调',
         '主驾6向电调+副驾4向电调',
-        '主驾6向电调+副驾6向电调',
+        '主驾6向电调+副驾4向电调',
+        '主驾6向电调+副驾4向电调',
+        '主驾6向电调+副驾4向电调',
     ]
     assert [from_raw(raw, i) for i in range(7)] == current_values
 
