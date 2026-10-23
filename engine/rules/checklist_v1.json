@@ -26,7 +26,7 @@
     {"no": 20, "name": "外后视镜", "md_name": "外后视镜功能", "fill_rule": "一般写电调、折叠、加热三项有无", "value_type": "mirror", "normalize": "mirror", "source_rows": ["外后视镜功能"]},
     {"no": 21, "name": "中控屏", "md_name": "中控屏幕尺寸", "fill_rule": "写**寸中控", "value_type": "screen", "normalize": "screen_center", "source_rows": ["中控屏幕尺寸", "中控彩色屏幕"], "merge": true},
     {"no": 22, "name": "副驾娱乐屏", "md_name": "副驾娱乐屏尺寸", "fill_rule": "写**寸副驾屏", "value_type": "screen", "normalize": "screen_passenger", "source_rows": ["副驾娱乐屏尺寸", "副驾驶位屏幕尺寸", "副驾娱乐屏"], "car_kb_gap": true},
-    {"no": 48, "name": "车机芯片", "fill_rule": "记录车机/座舱芯片型号，双方并列展示，暂不赋值", "value_type": "text", "normalize": "text", "display_only": true, "source_rows": ["车机智能芯片", "车机芯片", "座舱芯片", "智能座舱芯片"]},
+    {"no": 48, "name": "车机芯片", "fill_rule": "记录车机/座舱芯片型号；型号差异统一放入多项，保留双方型号，不判定性能高低；相同型号不列差异；暂不赋值", "value_type": "text", "normalize": "text", "display_only": true, "enum_aliases": {"8295P": "8295"}, "source_rows": ["车机智能芯片", "车机芯片", "座舱芯片", "智能座舱芯片"]},
     {"no": 23, "name": "车联网", "fill_rule": "标注4G还是5G", "value_type": "network", "normalize": "network", "source_rows": ["4G/5G网络", "车联网"], "merge": true},
     {"no": 24, "name": "车载KTV", "fill_rule": null, "value_type": "bool", "normalize": "bool", "source_rows": ["车载KTV"], "exempt_from_valuation": true},
     {"no": 25, "name": "方向盘材质", "fill_rule": "仿皮、真皮、翻毛皮；pjy写「皮质」=仿皮", "value_type": "material", "normalize": "material", "source_rows": ["方向盘材质"]},

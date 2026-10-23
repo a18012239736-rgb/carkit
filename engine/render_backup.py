@@ -67,6 +67,9 @@ def _configuration_difference(no, left, right):
     from .differ import _has
     from .seat_adjust import parse
     a, b = _configuration_label(no, left), _configuration_label(no, right)
+    if no == 48:
+        detail = a+'('+b+')' if a != b else a
+        return detail+"芯片"
     if a == b:
         return a
     if no == 35:
@@ -110,9 +113,6 @@ def format_configurations(cells, groups):
             cell['backup_more'], cell['backup_less'] = (summary, '') if verdict == MORE else ('', summary)
     for pi, group in enumerate(groups):
         pair_cells = cells_by_pair.get(pi, {})
-        if chip := pair_cells.get(48):
-            group['chip_comparison'] = (_configuration_label(48, chip['self_config']) + ' vs ' +
-                                        _configuration_label(48, chip['comp_config']))
         for side, order, field in (('more', BACKUP_MORE_ORDER, 'backup_more'), ('less', BACKUP_LESS_ORDER, 'backup_less')):
             labels = {no: cell[field] for no, cell in pair_cells.items() if cell[field]}
             group[side] = _merge_seat_labels([labels[no] for no in order+sorted(labels.keys()-set(order)) if no in labels])
@@ -185,9 +185,6 @@ def render_md(self_model, comp_model, groups, cells, rules_version="v1",
         text = html.escape(str(text)).replace('|', '&#124;')
         return re.sub(r'([\\`*_\[\]~])', r'\\\1', text).replace('\r\n', '\n').replace('\r', '\n').replace('\n', '<br>')
 
-    if any(g.get('chip_comparison') for g in groups):
-        lines.append("| 车机芯片（暂不赋值） | " + " | ".join(
-            safe(g.get('chip_comparison') or '—') for g in groups) + " |")
     for field, model in (('self_options', self_model), ('comp_options', comp_model)):
         if any(g.get(field) for g in groups):
             lines.append(f"| {safe(model)}选装（仅展示，不参与赋值） | " + " | ".join(

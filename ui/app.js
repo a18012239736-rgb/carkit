@@ -1075,10 +1075,6 @@ function renderDiff(res) {
       return `<td>${v == null ? `<span class="dim">${esc(reason(g,k))}</span>` : fmtMoney(v)}</td>`;
     }).join("") + "</tr>";
   h += money("config_adv", "配置优势（元）") + money("flat_adv", "拉平指导价优势（元）") + money("overall", "综合竞争力（元）");
-  if (groups.some(g => g.chip_comparison)) {
-    h += '<tr><th class="backup-label">车机芯片（暂不赋值）</th>' + groups.map(g =>
-      `<td>${esc(g.chip_comparison || '—')}</td>`).join('') + '</tr>';
-  }
   for (const [field, model] of [['self_options', res.self_model || '本品'], ['comp_options', res.comp_model || '竞品']]) {
     if (groups.some(g => g[field]?.length)) {
       h += `<tr><th class="backup-label">${esc(model)}选装<br><span class="dim">仅展示，不参与赋值</span></th>` + groups.map(g =>

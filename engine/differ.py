@@ -106,6 +106,20 @@ def cmp_num(sv, cv, unit="", **kw):
     return SAME, _fmt_num(s, unit), _fmt_num(c, unit)
 
 
+def cmp_chip(sv, cv, item):
+    """Group confirmed chip differences under 'more' without ranking models."""
+    def model(value):
+        text = re.sub(r'高通|骁龙|Qualcomm|Snapdragon|车机|智能座舱|座舱|芯片|[\s：:_-]+',
+                      '', _strip_dot(str(value)), flags=re.I).upper().removeprefix('SA')
+        return item.get('enum_aliases', {}).get(text, text)
+    ss, cs = _strip_dot(str(sv)), _strip_dot(str(cv))
+    s, c = model(sv), model(cv)
+    absent = {'', '✕', '×', 'X', '—', '无', '无配置'}
+    if s == c or (s in absent and c in absent):
+        return SAME, ss, cs
+    return MORE, ss, cs
+
+
 def _fmt_num(x, unit=""):
     s = f"{x:g}"
     return s + unit if unit else s
@@ -348,10 +362,10 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
                 continue
 
             if no == 48:
-                # Chip model names alone do not establish a performance ranking.
-                ss, cs = _strip_dot(str(sv)), _strip_dot(str(cv))
-                cells.append(_cell(no, pi, NA, f'{ss} vs {cs}（暂不赋值）',
-                                   sv, cv, 'display_only', '', '', source_values))
+                verdict, ss, cs = cmp_chip(sv, cv, item)
+                disp = f'{verdict} 车机芯片：{ss}({cs})'
+                bm, bl = _backup_display(no, verdict, sv, cv, ss, cs, item['name'])
+                cells.append(_cell(no, pi, verdict, disp, sv, cv, '', bm, bl, source_values))
                 continue
 
             # ---- #24 车载KTV 豁免 ----
@@ -677,6 +691,10 @@ def _backup_display(no, verdict, sv, cv, ss, cs, name=''):
     """返回 (backup_more, backup_less)；非多/少为空串"""
     if verdict not in (MORE, LESS):
         return "", ""
+    if no == 48:
+        # Both sides stay visible even when one side has no recorded chip.
+        out = f'{ss}({cs})芯片'
+        return (out, '') if verdict == MORE else ('', out)
     sv, cv = _standard_configuration(sv), _standard_configuration(cv)
     if not _has(sv):
         ss = '✕'
@@ -847,6 +865,6 @@ def assemble_backup(cells, pairs, self_model, comp_model, self_prices, comp_pric
             g["valuation"] = {"config_adv": None, "flat_adv": None, "overall": None,
                               "config_adv_reason": '缺少配置赋值规则', "flat_adv_reason": '缺少配置赋值规则',
                               "overall_reason": '缺少配置赋值规则',
-                              "missing": sorted((set(more_map) | set(less_map)) - {46, 47})}
+                              "missing": sorted((set(more_map) | set(less_map)) - {46, 47, 48})}
         groups.append(g)
     return groups
