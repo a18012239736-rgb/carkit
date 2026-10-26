@@ -399,7 +399,17 @@ function renderCaptureFilters(filters) {
   let panel = $('#capture-filters');
   if (!panel) { panel=document.createElement('details'); panel.id='capture-filters'; panel.className='card workspace-details'; $('#stage-trims').before(panel); }
   panel.hidden=false; panel.open=true;
-  panel.innerHTML='<summary>选择抓取条件</summary><p class="dim">按需选择，可多选。未勾选的条件不作限制。</p>'+filters.map((f,i)=>`<fieldset class="capture-filter"><legend>${esc(f.label)}</legend><div class="capture-options">${f.values.map(v=>`<label class="capture-option"><input type="checkbox" data-filter="${i}" data-value="${esc(v.value)}"><span>${esc(v.label)}</span></label>`).join('')}</div></fieldset>`).join('')+'<div class="capture-actions"><button id="btn-confirm-capture" class="primary">开始抓取</button><span id="capture-filter-status" class="status" role="status" aria-live="polite"></span></div>';
+  const hint=filters.some(f=>f.values.some(v=>v.exclusive))?'在售年款可多选，停售年款每次选择一个。未勾选的条件不作限制。':'按需选择，可多选。未勾选的条件不作限制。';
+  panel.innerHTML='<summary>选择抓取条件</summary><p class="dim">'+hint+'</p>'+filters.map((f,i)=>`<fieldset class="capture-filter"><legend>${esc(f.label)}</legend><div class="capture-options">${f.values.map(v=>`<label class="capture-option"><input type="checkbox" data-filter="${i}" data-value="${esc(v.value)}"><span>${esc(v.label)}</span></label>`).join('')}</div></fieldset>`).join('')+'<div class="capture-actions"><button id="btn-confirm-capture" class="primary">开始抓取</button><span id="capture-filter-status" class="status" role="status" aria-live="polite"></span></div>';
+  panel.querySelectorAll('[data-filter]').forEach(input=>input.onchange=()=>{
+    if(!input.checked)return;
+    const filter=filters[+input.dataset.filter];
+    const exclusive=filter.values.find(v=>String(v.value)===input.dataset.value)?.exclusive;
+    panel.querySelectorAll(`[data-filter="${input.dataset.filter}"]`).forEach(other=>{
+      const otherExclusive=filter.values.find(v=>String(v.value)===other.dataset.value)?.exclusive;
+      if(other!==input && (exclusive || otherExclusive))other.checked=false;
+    });
+  });
   $('#btn-confirm-capture').onclick=async()=>{
     const selected={}; $$('#capture-filters [data-filter]:checked').forEach(x=>(selected[filters[+x.dataset.filter].label] ||= []).push(x.dataset.value));
     const button=$('#btn-confirm-capture'), status=$('#capture-filter-status');
@@ -408,7 +418,8 @@ function renderCaptureFilters(filters) {
     try {
       const result=await api('stage_apply_filters', selected);
       handleStageResult(result);
-      status.textContent=result.needs_browser ? '请完成浏览器验证后继续' : '配置读取完成';
+      status.className=result.ok?'status':'status err';
+      status.textContent=result.needs_browser ? '请完成浏览器验证后继续' : result.ok?'配置读取完成':result.error || '抓取失败，请重试';
     } catch (error) {
       status.className='status err'; status.textContent=error.message || '抓取失败，请重试';
     } finally { button.disabled=false; button.textContent='开始抓取'; }
@@ -952,6 +963,7 @@ async function rebuildPairs() {
   box.querySelectorAll(".pair-row").forEach((r) => r.remove());
   box.dataset.selfTrims = '[]';
   box.dataset.compTrims = '[]';
+  box.dataset.guidePrices = '{}';
   syncActionButtons();
   const competitor=$('#diff-mode').value==='competitor';
   const [sn, ld] = [competitor ? $('#diff-left-vehicle').value : $("#diff-snapshot").value, $("#diff-ladder").value];
@@ -964,7 +976,24 @@ async function rebuildPairs() {
   const ct = lres.ladder.trims.map((t) => t.name);
   box.dataset.selfTrims = JSON.stringify(st);
   box.dataset.compTrims = JSON.stringify(ct);
+  setPairGuidePrices('self', (competitor ? sres.ladder : sres.snapshot).trims);
+  setPairGuidePrices('comp', lres.ladder.trims);
   addPairRow(st, ct);
+}
+
+function updatePairGuidePrices(row) {
+  const prices=JSON.parse($('#pairs-editor').dataset.guidePrices || '{}');
+  for(const side of ['self','comp']) {
+    const guide=row.querySelector(`.pair-${side}-guide`);
+    if(guide)guide.textContent=fmtP(prices[side]?.[row.querySelector(`.pair-${side}`).value]);
+  }
+}
+
+function setPairGuidePrices(side, trims=[]) {
+  const box=$('#pairs-editor'), prices=JSON.parse(box.dataset.guidePrices || '{}');
+  prices[side]=Object.fromEntries(trims.map(trim=>[trim.name,trim.price_guide ?? null]));
+  box.dataset.guidePrices=JSON.stringify(prices);
+  box.querySelectorAll('.pair-row').forEach(updatePairGuidePrices);
 }
 
 $("#btn-add-pair").addEventListener("click", () => {
@@ -978,18 +1007,20 @@ function addPairRow(st, ct) {
   row.className = "pair-row";
   const [left, right] = $('#diff-mode').value === 'competitor' ? ['左侧', '右侧'] : ['本品', '竞品'];
   row.innerHTML = `
-    <div class="pair-side"><label><span>${left}版型</span><select class="pair-self" aria-label="${left}配对版型">${st.map((t) => `<option>${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${left}底价（元）</span><input class="pair-self-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${left}底价（元）"></label></div>
+    <div class="pair-side"><label><span class="pair-trim-heading"><span>${left}版型</span><span class="pair-guide-price pair-self-guide" aria-live="polite"></span></span><select class="pair-self" aria-label="${left}配对版型">${st.map((t) => `<option>${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${left}底价（元）</span><input class="pair-self-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${left}底价（元）"></label></div>
     <span class="dim pair-vs">VS</span>
-    <div class="pair-side"><label><span>${right}版型</span><select class="pair-comp" aria-label="${right}配对版型">${ct.map((t) => `<option>${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${right}底价（元）</span><input class="pair-comp-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${right}底价（元）"></label></div>
+    <div class="pair-side"><label><span class="pair-trim-heading"><span>${right}版型</span><span class="pair-guide-price pair-comp-guide" aria-live="polite"></span></span><select class="pair-comp" aria-label="${right}配对版型">${ct.map((t) => `<option>${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${right}底价（元）</span><input class="pair-comp-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${right}底价（元）"></label></div>
     <button class="pair-del" aria-label="删除此配对组" title="删除此配对组">✕</button>`;
   row.querySelector(".pair-del").addEventListener("click", () => {row.remove();invalidateDiff();});
   row.addEventListener('input', event => {event.target.setCustomValidity('');invalidateDiff();});
   row.addEventListener('change', event => {
     const side = event.target === row.querySelector('.pair-self') ? 'self' : event.target === row.querySelector('.pair-comp') ? 'comp' : '';
     if (side) {const input=row.querySelector(`.pair-${side}-floor`);input.value='';input.setCustomValidity('');}
+    updatePairGuidePrices(row);
     invalidateDiff();
   });
   $("#pairs-editor").appendChild(row);
+  updatePairGuidePrices(row);
   syncActionButtons();
 }
 
@@ -1185,6 +1216,7 @@ async function selectCompetitor() {
   $('#pairs-editor').querySelectorAll('.pair-row').forEach(r=>r.remove());
   $('#pairs-editor').dataset.selfTrims='[]';
   $('#pairs-editor').dataset.compTrims='[]';
+  $('#pairs-editor').dataset.guidePrices='{}';
   syncActionButtons();
   const filename=$('#diff-vehicle').value;
   if(!filename) return;
@@ -1303,12 +1335,13 @@ $('#diff-save-self').onclick=async()=>{
     if(!ST.leftLadder||!ST.leftLadderPath)return toast('请先选择左侧竞品','err');
     collectLadderEdits('#diff-self-table',ST.leftLadder);
     const r=await api('save_ladder_edit',ST.leftLadderPath,ST.leftLadder);
-    if(r&&r.ok){invalidateDiff();if(!ST.plan)await rebuildPairs();toast('左侧竞品修正已保存，请运行对比','ok');if(revision===ST.selfEditorRevision && !$('#diff-self-editor').hidden)returnToComparisonPairs();}
+    if(r&&r.ok){invalidateDiff();if(!ST.plan)await rebuildPairs();else if(revision===ST.selfEditorRevision)setPairGuidePrices('self',ST.leftLadder.trims);toast('左侧竞品修正已保存，请运行对比','ok');if(revision===ST.selfEditorRevision && !$('#diff-self-editor').hidden)returnToComparisonPairs();}
     return;
   }
   if(!comparisonSelf)return;
   const r=await api('save_snapshot',comparisonSelfPath,comparisonSelf);
   if(r?.ok===false)return;
+  if(revision===ST.selfEditorRevision)setPairGuidePrices('self',comparisonSelf.trims);
   invalidateDiff();
   toast('本品修正已保存，请运行对比','ok');
   if(revision===ST.selfEditorRevision && !$('#diff-self-editor').hidden)returnToComparisonPairs();
@@ -1327,7 +1360,7 @@ $('#diff-save-competitor').onclick=async()=>{
   const ladder=ST.ladder;
   collectLadderEdits('#diff-ladder-table-wrap');
   const r=await api('save_ladder_edit',ST.ladderPath,ST.ladder);
-  if(r && r.ok){ invalidateDiff(); toast('竞品修正已保存，请运行对比','ok'); if(ladder===ST.ladder && !$('#diff-competitor-editor').hidden)returnToComparisonPairs(); }
+  if(r && r.ok){ if(ladder===ST.ladder)setPairGuidePrices('comp',ladder.trims); invalidateDiff(); toast('竞品修正已保存，请运行对比','ok'); if(ladder===ST.ladder && !$('#diff-competitor-editor').hidden)returnToComparisonPairs(); }
 };
 $('#back-to-diff').onclick=async()=>{
   collectLadderEdits();

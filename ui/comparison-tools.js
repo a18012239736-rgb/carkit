@@ -75,11 +75,13 @@
       const box=$('#pairs-editor');
       box.querySelectorAll('.pair-row').forEach(row=>row.remove());
       box.dataset.selfTrims=JSON.stringify(left);box.dataset.compTrims=JSON.stringify(right);
+      setPairGuidePrices('self',inputs.left.trims);setPairGuidePrices('comp',inputs.right.trims);
       for(const pair of inputs.pairs) {
         addPairRow(left,right);
         const row=box.querySelectorAll('.pair-row');const current=row[row.length-1];
         current.querySelector('.pair-self').value=pair.self_trim;
         current.querySelector('.pair-comp').value=pair.comp_trim;
+        updatePairGuidePrices(current);
         current.querySelector('.pair-self-floor').value=pair.self_floor_price ?? '';
         current.querySelector('.pair-comp-floor').value=pair.comp_floor_price ?? '';
       }
