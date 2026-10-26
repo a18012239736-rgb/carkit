@@ -445,11 +445,15 @@ class Bridge:
             columns = []
             for entry in plan:
                 i, b = entry['target'], entry['base']
+                changes = stage_one._change_items(fs, i, b)
+                present, removed = stage_one._display_change_groups(fs, changes, i, b)
                 columns.append({
                     'name': raw.trims[i].short,
                     'price': raw.trims[i].price_guide,
                     'base': raw.trims[b].short if b is not None else None,
-                    'items': stage_one._compact_items(stage_one._change_items(fs, i, b), b),
+                    'items': stage_one._compact_items(changes, b),
+                    'display_items': stage_one._compact_items(present, b),
+                    'removed_items': stage_one._compact_items(removed, b),
                     'options': stage_one._option_lines(raw, i, excluded),
                 })
             return {'ok': True, 'model': raw.model, 'columns': columns}

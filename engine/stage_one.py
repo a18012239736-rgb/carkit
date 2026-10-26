@@ -357,6 +357,9 @@ def features(raw, excluded_rows=None):
     consumed=set()
     captured_electric = raw.row('主/副驾驶座电动调节') is not None
     raw = display_raw(raw, excluded_rows)
+    from .seat_adjust import _SUPPORTS, support_from_raw, support_source_rows
+    support_rows = {row.name for feature in _SUPPORTS for row in support_source_rows(raw, feature)}
+    consumed.update(support_rows - {'主座椅调节方式', '副座椅调节方式', '前排座椅功能'})
     # Preserve RawTable.row's first-match semantics for duplicate source rows.
     rows_by_name = {}
     for row in raw.rows:
@@ -615,7 +618,10 @@ def features(raw, excluded_rows=None):
                         remainder=clean(token)
                         for feature in matched:
                             remainder=re.sub(r'(?<!头枕)加热', '', remainder) if feature == '加热' else remainder.replace(feature, '')
-                        remainder=re.sub(r'\((?:仅驾驶位|仅主驾|主驾驶|副驾驶|主驾|副驾|主副驾|前排|后排)\)', '', remainder).strip()
+                        if name == '前排座椅功能':
+                            for pattern in _SUPPORTS.values():
+                                remainder = re.sub(r'(?:电动|手动)?(?:'+pattern+r')(?:调节)?(?:\(\d+向\))?', '', remainder)
+                        remainder=re.sub(r'\((?:仅)?(?:驾驶位|主驾驶|副驾驶|主驾|副驾|主副驾|前排|后排)\)', '', remainder).strip()
                         if _detail(remainder):
                             feats.append(name+'：'+(clean(token) if remainder.startswith('(') else remainder))
                 v.append(list(dict.fromkeys(feats)))
@@ -645,6 +651,17 @@ def features(raw, excluded_rows=None):
             # without depending on the position of unrelated source rows.
             key = (row.group, name, occurrence) if name_counts[name] > 1 else name
             add(key,[list(dict.fromkeys(_format_value(name, v) for v in vs)) for vs in values],scalar)
+    supports = []
+    for feature in _SUPPORTS:
+        values = []
+        for i in range(count):
+            label = support_from_raw(raw, i, feature)
+            values.append(['主驾'+feature, '副驾'+feature] if label == '前排'+feature else [] if label == '✕' else label.split('+'))
+        if any(values):
+            supports.append({'key': '座椅'+feature, 'values': values, 'scalar': False})
+    position = next((i+1 for i in range(len(out)-1, -1, -1)
+                     if out[i]['key'] in {'主驾座椅调节', '副驾座椅调节'}), len(out))
+    out[position:position] = supports
     return out
 
 
@@ -743,6 +760,119 @@ def _change_items(fs, trim_index, base_index):
     return items
 
 
+_NUMERIC_DISPLAY_FEATURES = set(RANGE_ROWS) | {
+    '电池能量(kWh)', '电池容量(kWh)', '电池容量(kW·h)', '气囊', '激光雷达',
+    '中控屏幕尺寸', '副驾驶位屏幕尺寸', '中控屏幕分辨率', '副驾驶位屏幕分辨率',
+    '扬声器数量', '车外扬声器数量', '对外放电', '手机无线充电', '4G/5G网络',
+    'USB/Type-C接口数量', '车机系统内存(GB)', '车机系统存储(GB)', '芯片总算力',
+    '高压平台', '辅助驾驶系统内存(GB)', '辅助驾驶系统存储(GB)',
+    '摄像头数量', '车内摄像头数量', '前方感知摄像头像素', '环境感知摄像头像素', '环视摄像头像素',
+    '超声波雷达数量', '毫米波雷达数量', '激光雷达线数',
+}
+_DISPLAY_LEVELS = {
+    '影像': (('倒车影像',), ('360', '全景'), ('540',)),
+    '辅助驾驶': (('定速巡航',), ('全速自适应巡航', 'L2'), ('高速NOA',), ('城市NOA',)),
+    '近光灯光源': (('卤素',), ('氙气',), ('LED',)),
+    '远光灯光源': (('卤素',), ('氙气',), ('LED',)),
+    '方向盘位置调节': (('手动', '手调'), ('电动', '电调')),
+    '方向盘': (('塑料',), ('仿皮', '皮质'), ('真皮',), ('翻毛皮',), ('NAPPA',)),
+    '空调温度控制方式': (('手动',), ('自动',)),
+    '氛围灯': (('单色',), ('多色',)),
+    '座椅材质': (('织物',), ('仿皮', '皮质'), ('真皮',), ('翻毛皮',), ('NAPPA',)),
+}
+
+
+def _display_reduced(feature, trim_index, base_index):
+    """Only order known specifications; model names and brands have no numeric rank."""
+    comparison = feature.get('comparison_values', feature['values'])
+    if set(comparison[trim_index]) < set(comparison[base_index]):
+        return True
+    name = feature['key'][1] if isinstance(feature['key'], tuple) else feature['key']
+    current, previous = ('+'.join(feature['values'][i]) for i in (trim_index, base_index))
+    levels = _DISPLAY_LEVELS.get(name)
+    if levels:
+        ranks = [max((rank for rank, tokens in enumerate(levels)
+                      if any(token.casefold() in text.casefold() for token in tokens)), default=None)
+                 for text in (current, previous)]
+        if name == '方向盘':
+            pairs = [(ranks[0], ranks[1])] if all(rank is not None for rank in ranks) else []
+            pairs.append(tuple(int('多功能' in text) for text in (current, previous)))
+            return all(a <= b for a, b in pairs) and any(a < b for a, b in pairs)
+        return all(rank is not None for rank in ranks) and ranks[0] < ranks[1]
+    if name in {'主驾座椅调节', '副驾座椅调节'}:
+        from .seat_adjust import parse
+        index = 0 if name.startswith('主') else 1
+        seats = [parse(text)['seats'][index] for text in (current, previous)]
+        pairs = [(seats[0]['count'], seats[1]['count'])]
+        if all(seat['mode'] in {'手调', '电调'} for seat in seats):
+            pairs.append(tuple(int(seat['mode'] == '电调') for seat in seats))
+        pairs = [(a, b) for a, b in pairs if a is not None and b is not None]
+    elif name == '轮毂':
+        sizes = [re.findall(r'R\s*(\d+)', text) for text in (current, previous)]
+        sizes = [values * 2 if len(values) == 1 else values for values in sizes]
+        if not sizes[0] or len(sizes[0]) != len(sizes[1]):
+            return False
+        pairs = list(zip(map(int, sizes[0]), map(int, sizes[1])))
+        if all('铝' in text or '钢' in text for text in (current, previous)):
+            pairs.append(tuple(int('铝' in text) for text in (current, previous)))
+    elif name == '仪表':
+        sizes = [re.search(r'(\d+(?:\.\d+)?)寸', text) for text in (current, previous)]
+        if not all(sizes):
+            return False
+        pairs = [(Decimal(sizes[0][1]), Decimal(sizes[1][1])),
+                 tuple(int('全液晶' in text) for text in (current, previous))]
+    elif name == '车内化妆镜':
+        if not all('主' in text or '副' in text for text in (current, previous)):
+            return False
+        pairs = [tuple(int(token in text) for text in (current, previous)) for token in ('主', '副', '照明')]
+    elif name == '天窗类型':
+        return ('不可开启全景' in current and '可开启全景' in previous and '不可开启' not in previous)
+    elif name in _NUMERIC_DISPLAY_FEATURES:
+        number = r'\d+(?:\.\d+)?'
+        if re.sub(number, '#', current) != re.sub(number, '#', previous):
+            return False
+        pairs = list(zip(map(Decimal, re.findall(number, current)), map(Decimal, re.findall(number, previous))))
+    else:
+        return False
+    return bool(pairs) and all(a <= b for a, b in pairs) and any(a < b for a, b in pairs)
+
+
+def _display_change_groups(fs, changes, trim_index, base_index):
+    present, removed = [], []
+    by_key = {feature['key']: feature for feature in fs}
+    for key, value in changes:
+        if base_index is None:
+            present.append((key, value))
+            continue
+        feature = by_key[key]
+        name = key[1] if isinstance(key, tuple) else key
+        current, previous = (feature['values'][i] for i in (trim_index, base_index))
+        reduced = bool(current) and _display_reduced(feature, trim_index, base_index)
+        if not current:
+            removed.append((key, '+'.join(previous)))
+        elif name == '外后视镜功能':
+            comparison = feature['comparison_values']
+            added = [v for v in comparison[trim_index] if v not in comparison[base_index]]
+            lost = [v for v in comparison[base_index] if v not in comparison[trim_index]]
+            if added:
+                present.append((key, '外后视镜'+'+'.join(added)))
+            if lost:
+                removed.append((key, '外后视镜'+'+'.join(lost)))
+        elif not feature['scalar'] and (name in {'手机互联/映射', '前排座椅功能', '第二排座椅功能', '后排座椅功能', '电动后备厢', '电动座椅记忆', '座椅腿托', '座椅腰托'}
+                                         or (not reduced and (len(current) > 1 or len(previous) > 1))):
+            added = [v for v in current if v not in previous]
+            lost = [v for v in previous if v not in current]
+            if added:
+                present.append((key, '+'.join(added)))
+            if lost:
+                removed.append((key, '+'.join(lost)))
+        elif reduced:
+            removed.append((key, value))
+        else:
+            present.append((key, value))
+    return present, removed
+
+
 def _compact_seats(lines):
     result = []
     functions_order = ('通风', '加热', '按摩', '记忆')
@@ -788,20 +918,39 @@ def _compact_items(items, base_index):
                 positions[group_index] = len(grouped)
                 grouped.append(value)
             else:
-                grouped[positions[group_index]] += ('，' if key in {'主驾座椅调节', '副驾座椅调节'} else '+') + value
+                grouped[positions[group_index]] += '+' + value
         return _compact_seats(grouped)
     # Merge repeated rows and the two seat summaries. Comparison parentheses
     # retain the chosen baseline; unchanged rows stay omitted.
     grouped = []
     positions = {}
+    seat_changes = []
     for key, value in items:
         if key in {'主驾座椅调节', '副驾座椅调节'}:
+            seat_changes.append(value)
             key = ('主驾座椅调节', '副驾座椅调节')
         if key in positions:
-            grouped[positions[key]] += ('，' if key == ('主驾座椅调节', '副驾座椅调节') else '+') + value
+            grouped[positions[key]] += '+' + value
         else:
             positions[key] = len(grouped)
             grouped.append(value)
+    if seat_changes:
+        from .seat_adjust import difference_label
+        comparisons = [None if value.startswith('无（') else re.fullmatch(r'([^（）]+)（([^（）]+)）', value)
+                       for value in seat_changes]
+        paired = [match for match in comparisons if match]
+        if paired:
+            difference = difference_label('+'.join(match[1] for match in paired),
+                                          '+'.join(match[2] for match in paired))
+            if difference is not None:
+                labels, emitted = [], False
+                for value, match in zip(seat_changes, comparisons):
+                    if not match:
+                        labels.append(value)
+                    elif not emitted:
+                        labels.append(difference)
+                        emitted = True
+                grouped[positions[('主驾座椅调节', '副驾座椅调节')]] = '+'.join(label for label in labels if label)
     return _compact_seats(grouped)
 
 

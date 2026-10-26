@@ -89,7 +89,7 @@ def test_app_releases_browser_when_native_startup_fails(tmp_path, monkeypatch, f
     def fail(*args, **kwargs):
         raise RuntimeError('模拟窗口启动失败')
 
-    window = SimpleNamespace(events=SimpleNamespace(closed=Event()))
+    window = SimpleNamespace(events=SimpleNamespace(closed=Event(), before_show=Event()))
     webview = SimpleNamespace(create_window=fail if failure == 'window' else lambda *a, **k: window,
                               start=fail)
     monkeypatch.setitem(sys.modules, 'webview', webview)

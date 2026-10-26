@@ -16,6 +16,17 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64
+      - name: Read and validate version
+        id: version
+        shell: pwsh
+        run: |
+          $version = python -c "import tomllib; from pathlib import Path; from engine import __version__; assert tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']['version'] == __version__, 'Project version mismatch'; print(__version__)"
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read a consistent application version.' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match application version v$version."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "exe_name=carkit-$version.exe" >> $env:GITHUB_OUTPUT
       - name: Build and run regression tests
         shell: pwsh
         run: ./build/build_windows.ps1
@@ -24,8 +35,9 @@ jobs:
         run: |
           $target = Join-Path $env:RUNNER_TEMP 'standalone'
           New-Item -ItemType Directory -Path $target | Out-Null
-          Copy-Item dist/carkit.exe $target
-          $app = Start-Process (Join-Path $target 'carkit.exe') -ArgumentList (Join-Path $target 'data') -PassThru
+          $exeName = '${{ steps.version.outputs.exe_name }}'
+          Copy-Item (Join-Path 'dist' $exeName) $target
+          $app = Start-Process (Join-Path $target $exeName) -ArgumentList (Join-Path $target 'data') -PassThru
           try {
             $ready = $false
             for ($i = 0; $i -lt 60; $i++) {
@@ -40,8 +52,8 @@ jobs:
           }
       - uses: actions/upload-artifact@v4
         with:
-          name: carkit-windows-x64
-          path: dist/carkit.exe
+          name: carkit-${{ steps.version.outputs.version }}-windows-x64
+          path: dist/${{ steps.version.outputs.exe_name }}
           if-no-files-found: error
           retention-days: 7
       - name: Publish GitHub release
@@ -50,7 +62,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:GITHUB_REF_NAME dist/carkit.exe `
+          $exeName = '${{ steps.version.outputs.exe_name }}'
+          $notes = 'docs/release-v${{ steps.version.outputs.version }}.md'
+          $notesArgs = if (Test-Path -LiteralPath $notes) { @('--notes-file', $notes) } else {
+            @('--notes', "Windows 单文件版。下载 $exeName 后双击运行；carkit.exe 为相同内容的兼容文件名。")
+          }
+          gh release create $env:GITHUB_REF_NAME (Join-Path 'dist' $exeName) dist/carkit.exe `
             --title "产品小工具 $env:GITHUB_REF_NAME" `
-            --notes "Windows 单文件版。下载 carkit.exe 后双击运行。" `
-            --verify-tag
+            --verify-tag @notesArgs
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release publication failed.' }

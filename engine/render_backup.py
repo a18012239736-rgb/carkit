@@ -55,7 +55,7 @@ def _configuration_label(no, value):
     if no == 35:
         parsed = parse(value)
         if parsed['editable']:
-            return '，'.join(_seat_label(seat) for seat in parsed['seats'] if seat['count'] is not None or seat['mode'])
+            return '+'.join(_seat_label(seat) for seat in parsed['seats'] if seat['count'] is not None or seat['mode'])
     return text
 
 
@@ -65,7 +65,7 @@ def _seat_label(seat):
 
 def _configuration_difference(no, left, right):
     from .differ import _has
-    from .seat_adjust import parse
+    from .seat_adjust import difference_label
     a, b = _configuration_label(no, left), _configuration_label(no, right)
     if no == 48:
         detail = a+'('+b+')' if a != b else a
@@ -73,17 +73,9 @@ def _configuration_difference(no, left, right):
     if a == b:
         return a
     if no == 35:
-        s, c = parse(left), parse(right)
-        if s['editable'] and c['editable']:
-            changes = []
-            for current, previous in zip(s['seats'], c['seats']):
-                if current == previous:
-                    continue
-                label = _seat_label(current) if current['count'] is not None or current['mode'] else '无'
-                if previous['count'] is not None or previous['mode']:
-                    label += '（'+_seat_label(previous)+'）'
-                changes.append(label)
-            return '，'.join(changes)
+        difference = difference_label(left, right)
+        if difference is not None:
+            return difference or a
     if _has(str(left)) and _has(str(right)):
         return a+'('+b+')'
     return a if _has(str(left)) else b if _has(str(right)) else a+'('+b+')'

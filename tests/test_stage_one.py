@@ -55,9 +55,9 @@ def test_seat_directions_exclude_support_adjustments():
     md = stage_one.render(raw, [{"target": 0, "base": None}, {"target": 1, "base": 0}, {"target": 3, "base": 1}], excluded_rows=[])
     assert "主驾10向" not in md
     assert "副驾6向电调" not in md
-    assert "副驾4向电调" in md
+    assert "主驾电调+副驾电调（主驾手调+副驾手调）" in md
     assert "主驾4向腰托" not in md
     raw.row("主座椅调节方式").cells[1] = Cell(dot="●", text="前后调节", subs=[Cell(dot="●", text="靠背调节"), Cell(dot="●", text="高低调节(2向)"), Cell(dot="○", text="腰部支撑(4向)")])
     raw.row("主座椅调节方式").cells[0] = Cell(dot="●", text="前后调节", subs=[Cell(dot="●", text="靠背调节")])
     md = stage_one.render(raw, [{"target": 0, "base": None}, {"target": 1, "base": 0}], excluded_rows=[])
-    assert "主驾6向电调（主驾4向手调）" in md
+    assert "主驾6向电调+副驾电调（主驾4向手调+副驾手调）" in md

@@ -8,7 +8,7 @@ POSITION = r'(主(?:驾(?:驶(?:位|座)?)?)?|副(?:驾(?:驶(?:位|座)?)?)?)'
 
 
 def _clean(text):
-    return re.sub(r'\s+', '', text).replace('电动调节', '电调').replace('手动调节', '手调').replace('电动', '电调').replace('手动', '手调')
+    return re.sub(r'\s+', '', text).replace('＋', '+').replace('／', '/').replace('电动调节', '电调').replace('手动调节', '手调').replace('电动', '电调').replace('手动', '手调')
 
 
 def _notes(text):
@@ -95,6 +95,30 @@ def label(value, *, include_notes=False):
     ) + (parsed['suffix'] if include_notes else '')
 
 
+def difference_label(current, previous):
+    """Show changed seat fields with one shared comparison, without changing source values."""
+    parsed = [parse(re.sub(r'(?<=向)调节', '', str(value or ''))) for value in (current, previous)]
+    if not all(value['editable'] for value in parsed):
+        return None
+    current_labels, previous_labels = [], []
+    for seat, base in zip(parsed[0]['seats'], parsed[1]['seats']):
+        if seat == base:
+            continue
+        count_changed = seat['count'] != base['count']
+        mode_changed = seat['mode'] != base['mode']
+
+        def changed_fields(value):
+            if value['count'] is None and value['mode'] is None:
+                return value['name']+'调节未说明'
+            count = (str(value['count'])+'向' if value['count'] is not None else '方向未说明') if count_changed else ''
+            mode = (value['mode'] or '方式未说明') if mode_changed else ''
+            return value['name']+count+mode
+
+        current_labels.append(changed_fields(seat))
+        previous_labels.append(changed_fields(base))
+    return '+'.join(current_labels)+'（'+'+'.join(previous_labels)+'）' if current_labels else ''
+
+
 def components(value):
     text = str(value or '').strip()
     if text.lstrip('●') in EMPTY or text.startswith('○'):
@@ -111,6 +135,17 @@ def components(value):
 def raw_directions(cell, *, legacy_support=False):
     """Count only standard whole-seat motions; support adjustments are not axes."""
     from .stage_one import parts
+    # An explicit whole-seat total may have separate support subitems beside it.
+    totals = set()
+    for text in parts(cell):
+        if '[待' in text:
+            return None
+        body, _ = _notes(_clean(text))
+        total = re.fullmatch(r'(?:主驾|副驾|座椅)?(?:手调|电调)?(\d+)向(?:手调|电调|调节)*', body)
+        if total:
+            totals.add(int(total[1]))
+    if totals:
+        return next(iter(totals)) if len(totals) == 1 and min(totals) > 0 else None
     motions = {}
     pattern = '前后调节|靠背调节|高低调节' + ('|腿托调节|腿部支撑调节' if legacy_support else '')
     for text in parts(cell):
@@ -187,6 +222,15 @@ def raw_modes(electric, main=None, passenger=None, *, legacy_price_notes=False):
             explicit = parse(text if text.startswith(('主', '副')) else NAMES[i]+text.removeprefix('座椅'))
             if explicit['editable'] and explicit['seats'][i]['mode']:
                 modes[i] = explicit['seats'][i]['mode']
+            elif not legacy_price_notes:
+                explicit_modes = set()
+                for value in parts(cell):
+                    value = _clean(value)
+                    parsed = parse(value if value.startswith(('主', '副')) else NAMES[i]+value.removeprefix('座椅'))
+                    if parsed['editable'] and parsed['seats'][i]['mode']:
+                        explicit_modes.add(parsed['seats'][i]['mode'])
+                if explicit_modes:
+                    modes[i] = next(iter(explicit_modes)) if len(explicit_modes) == 1 else None
     return modes
 
 
@@ -229,6 +273,7 @@ def _support_positions(value, feature, default=(), *, named=False, absent=False,
     aliases = _SUPPORTS[feature]
     text = re.sub(r'\s+', '', str(value or '')).replace('（', '(').replace('）', ')')
     text = re.sub(r'主(?:驾)?(?:/|和|与|及)副(?:驾)?(?=[^驾●○✕×-]|$)', '主副', text)
+    text = re.sub(r'(?:前排|第一排)\((?:仅)?(主驾(?:驶(?:位|座)?)?|驾驶位|副驾(?:驶(?:位|座)?)?)\)', r'\1', text)
     if text.startswith('○') or '[待' in text:
         return set()
     positions, scope = set(), set(default)
@@ -236,7 +281,9 @@ def _support_positions(value, feature, default=(), *, named=False, absent=False,
         if re.search(r'后排|二排|第二排|第三排', phrase):
             scope = set()
             continue
-        scopes = list(_FRONT_SCOPE.finditer(phrase))
+        unrelated_notes = [note for note in re.finditer(r'\([^()]*\)', phrase) if not re.search(aliases, note[0])]
+        scopes = [entry for entry in _FRONT_SCOPE.finditer(phrase)
+                  if not any(note.start() <= entry.start() < note.end() for note in unrelated_notes)]
         matches = list(re.finditer(aliases, phrase))
         if not matches and named:
             matches = [re.search(r'$', phrase)]

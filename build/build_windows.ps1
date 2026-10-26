@@ -51,6 +51,10 @@ if (-not (Test-BuildPython $python)) {
     if ($LASTEXITCODE -ne 0) { throw "Unable to install Python build dependencies." }
 }
 
+$version = & $python -c "from engine import __version__; print(__version__)"
+if ($LASTEXITCODE -ne 0) { throw "Unable to read the application version." }
+$version = $version.Trim()
+
 Write-Host "[3/4] Run offline regression tests" -ForegroundColor Cyan
 & $python -m pytest tests/ -q
 if ($LASTEXITCODE -ne 0) { throw "Regression tests failed; packaging was stopped." }
@@ -72,6 +76,9 @@ if ($sizeMb -lt 20) {
 }
 New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
 Copy-Item -LiteralPath $exe -Destination $releaseExe -Force
+$versionedExe = Join-Path $root "dist\carkit-$version.exe"
+Copy-Item -LiteralPath $exe -Destination $versionedExe -Force
 
-Write-Host "Build complete: $exe" -ForegroundColor Green
+Write-Host "Build complete: $versionedExe" -ForegroundColor Green
+Write-Host "Compatibility copy: $exe" -ForegroundColor Green
 Write-Host "Release copy updated: $releaseExe ($sizeMb MB)" -ForegroundColor Green

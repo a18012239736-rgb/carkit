@@ -46,9 +46,9 @@ def result(left, right):
     (29, '10.17寸仪表', '10.17寸仪表'),
     (29, '全液晶仪表', '[待定]全液晶仪表'),
     (34, '仿皮', '仿皮座椅'),
-    (35, '主6副4电调', '主驾6向电调，副驾4向电调'),
-    (35, '主副手调', '主驾6向手调，副驾4向手调'),
-    (35, '主驾电调+副驾手调', '主驾电调，副驾手调'),
+    (35, '主6副4电调', '主驾6向电调+副驾4向电调'),
+    (35, '主副手调', '主驾6向手调+副驾4向手调'),
+    (35, '主驾电调+副驾手调', '主驾电调+副驾手调'),
 ])
 def test_competition_configuration_values_use_requested_wording(no, value, expected):
     cells, groups = result({no: value}, {})
@@ -91,7 +91,7 @@ def test_formatting_only_changes_presentation_and_preserves_pair_difference_info
     assert by_no[20]['backup_more'] == '外后视镜电调+折叠+加热+记忆+倒车下翻(外后视镜电调)'
     assert by_no[29]['backup_more'] == '全液晶8.8寸仪表(4寸仪表)'
     assert '仿皮座椅' in by_no[34]['backup_more'] and '座椅调节' not in by_no[34]['backup_more']
-    assert '主驾6向电调' in by_no[35]['backup_more'] and '主驾6向手调' in by_no[35]['backup_more']
+    assert by_no[35]['backup_more'] == '主驾电调（主驾手调）'
     assert '副驾' not in by_no[35]['backup_more']  # The unchanged passenger seat is not repeated.
     assert '腰撑' not in by_no[35]['self_val'] and '腰撑' not in by_no[35]['comp_val']
     assert '腰撑' not in by_no[35]['backup_more']
@@ -106,7 +106,7 @@ def test_adjustment_difference_ignores_support_notes_and_preserves_direction_dif
     original_amount = groups[0]['valuation']['config_adv']
     render_backup.format_configurations(cells, groups)
     seat = next(cell for cell in cells if cell['no'] == 35)
-    assert seat['backup_less'] == '副驾4向电调（副驾6向电调）'
+    assert seat['backup_less'] == '副驾4向（副驾6向）'
     assert seat['backup_less'] in groups[0]['less']
     assert groups[0]['valuation']['config_adv'] == original_amount
     assert seat['comp_config'].endswith('(主腰撑4向/副腰撑4向)')

@@ -124,7 +124,9 @@ assert.deepStrictEqual(plain(context.res),{columns:['甲','乙','丙']});
 def test_preview_uses_compact_basis_labels_and_escapes_trim_names_without_mutation():
     run_node(r"""
 const renderStart = source.indexOf('previewButton.onclick = async () => {');
-const template = source.slice(renderStart).match(/  panel\.innerHTML = ([^\n]+);/)[1];
+const markupStart = source.indexOf('  const list = ',renderStart);
+const markupEnd = source.indexOf("\n  panel.querySelector('.ladder-heading h2')",markupStart);
+const markup = source.slice(markupStart,markupEnd).replace('panel.innerHTML = ', 'return ');
 const escapeDefinition = source.match(/^const esc = .*;$/m)[0];
 vm.runInContext(escapeDefinition,context);
 const columns = [
@@ -135,7 +137,7 @@ const columns = [
 ];
 context.res = {model:'测试车',columns};
 const before = JSON.stringify(context.res);
-const html = vm.runInContext(template,context);
+const html = vm.runInContext(`(() => {${markup}})()`,context);
 const labels = [...html.matchAll(/<strong(?:\s[^>]*)?>(.*?)<\/strong>/g)].map(match => match[1]);
 assert.deepStrictEqual(labels,['基本配置：','基本配置：','650 舒享版+：','&lt;基础&gt; &amp; &quot;版型&quot;+：']);
 assert(html.includes('&lt;新款&gt; &amp; &quot;限定&quot;'));

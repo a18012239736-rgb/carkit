@@ -19,16 +19,17 @@ def lines(raw, target=1, base=0, excluded=None):
     return stage_one._compact_items(stage_one._change_items(features, target, base), base)
 
 
-def test_real_q05_standard_lumbar_is_omitted_without_changing_direction_totals():
+def test_real_q05_standard_lumbar_is_separate_without_changing_direction_totals():
     raw = rawschema.detect_and_load(str(Path(__file__).parent / 'golden' / 'raw-Q05-汽车之家全表-2026-09-11.json'))
     original = raw.to_json()
     result = lines(raw)
+    assert '主驾腰托' in result
     assert not any('腰部支撑' in line for line in result)
     assert not any('主驾10向' in line for line in result)
     assert raw.to_json() == original
 
 
-def test_seat_supports_are_omitted_and_optional_information_is_preserved_separately():
+def test_seat_supports_are_separate_and_optional_information_is_preserved():
     raw = table([RawRow('主座椅调节方式', [
         Cell(text='前后调节靠背调节'),
         Cell(text='前后调节靠背调节腰部支撑(4向)', subs=[
@@ -37,7 +38,7 @@ def test_seat_supports_are_omitted_and_optional_information_is_preserved_separat
     ])])
     original = raw.to_json()
     result = lines(raw)
-    assert result == []  # Supports do not alter the seat direction/mode summary.
+    assert result == ['主驾腰托']
     assert not any('侧翼' in line for line in result)
     assert stage_one._option_lines(raw, 1, []) == ['主座椅调节方式：侧翼支撑(2000元)']
     assert lines(raw, excluded=['主座椅调节方式']) == []
@@ -49,10 +50,10 @@ def test_removed_standard_seat_support_does_not_create_absent_adjustment_descrip
     raw = table([RawRow('主座椅调节方式', [
         Cell(text='前后调节靠背调节腰部支撑(4向)'), Cell(text='前后调节靠背调节'),
     ])])
-    assert lines(raw) == []
+    assert lines(raw) == ['无（主驾腰托）']
 
 
-def test_flattened_unknown_seat_and_mirror_functions_reach_preview_and_markdown(tmp_path):
+def test_flattened_seat_support_and_mirror_functions_reach_preview_and_markdown(tmp_path):
     raw = table([
         RawRow('前排座椅功能', [Cell(text='加热(仅驾驶位)'), Cell(text='加热(仅驾驶位)腿托')]),
         RawRow('外后视镜功能', [Cell(text='电动调节'), Cell(text='电动调节自动防眩目')]),
@@ -64,7 +65,8 @@ def test_flattened_unknown_seat_and_mirror_functions_reach_preview_and_markdown(
     assert bridge.save_stage_display_rules([])['ok']
     preview = bridge.stage_preview(PLAN)
     assert preview['ok']
-    assert '前排座椅功能：腿托' in preview['columns'][1]['items']
+    assert '主驾腿托+副驾腿托' in preview['columns'][1]['items']
+    assert not any('前排座椅功能：腿托' in line for line in preview['columns'][1]['items'])
     assert '外后视镜电调+自动防眩目' in preview['columns'][1]['items']
     assert not any('(仅驾驶位)' in line for line in preview['columns'][1]['items'])
     markdown = stage_one.render(raw, PLAN, excluded_rows=[])
