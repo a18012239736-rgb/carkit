@@ -70,7 +70,8 @@ class Bridge:
             import webview
             w = webview.windows[0]
             ft = tuple(file_types) if file_types else None
-            res = w.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False,
+            dialog = getattr(webview, 'FileDialog', None)
+            res = w.create_file_dialog(dialog.OPEN if dialog else webview.OPEN_DIALOG, allow_multiple=False,
                                        file_types=ft)
             return res[0] if res else None
         except Exception as e:
@@ -81,7 +82,8 @@ class Bridge:
             import webview
             w = webview.windows[0]
             ft = tuple(file_types) if file_types else None
-            res = w.create_file_dialog(webview.SAVE_DIALOG, save_filename=default_name,
+            dialog = getattr(webview, 'FileDialog', None)
+            res = w.create_file_dialog(dialog.SAVE if dialog else webview.SAVE_DIALOG, save_filename=default_name,
                                        file_types=ft)
             return res if isinstance(res, str) else (res[0] if res else None)
         except Exception as e:
