@@ -7,9 +7,12 @@
 """
 from __future__ import annotations
 import re
+from decimal import Decimal
 from .models import RawTable, Cell
 
 ABSENT = "✕"
+FRONT_TRUNK_ROWS = ('电动前备箱', '电动前备厢', '前备箱', '前备厢')
+FRONT_TRUNK_VOLUME_ROWS = ('前备箱容积(L)', '前备厢容积(L)', '前备箱容积（L）', '前备厢容积（L）')
 
 
 # ---------- 基础工具 ----------
@@ -599,6 +602,14 @@ def n_text(raw, i, cfg):
     return _txt(c) or "●"
 
 
+def front_trunk_capacity(raw, i):
+    cell = _cell(raw, FRONT_TRUNK_VOLUME_ROWS, i)
+    match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*[Ll升]?', _txt(cell))
+    if not _optional(cell) and match and Decimal(match[1]) > 0:
+        return format(Decimal(match[1]).normalize(), 'f')
+    return ''
+
+
 def n_front_trunk(raw, i, cfg, *, include_volume=True):
     c = _cell(raw, ['电动前备箱', '电动前备厢'], i)
     generic = _cell(raw, ['前备箱', '前备厢'], i)
@@ -610,12 +621,8 @@ def n_front_trunk(raw, i, cfg, *, include_volume=True):
             return '电动前备箱'
         if '手动' in text:
             return '手动前备箱'
-    if include_volume:
-        volume = _cell(raw, [name for name in cfg['source_rows'] if '容积' in name], i)
-        capacity = _txt(volume)
-        if (not _optional(volume) and re.fullmatch(r'\d+(?:\.\d+)?\s*[Ll升]?', capacity)
-                and _num(capacity) > 0):
-            return '手动前备箱'
+    if include_volume and front_trunk_capacity(raw, i):
+        return '手动前备箱'
     if _solid(generic):
         return '[待定]前备箱开启方式未说明'
     return _bool_val(c or generic)

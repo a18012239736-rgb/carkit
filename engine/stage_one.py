@@ -359,6 +359,21 @@ def features(raw, excluded_rows=None):
     out=[]
     consumed=set()
     captured_electric = raw.row('主/副驾驶座电动调节') is not None
+    from .mapper import FRONT_TRUNK_ROWS, FRONT_TRUNK_VOLUME_ROWS, front_trunk_capacity, n_front_trunk
+    front_sources = set(FRONT_TRUNK_ROWS) | set(FRONT_TRUNK_VOLUME_ROWS)
+    front_rows = {row.name for row in raw.rows if row.name in FRONT_TRUNK_ROWS}
+    excluded = set(DEFAULT_EXCLUDED_ROWS if excluded_rows is None else excluded_rows)
+    capacities = [front_trunk_capacity(raw, i) for i in range(len(raw.trims))]
+    front_values = None
+    if any(capacities) and (not front_rows or front_rows - excluded):
+        # Capacity supplies the merged feature even when its raw row is hidden.
+        front_values = []
+        for i, capacity in enumerate(capacities):
+            mode = n_front_trunk(raw, i, {})
+            front_values.append([(capacity+'L' if capacity else '')+mode]
+                                if mode in {'手动前备箱', '电动前备箱'} else
+                                ['前备箱'] if mode.startswith('[待定]') else [])
+    front_added = False
     raw = display_raw(raw, excluded_rows)
     from .seat_adjust import _SUPPORTS, support_from_raw, support_source_rows
     support_rows = {row.name for feature in _SUPPORTS for row in support_source_rows(raw, feature)}
@@ -384,6 +399,15 @@ def features(raw, excluded_rows=None):
         occurrence = occurrences[(row.group, name)]
         occurrences[(row.group, name)] += 1
         values = values_by_name[name] if row is rows_by_name[name] else [parts(c) for c in row.cells]
+        if front_values is not None:
+            if name in front_sources:
+                if not front_added:
+                    add('前备箱', front_values, True)
+                    front_added = True
+                continue
+            if re.fullmatch(r'\d+(?:\.\d+)?L(?:手动|电动)前备[箱厢]', name):
+                values = [[] if name.replace('前备厢', '前备箱') in front_values[i] else vs
+                          for i, vs in enumerate(values)]
         if name in consumed or name in RANGE_ROWS:
             first = rows_by_name[name]
             if name_counts[name] > 1 and row is not first and row.cells != first.cells:
@@ -654,6 +678,8 @@ def features(raw, excluded_rows=None):
             # without depending on the position of unrelated source rows.
             key = (row.group, name, occurrence) if name_counts[name] > 1 else name
             add(key,[list(dict.fromkeys(_format_value(name, v) for v in vs)) for vs in values],scalar)
+    if front_values is not None and not front_added:
+        add('前备箱', front_values, True)
     supports = []
     for feature in _SUPPORTS:
         values = []
@@ -770,7 +796,7 @@ _NUMERIC_DISPLAY_FEATURES = set(RANGE_ROWS) | {
     'USB/Type-C接口数量', '车机系统内存(GB)', '车机系统存储(GB)', '芯片总算力',
     '高压平台', '辅助驾驶系统内存(GB)', '辅助驾驶系统存储(GB)',
     '摄像头数量', '车内摄像头数量', '前方感知摄像头像素', '环境感知摄像头像素', '环视摄像头像素',
-    '超声波雷达数量', '毫米波雷达数量', '激光雷达线数',
+    '超声波雷达数量', '毫米波雷达数量', '激光雷达线数', '前备箱',
 }
 _DISPLAY_LEVELS = {
     '影像': (('倒车影像',), ('360', '全景'), ('540',)),
@@ -824,6 +850,11 @@ def _display_reduced(feature, trim_index, base_index):
             return False
         pairs = [(Decimal(sizes[0][1]), Decimal(sizes[1][1])),
                  tuple(int('全液晶' in text) for text in (current, previous))]
+    elif name == '前备箱':
+        pairs = [tuple(int('电动前备箱' in text) for text in (current, previous))]
+        sizes = [re.match(r'(\d+(?:\.\d+)?)L', text) for text in (current, previous)]
+        if all(sizes):
+            pairs.append((Decimal(sizes[0][1]), Decimal(sizes[1][1])))
     elif name == '车内化妆镜':
         if not all('主' in text or '副' in text for text in (current, previous)):
             return False
