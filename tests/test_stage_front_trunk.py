@@ -62,11 +62,22 @@ def test_type_capacity_presence_and_selected_baseline_control_the_difference():
     raw = comparison_table()
     original = raw.to_json()
     assert items(raw, 1, 0) == ['108L手动前备箱']
-    assert items(raw, 2, 1) == ['108L电动前备箱(108L手动前备箱)']
+    assert items(raw, 2, 1) == ['电动前备箱(手动前备箱)']
     assert items(raw, 3, 1) == ['180L手动前备箱(108L手动前备箱)']
     assert items(raw, 4, 1) == []
     assert items(raw, 0, 1) == ['无（108L手动前备箱）']
     assert raw.to_json() == original
+
+
+def test_different_capacity_opening_type_switch_omits_capacity_in_both_directions():
+    raw = table({
+        '前备厢容积(L)': [Cell(text='108'), Cell(text='180')],
+        '电动前备箱': [Cell(), Cell(dot='●')],
+    })
+    assert items(raw, 0) == ['108L手动前备箱']
+    assert items(raw, 1) == ['180L电动前备箱']
+    assert items(raw, 1, 0) == ['电动前备箱(手动前备箱)']
+    assert items(raw, 0, 1) == ['手动前备箱(电动前备箱)']
 
 
 @pytest.mark.parametrize('name', ['电动前备箱', '电动前备厢', '手动前备箱'])
@@ -99,7 +110,7 @@ def test_source_aliases_and_identical_specialty_rows_do_not_duplicate_the_summar
 
 
 @pytest.mark.parametrize('volumes,electric,expected', [
-    (['108', '108'], [True, False], '108L手动前备箱(108L电动前备箱)'),
+    (['108', '108'], [True, False], '手动前备箱(电动前备箱)'),
     (['180', '108'], [False, False], '108L手动前备箱(180L手动前备箱)'),
 ])
 def test_opening_type_or_capacity_downgrade_is_grouped_under_removals(tmp_path, volumes, electric, expected):
@@ -126,7 +137,7 @@ def test_preview_markdown_excel_share_merged_labels_and_keep_raw_unchanged(tmp_p
     # Use the manual trim as the primary baseline to include a loss as well.
     plan = [{'target': 1, 'base': None}, {'target': 2, 'base': 1},
             {'target': 3, 'base': 1}, {'target': 4, 'base': 1}, {'target': 0, 'base': 1}]
-    expected = [['108L手动前备箱'], ['108L电动前备箱(108L手动前备箱)'],
+    expected = [['108L手动前备箱'], ['电动前备箱(手动前备箱)'],
                 ['180L手动前备箱(108L手动前备箱)'], [], ['无（108L手动前备箱）']]
     bridge = Bridge(str(tmp_path / 'work'))
     bridge.stage_raw = raw

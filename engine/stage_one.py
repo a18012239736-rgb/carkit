@@ -773,8 +773,13 @@ def _change_items(fs, trim_index, base_index):
             items.append((feature['key'], '+'.join(cur) if cur else '无（' + '+'.join(prev) + '）'))
             continue
         if feature['scalar'] and cur and prev:
+            current, previous = '+'.join(cur), '+'.join(prev)
+            if feature['key'] == '前备箱':
+                modes = [re.sub(r'^\d+(?:\.\d+)?L', '', text) for text in (current, previous)]
+                if set(modes) == {'手动前备箱', '电动前备箱'}:
+                    current, previous = modes
             left, right = ('（', '）') if feature['key'] in {'主驾座椅调节', '副驾座椅调节'} else ('(', ')')
-            items.append((feature['key'], '+'.join(cur) + left + '+'.join(prev) + right))
+            items.append((feature['key'], current + left + previous + right))
         else:
             additions = [value for value in cur if value not in prev]
             removals = [value for value in prev if value not in cur]
