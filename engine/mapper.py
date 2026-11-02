@@ -599,8 +599,32 @@ def n_text(raw, i, cfg):
     return _txt(c) or "●"
 
 
+def n_front_trunk(raw, i, cfg, *, include_volume=True):
+    c = _cell(raw, ['电动前备箱', '电动前备厢'], i)
+    generic = _cell(raw, ['前备箱', '前备厢'], i)
+    if _solid(c):
+        return '手动前备箱' if '手动' in _txt(c) else '电动前备箱'
+    if _solid(generic):
+        text = _txt(generic)
+        if '电动' in text:
+            return '电动前备箱'
+        if '手动' in text:
+            return '手动前备箱'
+    if include_volume:
+        volume = _cell(raw, [name for name in cfg['source_rows'] if '容积' in name], i)
+        capacity = _txt(volume)
+        if (not _optional(volume) and re.fullmatch(r'\d+(?:\.\d+)?\s*[Ll升]?', capacity)
+                and _num(capacity) > 0):
+            return '手动前备箱'
+    if _solid(generic):
+        return '[待定]前备箱开启方式未说明'
+    return _bool_val(c or generic)
+
+
 def legacy_mapped_item(raw, i, no, *, legacy_side=True):
     """Frozen automatic outputs for upgrading untouched pre-fix caches only."""
+    if no == 12:
+        return {'value': n_front_trunk(raw, i, {}, include_volume=False)}
     if no == 5:
         from .ladder import _airbag_display
         old = [_legacy_airbag(raw, index, legacy_side=legacy_side) for index in range(len(raw.trims))]
@@ -718,6 +742,7 @@ def legacy_mapped_item(raw, i, no, *, legacy_side=True):
 NORMALIZERS = {
     "range_km": n_range,
     "text": n_text,
+    "front_trunk": n_front_trunk,
     "cell_brand": n_cell_brand,
     "steer_adjust": n_steer_adjust,
     "high_voltage": n_high_voltage,
@@ -767,18 +792,7 @@ def map_raw_to_ladder(raw: RawTable, rules) -> dict:
         airbag_comps = []
         subs_rows = []
         for i in range(n_trims):
-            if no == 12:
-                c = _cell(raw, ['电动前备箱','电动前备厢'], i)
-                generic = _cell(raw, ['前备箱','前备厢'], i)
-                if _solid(c):
-                    value = '手动前备箱' if '手动' in _txt(c) else '电动前备箱'
-                elif _solid(generic):
-                    text = _txt(generic)
-                    value = '电动前备箱' if '电动' in text else '手动前备箱' if '手动' in text else '[待定]前备箱开启方式未说明'
-                else:
-                    value = _bool_val(c or generic)
-                values.append(value)
-            elif vt == "airbag_count":
+            if vt == "airbag_count":
                 cnt, comps = fn(raw, i, item)
                 values.append(cnt)
                 airbag_comps.append(comps)

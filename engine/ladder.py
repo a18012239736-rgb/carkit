@@ -2,7 +2,7 @@
 from __future__ import annotations
 import datetime
 from .models import Ladder, LadderItem, RawTable
-from .mapper import map_raw_to_ladder, n_text
+from .mapper import legacy_mapped_item, map_raw_to_ladder, n_front_trunk, n_text
 from .powertrain import energy_types, not_applicable
 from .rules import display_order_key
 
@@ -44,9 +44,6 @@ def upgrade_ladder(ladder, rules):
     """Recover new items on normal loads; frozen plans retain their saved rules."""
     from .seat_adjust import upgrade_ladder_support
     upgrade_ladder_support(ladder)
-    cfg = rules.items_by_no.get(48)
-    if not cfg or ladder.item(48) is not None:
-        return ladder
     raw = None
     try:
         saved = ladder.evidence.get('raw') if isinstance(ladder.evidence, dict) else None
@@ -54,6 +51,23 @@ def upgrade_ladder(ladder, rules):
             raw = RawTable.from_dict(saved)
     except (KeyError, TypeError, ValueError, IndexError, AttributeError):
         pass
+    front = ladder.item(12)
+    front_cfg = rules.items_by_no.get(12)
+    if front and front_cfg and raw:
+        for i, trim in enumerate(ladder.trims):
+            matches = [j for j, source in enumerate(raw.trims)
+                       if source.short == trim['name']]
+            if not matches:
+                matches = [j for j, source in enumerate(raw.trims)
+                           if source.short.rstrip('版') == trim['name'].rstrip('版')]
+            if len(matches) == 1 and i < len(front.values):
+                j = matches[0]
+                if front.values[i] == legacy_mapped_item(raw, j, 12)['value']:
+                    front.values[i] = n_front_trunk(raw, j, front_cfg)
+        front.row_absent = raw.row(*front_cfg['source_rows']) is None
+    cfg = rules.items_by_no.get(48)
+    if not cfg or ladder.item(48) is not None:
+        return ladder
     values = []
     for trim in ladder.trims:
         matches = [i for i, source in enumerate(raw.trims) if source.short == trim['name']] if raw else []
