@@ -85,6 +85,8 @@ def test_feedback_only_prepares_locally_then_opens_reviewed_official_draft(bridg
     assert note.is_file()  # A new invalid submission never removes an earlier draft.
     assert bridge.open_app_release_page()['ok']
     assert opened[-1] == RELEASES_URL
+    assert bridge.open_internal_release_page()['ok']
+    assert opened[-1] == 'https://my-ichery.feishu.cn/wiki/OkmFwGcV3iKq1Fk6qDocpjgcnXh'
 
 
 def test_browser_open_failures_are_reported_without_submitting_or_deleting(bridge, monkeypatch):

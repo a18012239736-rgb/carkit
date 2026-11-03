@@ -8,7 +8,7 @@
   const banner = find('app-update-banner'), status = find('app-update-status');
   const progressWrap = find('app-update-progress-wrap'), progress = find('app-update-progress');
   let release = null, checking = false, downloading = false, dismissed = false, started = false;
-  let hasFeishu = false, githubFailed = false;
+  let githubFailed = false;
 
   function ready() { return !!window.pywebview?.api; }
   function canDownload() { return !!(release?.available && release.can_download && release.supported !== false); }
@@ -19,11 +19,11 @@
     return result;
   }
   function sync() {
-    internalButton.hidden = !hasFeishu;
+    internalButton.disabled = !ready();
     checkButton.disabled = !ready() || checking || downloading;
     releaseButton.disabled = !ready();
     const downloadAvailable = canDownload();
-    const useFallback = hasFeishu && githubFailed;
+    const useFallback = githubFailed;
     internalButton.classList.toggle('primary', useFallback);
     checkButton.classList.toggle('primary', !downloadAvailable && !useFallback);
     downloadButton.classList.toggle('primary', !useFallback);
@@ -64,8 +64,7 @@
       release = null;
       githubFailed = true;
       find('app-latest-version').textContent = '最新版本：未能确认';
-      message('检查失败：' + (error.message || error) + '\n' +
-        (hasFeishu ? '可打开飞书更新页查看并下载新版。' : '可稍后重试或打开官方发布页。'), true);
+      message('检查失败：' + (error.message || error) + '\n可打开飞书更新页查看并下载新版。', true);
     } finally { checking = false; sync(); }
   }
   async function download() {
@@ -102,8 +101,7 @@
     } catch(error) {
       githubFailed = true;
       progressWrap.hidden = true;
-      message('下载失败：' + (error.message || error) + '\n' +
-        (hasFeishu ? '可重试或打开飞书更新页下载。' : '可重试或从官方发布页下载。'), true);
+      message('下载失败：' + (error.message || error) + '\n可重试或打开飞书更新页下载。', true);
     } finally { clearInterval(timer); downloading = false; sync(); }
   }
   async function open(method) {
@@ -123,11 +121,6 @@
     if(window.pywebview.api.ping) {
       void call('ping').then(info => {
         if(info.version) find('app-current-version').textContent = '当前版本：' + info.version;
-        hasFeishu = !!info.has_internal_release_page;
-        if(hasFeishu) {
-          find('app-update-channel').textContent = 'GitHub · 飞书备用';
-          find('app-update-description').textContent = '优先从 GitHub 检查更新，也可到飞书更新页下载。';
-        }
       }).catch(() => {}).finally(check);
     } else {
       void check();

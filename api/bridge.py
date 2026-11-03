@@ -69,7 +69,7 @@ class Bridge:
 
     def ping(self):
         return {"ok": True, "version": __version__, "rules": self.rules.version,
-                "workdir": self.workdir, "has_internal_release_page": bool(self._internal_release_url())}
+                "workdir": self.workdir}
 
     def check_app_update(self):
         if self._update_download_lock.locked():
@@ -99,31 +99,8 @@ class Bridge:
         from engine.updater import RELEASES_URL
         return self._open_web_url(RELEASES_URL)
 
-    def _internal_release_url(self):
-        config = Path(self.workdir) / 'carkit-update-url.local.txt'
-        candidates = [config]
-        if getattr(sys, 'frozen', False):
-            candidates.insert(0, Path(sys.executable).with_name(config.name))
-        for candidate in candidates:
-            try:
-                url = candidate.read_text(encoding='utf-8-sig').strip()
-            except (OSError, UnicodeError):
-                continue
-            if re.fullmatch(r'https://[a-zA-Z0-9-]+\.feishu\.cn/wiki/[a-zA-Z0-9]+', url):
-                # Keep the fallback when a later GitHub download runs from another folder.
-                try:
-                    if candidate != config and not config.exists():
-                        atomic_write_text(config, url + '\n')
-                except OSError:
-                    pass
-                return url
-        return ''
-
     def open_internal_release_page(self):
-        url = self._internal_release_url()
-        if not url:
-            return {'ok': False, 'error': '请在程序旁放置包含飞书知识库链接的 carkit-update-url.local.txt。'}
-        return self._open_web_url(url)
+        return self._open_web_url('https://my-ichery.feishu.cn/wiki/OkmFwGcV3iKq1Fk6qDocpjgcnXh')
 
     def open_app_update_folder(self):
         path = self._updater.status().get('path')
@@ -633,22 +610,6 @@ class Bridge:
                     "trims": [t.short for t in raw.trims], "rows": len(raw.rows)}
         except Exception as e:
             return {"ok": False, "error": str(e), "trace": traceback.format_exc(limit=3)}
-
-    def import_raw(self, path: str):
-        """导入已保存的 HTML / raw JSON"""
-        try:
-            if path.lower().endswith((".html", ".htm")):
-                from engine import scrape
-                raw = scrape.parse_saved_html(path)
-            else:
-                raw = rawschema.detect_and_load(path)
-            out = self._new_output_path('raw', f"raw-{raw.model or 'import'}", '.json')
-            raw.save(out)
-            return {"ok": True, "path": out, "model": raw.model,
-                    "trims": [t.short for t in raw.trims], "rows": len(raw.rows),
-                    "lossy": raw.lossy}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
 
     # ---------- ② 竞品阶梯 ----------
 

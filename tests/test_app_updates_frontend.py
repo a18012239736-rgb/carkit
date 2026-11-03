@@ -126,18 +126,18 @@ assert(!node('btn-download-update').disabled);assert.strictEqual(timers.size,0);
 def test_github_check_and_download_failures_offer_feishu_fallback():
     run_node(r"""
 let opened=0,checked=0;
-load({ping:async()=>({ok:true,version:'0.3.1',has_internal_release_page:true}),
+load({ping:async()=>({ok:true,version:'0.3.1'}),
   check_app_update:async()=>{if(++checked===1)throw new Error('网络不可用');return latest();},
   download_app_update:async()=>({ok:false,error:'下载连接中断'}),
   open_internal_release_page:async()=>{opened++;return {ok:true};}});
 await flush();
 const fallback=node('btn-open-internal-release');
 assert.strictEqual(checked,1);
-assert(!fallback.hidden && fallback.classList.contains('primary'));
+assert(!fallback.disabled && fallback.classList.contains('primary'));
 assert(node('app-update-status').textContent.includes('飞书更新页'));
 await click('btn-open-internal-release');assert.strictEqual(opened,1);
 await click('btn-check-update');assert.strictEqual(checked,2);
-assert(!fallback.hidden && !fallback.classList.contains('primary'));
+assert(!fallback.disabled && !fallback.classList.contains('primary'));
 assert(!node('btn-download-update').hidden);
 await click('btn-download-update');
 assert(fallback.classList.contains('primary'));

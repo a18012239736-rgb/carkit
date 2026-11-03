@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="valuation-editor.css?v=workspace-20261021-final">
 <link rel="stylesheet" href="ppt-draft-editor.css?v=workspace-20261021-final">
 <link rel="stylesheet" href="feedback.css?v=workspace-polish-20261103">
-<link rel="stylesheet" href="workspace.css?v=update-panel-20261103">
+<link rel="stylesheet" href="workspace.css?v=remove-local-import-20261103">
 <script src="vendor/vue/vue.global.prod.js"></script>
 <script src="stage-editor.js?v=workspace-20261021-final"></script>
 </head>
@@ -65,13 +65,6 @@
         <div id="stage-export-status" class="status"></div><details id="md-preview" hidden><summary>查看导出文档</summary><pre id="md-preview-text"></pre></details>
       </div>
       <div class="stage-empty" id="stage-empty"><div class="empty-ladder" aria-hidden="true"><span></span><span></span><span></span></div><h2>配置差异，从这里展开</h2><p>搜索车型或打开历史记录，即可选择版型、指定比较基准。</p><div class="empty-capabilities"><span>版型与指导价</span><span>逐级配置变化</span><span>选装配置</span></div></div>
-      <details class="card advanced-import"><summary>导入本地配置数据 <span class="dim">HTML / raw JSON</span></summary>
-        <div class="row">
-          <button id="btn-import-raw">导入 HTML / raw JSON…</button>
-          <span class="dim">页面验证或改版时使用</span>
-        </div>
-        <div id="import-status" class="status"></div>
-      </details>
     </section>
 
     <!-- ② 竞品阶梯 -->
@@ -218,9 +211,9 @@
           </span>
           <div class="app-update-title">
             <h2 id="app-update-heading">程序更新</h2>
-            <p id="app-update-description" class="dim">从 GitHub 正式发布页检查并下载更新。</p>
+            <p id="app-update-description" class="dim">优先从 GitHub 检查更新，也可到飞书更新页下载。</p>
           </div>
-          <span id="app-update-channel" class="app-update-channel">GitHub</span>
+          <span id="app-update-channel" class="app-update-channel">GitHub · 飞书备用</span>
         </div>
         <div class="app-update-versions">
           <span id="app-current-version" class="app-update-version">当前版本：等待读取</span>
@@ -230,7 +223,7 @@
           <button id="btn-check-update" type="button">检查更新</button>
           <button id="btn-download-update" type="button" class="primary" hidden>下载新版</button>
           <button id="btn-open-release" type="button">打开官方发布页</button>
-          <button id="btn-open-internal-release" type="button" hidden>打开飞书更新页</button>
+          <button id="btn-open-internal-release" type="button" disabled>打开飞书更新页</button>
           <button id="btn-open-update-folder" type="button" hidden>打开下载目录</button>
         </div>
         <div id="app-update-progress-wrap" class="app-update-progress" hidden>
@@ -274,9 +267,9 @@
 <script src="valuation-editor.js?v=cockpit-chip-20261023"></script>
 <script src="ppt-draft-editor.js?v=product-options-20261015"></script>
 <script src="stage-display-settings.js?v=workspace-20261021-final"></script>
-<script src="app.js?v=cockpit-chip-summary-20261023"></script>
+<script src="app.js?v=remove-local-import-20261103"></script>
 <script src="comparison-tools.js?v=workspace-20261020"></script>
-<script src="app-updates.js?v=update-fallback-20261103"></script>
+<script src="app-updates.js?v=default-feishu-20261103"></script>
 <script src="feedback.js?v=feedback-20261103"></script>
 </body>
 </html>

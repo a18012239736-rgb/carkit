@@ -42,7 +42,7 @@ def _raw(year):
                           RawRow(name='CLTC纯电续航里程(km)', cells=[Cell(text='500')])])
 
 
-def test_repeated_capture_and_import_keep_both_histories(tmp_path):
+def test_repeated_capture_keeps_both_histories(tmp_path):
     bridge = Bridge(str(tmp_path / 'work'))
     try:
         first = bridge._stage_store(_raw(2025).to_dict())
@@ -53,12 +53,6 @@ def test_repeated_capture_and_import_keep_both_histories(tmp_path):
         history = bridge.vehicle_history()
         assert len(history) == 2
         assert all('1个版型' in record['label'] and '日期未记录' not in record['label'] for record in history)
-
-        source = tmp_path / 'source.json'
-        _raw(2027).save(source)
-        a, b = bridge.import_raw(str(source)), bridge.import_raw(str(source))
-        assert a['ok'] and b['ok'] and a['path'] != b['path']
-        assert len(bridge.vehicle_history()) == 4
     finally:
         bridge.shutdown()
 

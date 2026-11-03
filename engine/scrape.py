@@ -110,7 +110,7 @@ def scrape_capture(model: str = "") -> "RawTable":
         close_browser()
     data = json.loads(out) if isinstance(out, str) else out
     if not data.get("rows"):
-        raise RuntimeError("抓到 0 行——页面可能未加载完整或被反爬拦截；请重试或用「导入 HTML」兜底")
+        raise RuntimeError("抓到 0 行——页面可能未加载完整或被反爬拦截；请确认配置表加载完成后重试")
     if any(not header for header in data.get('headers', [])):
         raise ValueError('未找到完整版型表头，请等配置表加载完成后重试。')
     validate(data)

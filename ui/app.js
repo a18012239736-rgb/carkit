@@ -598,20 +598,6 @@ $("#btn-stage-export").addEventListener("click", async () => {
   if(res.ok) { ST.stage.exported=true; window.syncWorkspace?.(); }
 });
 
-$("#btn-import-raw").addEventListener("click", async () => {
-  const path = await api("open_file_dialog", ["原始数据 (*.json;*.html;*.htm)"]);
-  if (!path || path.error) return;
-  const res = await api("import_raw", path);
-  if (res.ok) {
-    $("#import-status").textContent =
-      `✓ ${res.model || ""} ${res.trims.length} 版型 × ${res.rows} 行 → ${res.path}` +
-      (res.lossy ? "（⚠ 旧版富结构，双子项有损）" : "");
-    $("#import-status").className = "status ok";
-    handleStageResult(await api("open_history", res.path.split(/[\\/]/).pop()));
-    refreshRawList();
-  }
-});
-
 /* ---------- ② 竞品阶梯 ---------- */
 async function loadChecklist() {
   if (!ST.checklist) ST.checklist = await api("checklist");
@@ -620,7 +606,7 @@ async function loadChecklist() {
 
 $("#btn-build-ladder").addEventListener("click", async () => {
   const f = $("#ladder-raw-select").value;
-  if (!f) return toast("先导入原始数据", "err");
+  if (!f) return toast("请先选择已抓取的车型配置", "err");
   const path = await api("workdir_path", "raw", f);
   const m = f.match(/-(\d+)-/);
   const res = await api("build_ladder", path, $("#ladder-model").value, m ? m[1] : "");
