@@ -210,13 +210,101 @@
 .app-update-banner { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin:14px auto 0; padding:10px 14px; max-width:1600px; border:1px solid #cbe2da; border-radius:7px; background:#edf7f2; color:var(--navy); font-size:12px; }
 .app-update-banner > span { flex:1; min-width:180px; }
 .app-update-banner button { min-height:30px; padding:4px 9px; font-size:12px; }
-.app-update-panel .app-update-version { font-size:13px; color:var(--navy); }
-.app-update-panel #app-update-status { white-space:pre-wrap; overflow-wrap:anywhere; }
-.app-update-panel #app-update-status.err { color:var(--red); }
-.app-update-panel #app-release-details { margin-top:14px; }
-.app-update-panel #app-release-notes { margin-top:10px; padding:12px; max-height:240px; overflow:auto; border:1px solid var(--line); border-radius:6px; background:#f7f9fa; font-family:inherit; font-size:12px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere; }
-.app-update-progress { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin:14px 0 6px; font-size:12px; color:var(--dim); }
-.app-update-progress progress { flex:1; min-width:160px; max-width:450px; height:12px; accent-color:var(--accent); }
+.app-update-header {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:10px 12px;
+}
+.app-update-icon {
+  display:grid;
+  place-items:center;
+  flex:none;
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  background:var(--surface-selected);
+  color:var(--accent);
+}
+.app-update-icon svg {
+  width:21px;
+  height:21px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.7;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.app-update-title { flex:1 1 180px; min-width:0; }
+.app-update-title h2 { margin:0; font-size:16px; }
+#page-settings .app-update-panel #app-update-description { margin:2px 0 0; line-height:1.5; }
+.app-update-channel {
+  padding:3px 9px;
+  border-radius:999px;
+  background:var(--surface-soft);
+  color:#386859;
+  font-size:11px;
+  font-weight:650;
+}
+.app-update-versions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px 18px;
+  margin:16px 0 12px;
+  padding:10px 12px;
+  border-radius:9px;
+  background:var(--surface-soft);
+}
+.app-update-version {
+  flex:1 1 180px;
+  min-width:0;
+  overflow-wrap:anywhere;
+  color:var(--navy);
+  font-size:12px;
+}
+.app-update-actions { margin:0; }
+.app-update-panel #app-update-status {
+  margin:12px 0 0;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.app-update-panel #app-update-status.err {
+  padding:8px 11px;
+  border-radius:8px;
+  background:var(--red-bg);
+  color:var(--red);
+}
+.app-update-panel #app-release-details {
+  margin-top:14px;
+  padding-top:8px;
+  border-top:1px solid var(--line);
+}
+.app-update-panel #app-release-notes {
+  margin-top:8px;
+  padding:12px;
+  max-height:240px;
+  overflow:auto;
+  border-radius:9px;
+  background:var(--surface-soft);
+  font-family:inherit;
+  font-size:12px;
+  line-height:1.7;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+.app-update-progress {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px 10px;
+  margin-top:12px;
+  padding:9px 11px;
+  border-radius:8px;
+  background:var(--surface-soft);
+  font-size:12px;
+  color:var(--dim);
+}
+.app-update-progress progress { flex:1 1 160px; min-width:0; height:8px; accent-color:var(--accent); }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
 @media (min-width:1600px) { #main { padding-left:50px; padding-right:50px; } }

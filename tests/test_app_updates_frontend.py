@@ -51,6 +51,7 @@ assert.strictEqual(count,1);assert(node('btn-check-update').disabled);
 listeners.pywebviewready();await click('btn-check-update');assert.strictEqual(count,1);
 resolveCheck(latest());await flush();
 assert(!node('app-update-banner').hidden);assert(!node('btn-download-update').hidden);
+assert(!node('btn-check-update').classList.contains('primary'));
 assert.strictEqual(node('app-release-notes').textContent,'<img src=x onerror=alert(1)>');
 assert(!node('btn-check-update').disabled);
 await click('btn-view-update');assert.strictEqual(page,'settings');assert(node('app-update-heading').scrolled);
@@ -131,6 +132,8 @@ load({ping:async()=>({ok:true,version:'0.3.1',has_internal_release_page:true}),
 await flush();
 assert(node('btn-check-update').hidden);assert(node('btn-open-release').hidden);
 assert(!node('btn-open-internal-release').hidden);
+assert(node('app-latest-version').hidden);
+assert.strictEqual(node('app-update-channel').textContent,'公司飞书');
 assert(node('app-update-status').textContent.includes('公司飞书'));
 await click('btn-check-update');assert.strictEqual(checked,0);
 await click('btn-open-internal-release');assert.strictEqual(opened,1);

@@ -21,9 +21,12 @@
   function sync() {
     checkButton.hidden = releaseButton.hidden = internalChannel;
     internalButton.hidden = !internalChannel;
+    find('app-latest-version').hidden = internalChannel;
     checkButton.disabled = !ready() || checking || downloading;
     releaseButton.disabled = !ready();
-    downloadButton.hidden = !canDownload();
+    const downloadAvailable = canDownload();
+    checkButton.classList.toggle('primary', !downloadAvailable);
+    downloadButton.hidden = !downloadAvailable;
     downloadButton.disabled = checking || downloading;
     folderButton.disabled = downloading;
     checkButton.textContent = checking ? '检查中…' : '检查更新';
@@ -115,8 +118,8 @@
         if(info.version) find('app-current-version').textContent = '当前版本：' + info.version;
         internalChannel = !!info.has_internal_release_page;
         if(internalChannel) {
+          find('app-update-channel').textContent = '公司飞书';
           find('app-update-description').textContent = '通过公司飞书更新页查看更新说明并下载新版。';
-          find('app-latest-version').textContent = '更新渠道：公司飞书';
           message('点击“打开飞书更新页”，使用公司飞书账号下载。');
           sync();
         }

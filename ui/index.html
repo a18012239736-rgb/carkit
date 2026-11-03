@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="valuation-editor.css?v=workspace-20261021-final">
 <link rel="stylesheet" href="ppt-draft-editor.css?v=workspace-20261021-final">
 <link rel="stylesheet" href="feedback.css?v=workspace-polish-20261103">
-<link rel="stylesheet" href="workspace.css?v=workspace-polish-20261103">
+<link rel="stylesheet" href="workspace.css?v=update-panel-20261103">
 <script src="vendor/vue/vue.global.prod.js"></script>
 <script src="stage-editor.js?v=workspace-20261021-final"></script>
 </head>
@@ -212,12 +212,36 @@
     <section id="page-settings" class="page">
       <header class="page-header"><div><h1>设置与帮助</h1><p class="intro">查看工作目录、运行环境与分析流程。</p></div></header>
       <div class="card app-update-panel" aria-labelledby="app-update-heading">
-        <div class="workspace-heading"><div><h2 id="app-update-heading">程序更新</h2><p id="app-update-description" class="dim">从官方 GitHub Release 检查正式版本，不自动关闭或替换当前程序。</p></div><span id="app-current-version" class="dim">当前版本：等待检查</span></div>
-        <p id="app-latest-version" class="app-update-version">最新版本：尚未检查</p>
-        <div class="row"><button id="btn-check-update" type="button">检查更新</button><button id="btn-download-update" type="button" class="primary" hidden>下载新版</button><button id="btn-open-release" type="button">打开官方发布页</button><button id="btn-open-internal-release" class="feedback-button" type="button" hidden>打开飞书更新页</button><button id="btn-open-update-folder" type="button" hidden>打开下载目录</button></div>
-        <div id="app-update-progress-wrap" class="app-update-progress" hidden><progress id="app-update-progress" max="100" aria-label="新版下载进度"></progress><span id="app-update-progress-text"></span></div>
-        <p id="app-update-status" class="dim" role="status" aria-live="polite">启动后自动检查，也可手动检查；检查失败不影响使用。</p>
-        <details id="app-release-details" hidden><summary>更新说明</summary><pre id="app-release-notes"></pre></details>
+        <div class="app-update-header">
+          <span class="app-update-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-13.5-5.8L4 8m0 0V3m0 5h5m-5 5a8 8 0 0 0 13.5 5.8L20 16m0 0v5m0-5h-5"/></svg>
+          </span>
+          <div class="app-update-title">
+            <h2 id="app-update-heading">程序更新</h2>
+            <p id="app-update-description" class="dim">从 GitHub 正式发布页检查并下载更新。</p>
+          </div>
+          <span id="app-update-channel" class="app-update-channel">GitHub</span>
+        </div>
+        <div class="app-update-versions">
+          <span id="app-current-version" class="app-update-version">当前版本：等待读取</span>
+          <span id="app-latest-version" class="app-update-version">最新版本：尚未检查</span>
+        </div>
+        <div class="row app-update-actions">
+          <button id="btn-check-update" type="button">检查更新</button>
+          <button id="btn-download-update" type="button" class="primary" hidden>下载新版</button>
+          <button id="btn-open-release" type="button">打开官方发布页</button>
+          <button id="btn-open-internal-release" type="button" class="primary" hidden>打开飞书更新页</button>
+          <button id="btn-open-update-folder" type="button" hidden>打开下载目录</button>
+        </div>
+        <div id="app-update-progress-wrap" class="app-update-progress" hidden>
+          <progress id="app-update-progress" max="100" aria-label="新版下载进度"></progress>
+          <span id="app-update-progress-text"></span>
+        </div>
+        <p id="app-update-status" class="dim" role="status" aria-live="polite">启动后自动检查，也可手动检查。</p>
+        <details id="app-release-details" hidden>
+          <summary>更新说明</summary>
+          <pre id="app-release-notes"></pre>
+        </details>
       </div>
       <div class="card">
         <table class="kv">
@@ -252,7 +276,7 @@
 <script src="stage-display-settings.js?v=workspace-20261021-final"></script>
 <script src="app.js?v=cockpit-chip-summary-20261023"></script>
 <script src="comparison-tools.js?v=workspace-20261020"></script>
-<script src="app-updates.js?v=internal-release-20261103"></script>
+<script src="app-updates.js?v=update-panel-20261103"></script>
 <script src="feedback.js?v=feedback-20261103"></script>
 </body>
 </html>
