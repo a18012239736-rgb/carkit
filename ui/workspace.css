@@ -203,7 +203,12 @@
 #page-settings .kv { width:100%; }
 #page-settings .kv td { padding:15px 12px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
 #page-settings .kv td:first-child { width:120px; }
-.feedback-shortcut { width:100%; min-height:32px; margin-top:4px; text-align:left; font-size:12px; }
+.feedback-button { display:inline-flex; align-items:center; justify-content:center; gap:9px; min-height:40px; padding:9px 14px; border-color:#cce0d8; background:#eaf4f1; color:var(--accent); font-size:12px; font-weight:600; white-space:nowrap; }
+.feedback-button svg { width:18px; height:18px; flex:none; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.feedback-button:hover { border-color:#a7c6bf; background:#deeee8; color:#0f665e; }
+.feedback-shortcut { justify-content:flex-start; width:100%; min-height:44px; margin:3px 0; padding:10px 13px; border-color:transparent; border-radius:7px; background:transparent; color:#667582; text-align:left; font-size:13px; font-weight:500; }
+.feedback-shortcut svg { width:19px; height:19px; }
+.feedback-shortcut:hover { border-color:transparent; background:#eaf4f1; color:var(--accent); }
 .app-update-banner { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin:14px auto 0; padding:10px 14px; max-width:1600px; border:1px solid #cbe2da; border-radius:7px; background:#edf7f2; color:var(--navy); font-size:12px; }
 .app-update-banner > span { flex:1; min-width:180px; }
 .app-update-banner button { min-height:30px; padding:4px 9px; font-size:12px; }
