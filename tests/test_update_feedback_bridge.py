@@ -1,6 +1,8 @@
 """Update and feedback entry points never execute downloads or submit public issues."""
 from pathlib import Path
+import sys
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -62,6 +64,39 @@ def test_update_check_and_folder_are_bound_to_backend_state(bridge, tmp_path, mo
     monkeypatch.setattr(bridge, '_open_folder', lambda path: folders.append(path) or {'ok': True})
     assert bridge.open_app_update_folder()['ok']
     assert folders == [str(tmp_path)]
+
+
+def test_installer_is_verified_before_launch_and_closes_app_once(bridge, tmp_path, monkeypatch):
+    installer = tmp_path / 'carkit-setup.exe'
+    window = Mock()
+    launch = Mock()
+    timer = Mock()
+    close_timer = Mock(return_value=timer)
+    monkeypatch.setitem(sys.modules, 'webview', SimpleNamespace(windows=[window]))
+    monkeypatch.setattr('subprocess.Popen', launch)
+    monkeypatch.setattr('api.bridge.Timer', close_timer)
+    assert not bridge.install_app_update()['ok']
+
+    bridge._installed = True
+    verified = Mock(side_effect=ValueError('签名校验失败'))
+    bridge._updater = SimpleNamespace(_release={'available': True, 'can_download': False},
+                                     verified_installer=verified)
+    assert not bridge.install_app_update()['ok']
+    launch.assert_not_called()
+    timer.start.assert_not_called()
+
+    verified.side_effect = None
+    verified.return_value = installer
+    assert bridge.install_app_update()['ok']
+    arguments = launch.call_args.args[0]
+    assert arguments[0] == str(installer)
+    assert '/NORESTART' in arguments and '/RELAUNCH=1' in arguments
+    assert f'/WORKDIR={Path(bridge.workdir).resolve()}' in arguments
+    assert any(arg.startswith('/WAITPID=') for arg in arguments)
+    close_timer.assert_called_once_with(0.2, window.destroy)
+    timer.start.assert_called_once()
+    assert not bridge.install_app_update()['ok']
+    launch.assert_called_once()
 
 
 def test_feedback_only_prepares_locally_then_opens_reviewed_official_draft(bridge, monkeypatch):

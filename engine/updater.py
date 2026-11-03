@@ -75,7 +75,7 @@ class AppUpdater:
         _version(current_version)
         self.current_version = current_version
         self.executable = Path(executable).resolve() if executable else None
-        self._current_digest = None
+        self._downloaded = None
         self._release = None
         self._operation = Lock()
         self._state_lock = Lock()
@@ -130,14 +130,6 @@ class AppUpdater:
             reason = '发现新版本，可下载后更新' if available else '当前已是最新正式版本'
             if latest < current:
                 reason = '当前程序版本高于 GitHub 正式版本，不提供降级'
-            elif same_version and self.executable:
-                if digest:
-                    if self._current_digest is None:
-                        self._current_digest = _sha256(self.executable)
-                    available = self._current_digest != digest
-                    reason = '同版本有补充更新，可下载后更新' if available else '当前安装包已是最新'
-                else:
-                    reason = '版本号相同，但缺少安装包摘要，无法确认是否有同版本补丁'
             supported = self.executable is not None
             if not supported:
                 reason += '；当前为源码或非 Windows 单文件运行，请在官方发布页查看'
@@ -145,10 +137,19 @@ class AppUpdater:
                 reason += '；该版本尚未提供 Windows 安装包'
             elif available and not digest:
                 reason += '；安装包缺少 SHA256 摘要，已禁用程序内下载'
+            downloaded_path = ''
+            if available and self._downloaded and self._downloaded['sha256'] == digest:
+                path = self._downloaded['path']
+                try:
+                    if Path(path).is_file() and _sha256(path) == digest:
+                        downloaded_path = path
+                except OSError:
+                    pass
             result = {'ok': True, 'current_version': self.current_version,
                       'latest_version': version, 'same_version': same_version,
                       'available': available, 'supported': supported,
-                      'can_download': bool(available and supported and asset and digest),
+                      'can_download': bool(available and supported and asset and digest and not downloaded_path),
+                      'downloaded_path': downloaded_path,
                       'release_url': f'https://github.com/{REPOSITORY}/releases/tag/{tag}',
                       'release_name': str(release.get('name') or tag),
                       'release_notes': str(release.get('body') or '本次发布未填写更新说明'),
@@ -158,7 +159,10 @@ class AppUpdater:
             from datetime import datetime, timezone
             result['checked_at'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
             self._release = {**result, 'asset': asset, 'digest': digest}
-            self._set_state(state='idle')
+            if downloaded_path:
+                self._set_state(state='complete', path=downloaded_path)
+            else:
+                self._set_state(state='idle')
             return result
         except Exception as error:
             message = _message(error)
@@ -209,6 +213,8 @@ class AppUpdater:
             else:
                 os.link(temporary, target)
             result = {'ok': True, 'path': str(target), 'sha256': digest.hexdigest()}
+            self._downloaded = result.copy()
+            release['can_download'] = False
             self._set_state(state='complete', downloaded=total, total=total, path=str(target))
             return result
         except Exception as error:

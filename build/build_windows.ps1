@@ -12,7 +12,7 @@ function Test-BuildPython([string]$candidate) {
     if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { return $false }
     $envRoot = Split-Path (Split-Path $candidate -Parent) -Parent
     $site = Join-Path $envRoot "Lib\site-packages"
-    foreach ($module in @("PyInstaller", "webview", "playwright", "openpyxl", "lxml", "pytest")) {
+    foreach ($module in @("PyInstaller", "webview", "playwright", "openpyxl", "lxml", "cryptography", "pytest")) {
         if (-not (Test-Path -LiteralPath (Join-Path $site $module))) { return $false }
     }
     return $true
@@ -40,7 +40,7 @@ if (-not $python) {
 }
 
 Write-Host "[2/4] Install build dependencies" -ForegroundColor Cyan
-$packages = @("pywebview", "playwright", "openpyxl", "lxml", "beautifulsoup4", "pyinstaller", "pytest")
+$packages = @("pywebview", "playwright", "openpyxl", "lxml", "beautifulsoup4", "cryptography", "pyinstaller", "pytest")
 if (-not (Test-BuildPython $python)) {
     & $python -m pip install --upgrade pip -q
     & $pip install @packages -q

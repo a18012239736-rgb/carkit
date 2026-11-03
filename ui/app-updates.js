@@ -1,4 +1,4 @@
-/* Official release checks are read-only; downloads never restart the app. */
+/* Updates are applied only after the user confirms installation. */
 (() => {
   'use strict';
   const find = id => document.getElementById(id);
@@ -8,10 +8,14 @@
   const banner = find('app-update-banner'), status = find('app-update-status');
   const progressWrap = find('app-update-progress-wrap'), progress = find('app-update-progress');
   let release = null, checking = false, downloading = false, dismissed = false, started = false;
-  let githubFailed = false;
+  let githubFailed = false, installationStarted = false;
 
   function ready() { return !!window.pywebview?.api; }
-  function canDownload() { return !!(release?.available && release.can_download && release.supported !== false); }
+  function hasCachedInstaller() { return !!(release?.installer_update && release.downloaded_path); }
+  function canUpdate() {
+    return !!(release?.available && release.supported !== false &&
+      (release.can_download || hasCachedInstaller()));
+  }
   async function call(method) {
     if(!ready()) throw new Error('请在桌面程序中使用更新功能。');
     const result = await window.pywebview.api[method]();
@@ -20,18 +24,20 @@
   }
   function sync() {
     internalButton.disabled = !ready();
-    checkButton.disabled = !ready() || checking || downloading;
+    checkButton.disabled = !ready() || checking || downloading || installationStarted;
     releaseButton.disabled = !ready();
-    const downloadAvailable = canDownload();
+    const updateAvailable = canUpdate() && !installationStarted;
     const useFallback = githubFailed;
     internalButton.classList.toggle('primary', useFallback);
-    checkButton.classList.toggle('primary', !downloadAvailable && !useFallback);
+    checkButton.classList.toggle('primary', !updateAvailable && !useFallback);
     downloadButton.classList.toggle('primary', !useFallback);
-    downloadButton.hidden = !downloadAvailable;
+    downloadButton.hidden = !updateAvailable;
     downloadButton.disabled = checking || downloading;
     folderButton.disabled = downloading;
     checkButton.textContent = checking ? '检查中…' : '检查更新';
-    downloadButton.textContent = downloading ? '下载中…' : '下载新版';
+    const action = hasCachedInstaller() ? '安装并重启' :
+      (release?.installer_update ? '下载并安装' : '下载新版');
+    downloadButton.textContent = downloading ? (hasCachedInstaller() ? '准备安装…' : '下载中…') : action;
   }
   function message(text, error = false) {
     status.textContent = text;
@@ -42,15 +48,27 @@
     find('app-latest-version').textContent = '最新正式版本：' + (info.latest_version || '未读取');
     find('app-release-notes').textContent = info.release_notes || '该版本暂未提供更新说明。';
     find('app-release-details').hidden = !info.latest_version;
-    const label = info.same_version ? '当前版本有补丁更新' : '发现新版 ' + info.latest_version;
-    banner.hidden = !info.available || dismissed;
+    const label = '发现新版 ' + info.latest_version;
+    banner.hidden = !info.available || !!info.downloaded_path || dismissed;
     find('app-update-banner-text').textContent = label + '，可在设置与帮助中查看。';
     message(info.reason || (info.available ? label + '。下载前可先查看更新说明。' : '未发现需要下载的正式版本更新。'));
+    if(hasCachedInstaller() && canUpdate()) message('安装包已下载。点击「安装并重启」后，程序会再次校验安装包。');
+    else if(info.installer_update && canUpdate()) message(label + '。下载并安装后，carkit 将重新打开。');
     if(info.supported === false) message((info.reason || '') + (info.reason ? '\n' : '') + '当前运行环境不支持下载 Windows 更新包，可打开官方发布页查看。');
+    if(info.downloaded_path && !info.installer_update) showDownloaded(info.downloaded_path);
     sync();
   }
+  function showDownloaded(path) {
+    banner.hidden = true;
+    progressWrap.hidden = false;
+    progress.value = 100;
+    find('app-update-progress-text').textContent = '下载完成';
+    folderButton.hidden = !path;
+    message('更新包已下载并通过 SHA-256 校验。\n' + (path || '') +
+      '\n请先保存当前工作，再关闭旧版并启动下载的新版。自定义工作目录请沿用原启动参数。');
+  }
   async function check() {
-    if(checking || downloading || !ready()) return;
+    if(checking || downloading || installationStarted || !ready()) return;
     githubFailed = false;
     checking = true; release = null; banner.hidden = true;
     progressWrap.hidden = true; folderButton.hidden = true; find('app-release-details').hidden = true;
@@ -68,12 +86,18 @@
     } finally { checking = false; sync(); }
   }
   async function download() {
-    if(checking || downloading || !canDownload() || !ready()) return;
+    if(checking || downloading || installationStarted || !canUpdate() || !ready()) return;
+    const install = release.installer_update === true;
+    const prepare = hasCachedInstaller() ? '验证已下载的安装包' : '下载并验证安装包';
+    if(install && !window.confirm('请先保存当前工作。确认后，程序将' + prepare + '，关闭当前窗口，安装完成后重新打开 carkit。继续更新吗？')) {
+      message('已取消安装更新。');
+      return;
+    }
     githubFailed = false;
     downloading = true; folderButton.hidden = true;
     progressWrap.hidden = false; progress.removeAttribute('value');
-    find('app-update-progress-text').textContent = '等待选择保存位置';
-    message('请选择新的保存位置。不会覆盖当前正在运行的程序。'); sync();
+    find('app-update-progress-text').textContent = install ? '正在准备安装包' : '等待选择保存位置';
+    message(install ? '正在' + prepare + '。' : '请选择新的保存位置。不会覆盖当前正在运行的程序。'); sync();
     let polling = false;
     const timer = setInterval(async () => {
       if(polling || !downloading) return;
@@ -90,18 +114,26 @@
       } finally { polling = false; }
     }, 1000);
     try {
-      const result = await call('download_app_update');
+      const result = await call(install ? 'install_app_update' : 'download_app_update');
       if(result.cancelled) {
-        progressWrap.hidden = true; message('已取消下载，当前程序和数据未改变。');
+        progressWrap.hidden = true;
+        message(install ? '已取消安装更新。' : '已取消下载，当前程序和数据未改变。');
+      } else if(install) {
+        installationStarted = true;
+        release.can_download = false;
+        banner.hidden = true;
+        progress.value = 100;
+        find('app-update-progress-text').textContent = '安装程序已启动';
+        message('正在关闭 carkit。安装完成后，程序将重新打开。');
       } else {
-        progress.value = 100; find('app-update-progress-text').textContent = '下载完成';
-        folderButton.hidden = !result.path;
-        message('下载完成' + (result.sha256 ? '，已通过 SHA-256 校验' : '') + '。\n' + (result.path || '') + '\n请先保存当前工作，再关闭旧版并启动下载的新版。车型数据和方案继续保留在原工作目录；自定义目录请沿用原启动参数。');
+        release.can_download = false;
+        showDownloaded(result.path);
       }
     } catch(error) {
       githubFailed = true;
       progressWrap.hidden = true;
-      message('下载失败：' + (error.message || error) + '\n可重试或打开飞书更新页下载。', true);
+      message((install ? '更新失败：' : '下载失败：') + (error.message || error) +
+        '\n可重试或打开飞书更新页下载。', true);
     } finally { clearInterval(timer); downloading = false; sync(); }
   }
   async function open(method) {

@@ -89,17 +89,16 @@ def test_only_uploaded_assets_are_used_and_versioned_filename_is_preferred(tmp_p
     assert result['asset_name'] == expected
 
 
-def test_same_version_patch_is_detected_by_executable_digest(tmp_path, monkeypatch):
-    check, executable = client(tmp_path, '0.2.3')
-    mock_network(monkeypatch, release('v0.2.3'))
+@pytest.mark.parametrize('digest', [asset()['digest'], None])
+def test_same_version_never_offers_a_download_even_with_different_bytes(tmp_path, monkeypatch, digest):
+    check, _ = client(tmp_path, '0.2.3')
+    calls = mock_network(monkeypatch, release('v0.2.3', assets=[asset('v0.2.3', digest=digest)]))
     result = check.check()
-    assert result['ok'] and result['same_version'] and result['available']
-    assert result['can_download'] and '同版本' in result['reason']
-
-    executable.write_bytes(BINARY)
-    current = updater.AppUpdater('0.2.3', executable).check()
-    assert current['ok'] and current['same_version']
-    assert not current['available'] and not current['can_download']
+    assert result['ok'] and result['same_version']
+    assert not result['available'] and not result['can_download']
+    assert '最新' in result['reason']
+    assert not check.download_to(tmp_path / 'same.exe')['ok']
+    assert len(calls) == 1
 
 
 def test_missing_digest_and_source_mode_block_downloads(tmp_path, monkeypatch):
@@ -209,6 +208,12 @@ def test_successful_download_preserves_executable_and_user_data(tmp_path, monkey
     assert not list(tmp_path.glob('*.part'))
     assert check.status()['state'] == 'complete'
     assert check.status()['downloaded'] == len(BINARY)
+    already_downloaded = check.check()
+    assert already_downloaded['downloaded_path'] == str(target)
+    assert not already_downloaded['can_download']
+    assert check.status()['path'] == str(target)
+    target.unlink()
+    assert check.check()['can_download']
 
 
 def test_destination_created_during_download_is_not_overwritten(tmp_path, monkeypatch):

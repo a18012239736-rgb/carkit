@@ -10,7 +10,7 @@
 5. 装 **Node.js** 并确认 `node` 可在终端运行，前端回归测试需要它。
 
 日常使用只需从 [GitHub 最新发布页](https://github.com/a18012239736-rgb/carkit/releases/latest)
-下载带版本号的 exe（本版 `carkit-0.3.1.exe`），无需安装 Python、Git 或 Node.js；仍需 Edge / Chrome 和 WebView2 Runtime。`carkit.exe` 是同内容的兼容文件名，两者任选其一。
+下载 `carkit-<版本>-setup.exe` 安装后，可以在程序内下载并安装后续更新。发布页也提供便携 EXE。两种方式都需要 WebView2 Runtime，读取汽车之家配置需要 Edge 或 Chrome。
 
 ## 二、拉代码 + 打包
 
@@ -28,6 +28,12 @@ cd carkit
 推送 `v*` 标签（如 `v0.3.1`）后，GitHub Actions 会先检查标签、程序和 `pyproject.toml` 版本一致，再在 Windows 上自动运行全部测试、
 打包单文件程序，并在独立目录验证带版本号 exe 的窗口启动，通过后将带版本号 exe 和兼容名 `carkit.exe` 上传到该标签的 GitHub Release。
 手动点击 Run workflow 只生成带版本号的构建附件，不创建 Release。
+
+### 构建安装器与签名
+
+在 Windows 安装 Inno Setup 6 后，先运行 `build_windows.ps1`，再运行 `build/build_installer.ps1 -Version 0.3.2`，生成 `dist/carkit-0.3.2-setup.exe`。安装器和便携包使用同一份程序。
+
+正式标签发布时，构建任务从 GitHub Actions secret `CARKIT_UPDATE_SIGNING_KEY` 读取与 `engine/update_key.py` 公钥对应的 Ed25519 私钥。`scripts/sign_installer_update.py` 生成 `latest.json` 和 `latest.json.sig`。签名覆盖版本、安装包地址、文件大小和 SHA-256。私钥由发布者保管，安装版仅包含公钥。手动触发构建可以先验证安装和重启，再准备正式发布。
 
 > 为什么必须在 Windows 上打包：PyInstaller 不能跨系统编译，且 playwright 的
 > node driver 是平台二进制。macOS 只负责开发 engine/CLI。

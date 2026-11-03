@@ -12,7 +12,7 @@ import traceback
 import re
 import copy
 import uuid
-from threading import Lock
+from threading import Lock, Timer
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -45,9 +45,16 @@ class Bridge:
         self._comparison_records = {}
         self._plan_sessions = {}
         from engine.updater import AppUpdater
-        self._updater = AppUpdater(__version__, sys.executable if sys.platform == 'win32'
-                                   and getattr(sys, 'frozen', False) else None)
+        executable = Path(sys.executable) if sys.platform == 'win32' and getattr(sys, 'frozen', False) else None
+        self._installed = bool(executable and executable.with_name('carkit-installed.marker').is_file())
+        if self._installed:
+            from engine.installer_update import InstallerUpdater
+            from engine.update_key import PUBLIC_KEY
+            self._updater = InstallerUpdater(__version__, PUBLIC_KEY, executable)
+        else:
+            self._updater = AppUpdater(__version__, executable)
         self._update_download_lock = Lock()
+        self._install_started = False
         self._feedback_issue_url = ''
         self._feedback_folder = ''
         os.makedirs(workdir, exist_ok=True)
@@ -72,7 +79,7 @@ class Bridge:
                 "workdir": self.workdir}
 
     def check_app_update(self):
-        if self._update_download_lock.locked():
+        if self._install_started or self._update_download_lock.locked():
             return {'ok': False, 'error': '正在选择位置或下载更新，请稍候'}
         return self._updater.check()
 
@@ -80,6 +87,8 @@ class Bridge:
         return self._updater.status()
 
     def download_app_update(self):
+        if self._installed:
+            return {'ok': False, 'error': '安装版请使用“下载并安装”。'}
         if not self._update_download_lock.acquire(blocking=False):
             return {'ok': False, 'error': '正在选择位置或下载更新，请稍候'}
         try:
@@ -92,6 +101,46 @@ class Bridge:
             if not destination:
                 return {'ok': True, 'cancelled': True}
             return self._updater.download_to(destination)
+        finally:
+            self._update_download_lock.release()
+
+    def install_app_update(self):
+        if not self._installed:
+            return {'ok': False, 'error': '请先安装 carkit，再使用程序内安装更新。'}
+        if not self._update_download_lock.acquire(blocking=False):
+            return {'ok': False, 'error': '正在下载或安装更新，请稍候。'}
+        try:
+            if self._install_started:
+                return {'ok': False, 'error': '安装程序已启动。'}
+            import subprocess
+            import tempfile
+            import webview
+
+            if not webview.windows:
+                return {'ok': False, 'error': '找不到当前程序窗口，请重新打开 carkit 后重试。'}
+            release = self._updater._release
+            if not release or not release['available']:
+                return {'ok': False, 'error': '请先检查可用更新。'}
+            if release['can_download']:
+                folder = Path(tempfile.mkdtemp(prefix='carkit-setup-'))
+                downloaded = self._updater.download_to(folder / release['asset_name'])
+                if not downloaded['ok']:
+                    folder.rmdir()
+                    return downloaded
+            installer = self._updater.verified_installer()
+            # The onefile bootloader keeps carkit.exe open until the Python process exits.
+            arguments = [str(installer), '/SILENT', '/NORESTART', '/NORESTARTAPPLICATIONS',
+                         f'/WAITPID={os.getppid()}', '/RELAUNCH=1',
+                         f'/DIR={Path(sys.executable).parent}', f'/WORKDIR={Path(self.workdir).resolve()}']
+            close = Timer(0.2, webview.windows[0].destroy)
+            close.daemon = True
+            subprocess.Popen(arguments, cwd=installer.parent,
+                             env={**os.environ, 'PYINSTALLER_RESET_ENVIRONMENT': '1'})
+            self._install_started = True
+            close.start()
+            return {'ok': True}
+        except (OSError, ValueError) as error:
+            return {'ok': False, 'error': f'无法启动安装更新：{error}'}
         finally:
             self._update_download_lock.release()
 

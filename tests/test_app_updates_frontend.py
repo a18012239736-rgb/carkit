@@ -21,7 +21,10 @@ function node(id) {
   }
   return nodes.get(id);
 }
-const window={addEventListener(type,callback){listeners[type]=callback;}};
+let approveInstall=true;
+const confirmations=[];
+const window={addEventListener(type,callback){listeners[type]=callback;},
+  confirm(message){confirmations.push(message);return approveInstall;}};
 const context={window,document:{getElementById:node},showPage:name=>page=name,
   setInterval(callback){timers.set(++timerId,callback);return timerId;},clearInterval:id=>timers.delete(id)};
 vm.createContext(context);
@@ -72,20 +75,28 @@ await click('btn-open-release');assert.strictEqual(opened,1);
 """)
 
 
-def test_offline_or_invalid_check_never_claims_latest_and_can_retry_same_version_patch():
+def test_offline_or_invalid_check_can_retry_and_only_offer_a_newer_version():
     run_node(r"""
 let attempt=0;
 load({ping:async()=>({ok:true,version:'0.2.3'}),check_app_update:async()=>{
   attempt++;if(attempt===1)throw new Error('网络不可用');
   if(attempt===2)return {ok:true};
-  return latest({latest_version:'0.2.3',same_version:true});
+  if(attempt===3)return latest({latest_version:'0.2.3',same_version:true,available:false,can_download:false,reason:'当前已是最新版本'});
+  return latest();
 }});
 await flush();assert(node('app-update-status').textContent.includes('检查失败'));
 assert.strictEqual(node('app-current-version').textContent,'当前版本：0.2.3');
 assert(!node('app-update-status').textContent.includes('已是最新'));assert(node('btn-download-update').hidden);
 await click('btn-check-update');assert(node('app-update-status').textContent.includes('检查失败'));
-await click('btn-check-update');assert(node('app-update-banner-text').textContent.includes('补丁'));
+await click('btn-check-update');
+assert(node('app-update-banner').hidden);
+assert(node('btn-download-update').hidden);
+assert(node('app-update-status').textContent.includes('已是最新'));
+await click('btn-check-update');
+assert(!node('app-update-banner').hidden);
+assert(node('app-update-banner-text').textContent.includes('发现新版 0.2.4'));
 assert(!node('btn-download-update').hidden);
+assert.strictEqual(node('btn-download-update').textContent,'下载新版');
 """)
 
 
@@ -104,6 +115,7 @@ resolveDownload({ok:true,path:'C:\\下载\\新版.exe',sha256:'abc'});await down
 assert.strictEqual(timers.size,0);assert.strictEqual(node('app-update-progress').value,100);
 assert(!node('btn-open-update-folder').hidden);assert(!node('btn-check-update').disabled);
 assert(node('app-update-status').textContent.includes('SHA-256'));assert(node('app-update-status').textContent.includes('先保存'));
+assert(node('btn-download-update').hidden);
 await click('btn-open-update-folder');assert.strictEqual(folders,1);
 """)
 
@@ -142,4 +154,70 @@ assert(!node('btn-download-update').hidden);
 await click('btn-download-update');
 assert(fallback.classList.contains('primary'));
 assert(node('app-update-status').textContent.includes('飞书更新页'));
+""")
+
+
+def test_installed_update_requires_confirmation_and_disables_retry_after_launch():
+    run_node(r"""
+let installs=0, resolveInstall;
+load({check_app_update:async()=>latest({installer_update:true}),
+  install_app_update(){installs++;return new Promise(resolve=>resolveInstall=resolve);},
+  app_update_status:async()=>({ok:true,state:'downloading',downloaded:524288,total:1048576})});
+await flush();
+assert.strictEqual(installs,0);
+assert.strictEqual(node('btn-download-update').textContent,'下载并安装');
+approveInstall=false;
+await click('btn-download-update');
+assert(confirmations[0].includes('请先保存当前工作'));
+assert.strictEqual(installs,0);
+assert(!node('btn-download-update').disabled);
+approveInstall=true;
+const updating=click('btn-download-update');
+await click('btn-download-update');assert.strictEqual(installs,1);
+await [...timers.values()][0]();assert.strictEqual(node('app-update-progress').value,50);
+resolveInstall({ok:true});await updating;
+assert(node('btn-download-update').hidden);
+assert(node('btn-check-update').disabled);
+assert(node('btn-open-update-folder').hidden);
+assert(node('app-update-status').textContent.includes('安装完成后，程序将重新打开'));
+assert.strictEqual(timers.size,0);
+""")
+
+
+def test_installer_failure_keeps_retry_and_feishu_fallback():
+    run_node(r"""
+let installs=0;
+load({check_app_update:async()=>latest({installer_update:true}),
+  install_app_update:async()=>{
+    if(++installs===1)return {ok:true,cancelled:true};
+    return {ok:false,error:'安装包签名校验失败'};
+  }});
+await flush();await click('btn-download-update');
+assert(node('app-update-status').textContent.includes('已取消安装更新'));
+await click('btn-download-update');
+assert(node('app-update-status').textContent.includes('安装包签名校验失败'));
+assert(node('btn-open-internal-release').classList.contains('primary'));
+assert(!node('btn-download-update').disabled);
+assert(node('app-update-progress-wrap').hidden);
+assert.strictEqual(timers.size,0);
+""")
+
+
+def test_cached_installer_can_retry_without_downloading_again():
+    run_node(r"""
+let installs=0;
+load({check_app_update:async()=>latest({installer_update:true,can_download:false,downloaded_path:'C:\\更新\\carkit-setup.exe'}),
+  install_app_update:async()=>++installs===1 ? {ok:false,error:'无法启动安装程序'} : {ok:true}});
+await flush();
+const button=node('btn-download-update');
+assert(!button.hidden);
+assert.strictEqual(button.textContent,'安装并重启');
+assert(node('btn-open-update-folder').hidden);
+await click('btn-download-update');
+assert(confirmations[0].includes('验证已下载的安装包'));
+assert(!button.hidden && !button.disabled);
+await click('btn-download-update');
+assert.strictEqual(installs,2);
+assert(button.hidden);
+assert(node('app-update-status').textContent.includes('安装完成后，程序将重新打开'));
 """)
