@@ -10,7 +10,7 @@
 5. 装 **Node.js** 并确认 `node` 可在终端运行，前端回归测试需要它。
 
 日常使用只需从 [GitHub 最新发布页](https://github.com/a18012239736-rgb/carkit/releases/latest)
-下载带版本号的 exe（本版 `carkit-0.2.3.exe`），无需安装 Python、Git 或 Node.js；仍需 Edge / Chrome 和 WebView2 Runtime。`carkit.exe` 是同内容的兼容文件名，两者任选其一。
+下载带版本号的 exe（本版 `carkit-0.3.1.exe`），无需安装 Python、Git 或 Node.js；仍需 Edge / Chrome 和 WebView2 Runtime。`carkit.exe` 是同内容的兼容文件名，两者任选其一。
 
 ## 二、拉代码 + 打包
 
@@ -20,12 +20,12 @@ cd carkit
 .\build\build_windows.ps1
 ```
 
-产物：`dist\carkit-<版本号>.exe`，版本号自动读取 `engine/__init__.py`，本版为 `carkit-0.2.3.exe`（**onefile 模式**：Python DLL、Playwright driver、UI 和规则文件都在
+产物：`dist\carkit-<版本号>.exe`，版本号自动读取 `engine/__init__.py`，本版为 `carkit-0.3.1.exe`（**onefile 模式**：Python DLL、Playwright driver、UI 和规则文件都在
 一个 exe 中，无需另带 `_internal` 文件夹）。构建脚本还会生成相同内容的 `dist\carkit.exe` 并复制到
 `release\carkit.exe`，供本地使用。对外下载以 [GitHub Release 最新的 carkit.exe](https://github.com/a18012239736-rgb/carkit/releases/latest/download/carkit.exe)
 为准，仓库 `release/` 中的历史程序不随每次发布更新。
 
-推送 `v*` 标签（如 `v0.2.3`）后，GitHub Actions 会先检查标签、程序和 `pyproject.toml` 版本一致，再在 Windows 上自动运行全部测试、
+推送 `v*` 标签（如 `v0.3.1`）后，GitHub Actions 会先检查标签、程序和 `pyproject.toml` 版本一致，再在 Windows 上自动运行全部测试、
 打包单文件程序，并在独立目录验证带版本号 exe 的窗口启动，通过后将带版本号 exe 和兼容名 `carkit.exe` 上传到该标签的 GitHub Release。
 手动点击 Run workflow 只生成带版本号的构建附件，不创建 Release。
 

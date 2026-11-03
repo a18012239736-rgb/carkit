@@ -12,6 +12,7 @@ import traceback
 import re
 import copy
 import uuid
+from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -43,6 +44,12 @@ class Bridge:
         self.stage_raw = None
         self._comparison_records = {}
         self._plan_sessions = {}
+        from engine.updater import AppUpdater
+        self._updater = AppUpdater(__version__, sys.executable if sys.platform == 'win32'
+                                   and getattr(sys, 'frozen', False) else None)
+        self._update_download_lock = Lock()
+        self._feedback_issue_url = ''
+        self._feedback_folder = ''
         os.makedirs(workdir, exist_ok=True)
         for sub in ("raw", "阶梯", "快照", "赋值", "结果", "方案"):
             os.makedirs(os.path.join(workdir, sub), exist_ok=True)
@@ -63,6 +70,82 @@ class Bridge:
     def ping(self):
         return {"ok": True, "version": __version__, "rules": self.rules.version,
                 "workdir": self.workdir}
+
+    def check_app_update(self):
+        if self._update_download_lock.locked():
+            return {'ok': False, 'error': '正在选择位置或下载更新，请稍候'}
+        return self._updater.check()
+
+    def app_update_status(self):
+        return self._updater.status()
+
+    def download_app_update(self):
+        if not self._update_download_lock.acquire(blocking=False):
+            return {'ok': False, 'error': '正在选择位置或下载更新，请稍候'}
+        try:
+            release = self._updater._release
+            if not release or not release['can_download']:
+                return {'ok': False, 'error': '请先检查可用更新'}
+            destination = self.save_file_dialog(release['asset_name'], ['Windows 程序 (*.exe)'])
+            if isinstance(destination, dict):
+                return {'ok': False, 'error': destination.get('error', '无法选择保存位置')}
+            if not destination:
+                return {'ok': True, 'cancelled': True}
+            return self._updater.download_to(destination)
+        finally:
+            self._update_download_lock.release()
+
+    def open_app_release_page(self):
+        from engine.updater import RELEASES_URL
+        return self._open_web_url(RELEASES_URL)
+
+    def open_app_update_folder(self):
+        path = self._updater.status().get('path')
+        if not path or not Path(path).is_file():
+            return {'ok': False, 'error': '尚无已校验完成的下载文件'}
+        return self._open_folder(str(Path(path).parent))
+
+    def prepare_feedback(self, payload):
+        self._feedback_issue_url = self._feedback_folder = ''
+        try:
+            from engine.feedback import prepare_feedback
+            result = prepare_feedback(self.workdir, payload, __version__)
+            self._feedback_issue_url, self._feedback_folder = result['issue_url'], result['folder']
+            return result
+        except Exception as error:
+            return {'ok': False, 'error': str(error)}
+
+    def open_feedback_issue(self):
+        if not self._feedback_issue_url:
+            return {'ok': False, 'error': '请先准备反馈内容'}
+        return self._open_web_url(self._feedback_issue_url)
+
+    def open_feedback_folder(self):
+        if not self._feedback_folder or not Path(self._feedback_folder).is_dir():
+            return {'ok': False, 'error': '请先准备反馈内容'}
+        return self._open_folder(self._feedback_folder)
+
+    @staticmethod
+    def _open_web_url(url):
+        try:
+            import webbrowser
+            if webbrowser.open(url):
+                return {'ok': True}
+        except Exception:
+            pass
+        return {'ok': False, 'error': '无法打开浏览器，请检查默认浏览器设置后重试；本地资料仍保留'}
+
+    @staticmethod
+    def _open_folder(path):
+        try:
+            if sys.platform == 'win32':
+                os.startfile(path)
+            else:
+                import subprocess
+                subprocess.Popen(['open' if sys.platform == 'darwin' else 'xdg-open', path])
+            return {'ok': True}
+        except OSError:
+            return {'ok': False, 'error': '无法打开文件夹，请在工作目录中查看'}
 
     def open_file_dialog(self, file_types=None):
         """原生文件选择对话框，返回绝对路径或 None"""
