@@ -73,13 +73,17 @@ await click('btn-open-release');assert.strictEqual(opened,1);
 
 def test_offline_or_invalid_check_never_claims_latest_and_can_retry_same_version_patch():
     run_node(r"""
-let attempt=0;
-load({ping:async()=>({ok:true,version:'0.2.3'}),check_app_update:async()=>{
+let attempt=0,internalOpened=0;
+load({ping:async()=>({ok:true,version:'0.2.3',has_internal_release_page:true}),
+  open_internal_release_page:async()=>{internalOpened++;return {ok:true};},check_app_update:async()=>{
   attempt++;if(attempt===1)throw new Error('网络不可用');
   if(attempt===2)return {ok:true};
   return latest({latest_version:'0.2.3',same_version:true});
 }});
 await flush();assert(node('app-update-status').textContent.includes('检查失败'));
+assert(node('app-update-status').textContent.includes('飞书更新页'));
+assert(!node('btn-open-internal-release').hidden);
+await click('btn-open-internal-release');assert.strictEqual(internalOpened,1);
 assert.strictEqual(node('app-current-version').textContent,'当前版本：0.2.3');
 assert(!node('app-update-status').textContent.includes('已是最新'));assert(node('btn-download-update').hidden);
 await click('btn-check-update');assert(node('app-update-status').textContent.includes('检查失败'));

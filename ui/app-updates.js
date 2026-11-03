@@ -4,6 +4,7 @@
   const find = id => document.getElementById(id);
   const checkButton = find('btn-check-update'), downloadButton = find('btn-download-update');
   const releaseButton = find('btn-open-release'), folderButton = find('btn-open-update-folder');
+  const internalButton = find('btn-open-internal-release');
   const banner = find('app-update-banner'), status = find('app-update-status');
   const progressWrap = find('app-update-progress-wrap'), progress = find('app-update-progress');
   let release = null, checking = false, downloading = false, dismissed = false, started = false;
@@ -54,7 +55,8 @@
     } catch(error) {
       release = null;
       find('app-latest-version').textContent = '最新版本：未能确认';
-      message('检查失败：' + (error.message || error) + '\n可稍后重试或打开官方发布页；当前工作不受影响。', true);
+      message('检查失败：' + (error.message || error) + '\n' +
+        (internalButton.hidden ? '可稍后重试或打开官方发布页。' : '可打开飞书更新页查看并下载。'), true);
     } finally { checking = false; sync(); }
   }
   async function download() {
@@ -89,7 +91,8 @@
       }
     } catch(error) {
       progressWrap.hidden = true;
-      message('下载失败：' + (error.message || error) + '\n当前程序及数据未改变，可重试或从官方发布页下载。', true);
+      message('下载失败：' + (error.message || error) + '\n' +
+        (internalButton.hidden ? '可重试或从官方发布页下载。' : '可打开飞书更新页下载。'), true);
     } finally { clearInterval(timer); downloading = false; sync(); }
   }
   async function open(method) {
@@ -99,6 +102,7 @@
   checkButton.addEventListener('click', check);
   downloadButton.addEventListener('click', download);
   releaseButton.addEventListener('click', () => open('open_app_release_page'));
+  internalButton.addEventListener('click', () => open('open_internal_release_page'));
   folderButton.addEventListener('click', () => open('open_app_update_folder'));
   find('btn-view-update').addEventListener('click', () => { showPage('settings'); find('app-update-heading').scrollIntoView({block:'start'}); });
   find('btn-dismiss-update').addEventListener('click', () => { dismissed = true; banner.hidden = true; });
@@ -108,9 +112,11 @@
     if(window.pywebview.api.ping) {
       void call('ping').then(info => {
         if(info.version) find('app-current-version').textContent = '当前版本：' + info.version;
-      }).catch(() => {});
+        internalButton.hidden = !info.has_internal_release_page;
+      }).catch(() => {}).finally(check);
+    } else {
+      void check();
     }
-    void check();
   }
   window.addEventListener('pywebviewready', start);
   if(ready()) start();

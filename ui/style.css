@@ -1,7 +1,10 @@
 /* Shared controls, data tables and analysis views. Layout lives in workspace.css. */
 :root {
   color-scheme: light;
-  --bg: #f5f7fa;
+  --bg: #f3f6f5;
+  --surface-soft: #edf4f1;
+  --surface-selected: #e4f1ec;
+  --surface-shadow: 0 1px 2px #193c3310, 0 6px 20px #193c3307;
   --card: #fff;
   --navy: #182b3a;
   --navy-2: #254354;
@@ -11,7 +14,7 @@
   --ink: #223443;
   --dim: #60727f;
   --muted: #60727f;
-  --line: #e3e9ed;
+  --line: #dfe8e4;
   --green: #257257;
   --green-bg: #eaf5ef;
   --red: #ac4b45;
@@ -24,7 +27,7 @@
 [hidden] { display:none !important; }
 html { font-size:16px; }
 body {
-  background:var(--bg);
+  background:radial-gradient(ellipse at 72% 0%, #e6f2ed 0, transparent 42rem), var(--bg);
   color:var(--ink);
   font:13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
   -webkit-font-smoothing:antialiased;
@@ -62,21 +65,24 @@ button {
   min-height:36px;
   padding:7px 13px;
   border:1px solid #d8e1e6;
-  border-radius:6px;
+  border-radius:9px;
   background:#fff;
-  color:#526a79;
+  color:#3c5660;
   font-size:12px;
   font-weight:500;
   line-height:1.5;
   cursor:pointer;
-  transition:background-color .15s,border-color .15s,color .15s;
+  transition:background-color .16s,border-color .16s,color .16s,box-shadow .16s,transform .12s;
 }
 button:hover { border-color:#a7c6bf; background:#f5faf8; color:var(--accent); }
-button.primary { border-color:var(--accent); background:var(--accent); color:#fff; }
+button.primary { border-color:var(--accent); background:var(--accent); color:#fff; font-weight:650; box-shadow:0 2px 4px #0c645b25; }
+@media (prefers-reduced-motion:no-preference) {
+  button:enabled:active:not([aria-haspopup]):not([aria-expanded]):not(.nav-item) { transform:translateY(1px) scale(.98); }
+}
 button.primary:hover { border-color:#116a61; background:#116a61; color:#fff; }
 button.big { min-height:40px; padding:9px 20px; font-size:13px; }
 button:focus-visible { outline:2px solid #75b2a7; outline-offset:3px; }
-button:disabled { cursor:not-allowed; opacity:.48; }
+button:disabled { cursor:not-allowed; opacity:.48; box-shadow:none; }
 button:disabled:hover { border-color:#d8e1e6; background:#fff; color:#526a79; }
 button.primary:disabled:hover { border-color:var(--accent); background:var(--accent); color:#fff; }
 input[type=text],input[type=number],select,textarea {

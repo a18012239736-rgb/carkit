@@ -69,7 +69,7 @@ class Bridge:
 
     def ping(self):
         return {"ok": True, "version": __version__, "rules": self.rules.version,
-                "workdir": self.workdir}
+                "workdir": self.workdir, "has_internal_release_page": bool(self._internal_release_url())}
 
     def check_app_update(self):
         if self._update_download_lock.locked():
@@ -98,6 +98,22 @@ class Bridge:
     def open_app_release_page(self):
         from engine.updater import RELEASES_URL
         return self._open_web_url(RELEASES_URL)
+
+    def _internal_release_url(self):
+        folder = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(self.workdir)
+        try:
+            url = (folder / 'carkit-update-url.local.txt').read_text(encoding='utf-8-sig').strip()
+        except (OSError, UnicodeError):
+            return ''
+        if re.fullmatch(r'https://[a-zA-Z0-9-]+\.feishu\.cn/wiki/[a-zA-Z0-9]+', url):
+            return url
+        return ''
+
+    def open_internal_release_page(self):
+        url = self._internal_release_url()
+        if not url:
+            return {'ok': False, 'error': '请在程序旁放置包含飞书知识库链接的 carkit-update-url.local.txt。'}
+        return self._open_web_url(url)
 
     def open_app_update_folder(self):
         path = self._updater.status().get('path')
