@@ -8,6 +8,7 @@
   const banner = find('app-update-banner'), status = find('app-update-status');
   const progressWrap = find('app-update-progress-wrap'), progress = find('app-update-progress');
   let release = null, checking = false, downloading = false, dismissed = false, started = false;
+  let internalChannel = false;
 
   function ready() { return !!window.pywebview?.api; }
   function canDownload() { return !!(release?.available && release.can_download && release.supported !== false); }
@@ -18,6 +19,8 @@
     return result;
   }
   function sync() {
+    checkButton.hidden = releaseButton.hidden = internalChannel;
+    internalButton.hidden = !internalChannel;
     checkButton.disabled = !ready() || checking || downloading;
     releaseButton.disabled = !ready();
     downloadButton.hidden = !canDownload();
@@ -43,7 +46,7 @@
     sync();
   }
   async function check() {
-    if(checking || downloading || !ready()) return;
+    if(internalChannel || checking || downloading || !ready()) return;
     checking = true; release = null; banner.hidden = true;
     progressWrap.hidden = true; folderButton.hidden = true; find('app-release-details').hidden = true;
     find('app-latest-version').textContent = '最新版本：检查中…';
@@ -55,8 +58,7 @@
     } catch(error) {
       release = null;
       find('app-latest-version').textContent = '最新版本：未能确认';
-      message('检查失败：' + (error.message || error) + '\n' +
-        (internalButton.hidden ? '可稍后重试或打开官方发布页。' : '可打开飞书更新页查看并下载。'), true);
+      message('检查失败：' + (error.message || error) + '\n可稍后重试或打开官方发布页。', true);
     } finally { checking = false; sync(); }
   }
   async function download() {
@@ -91,8 +93,7 @@
       }
     } catch(error) {
       progressWrap.hidden = true;
-      message('下载失败：' + (error.message || error) + '\n' +
-        (internalButton.hidden ? '可重试或从官方发布页下载。' : '可打开飞书更新页下载。'), true);
+      message('下载失败：' + (error.message || error) + '\n可重试或从官方发布页下载。', true);
     } finally { clearInterval(timer); downloading = false; sync(); }
   }
   async function open(method) {
@@ -112,7 +113,13 @@
     if(window.pywebview.api.ping) {
       void call('ping').then(info => {
         if(info.version) find('app-current-version').textContent = '当前版本：' + info.version;
-        internalButton.hidden = !info.has_internal_release_page;
+        internalChannel = !!info.has_internal_release_page;
+        if(internalChannel) {
+          find('app-update-description').textContent = '通过公司飞书更新页查看更新说明并下载新版。';
+          find('app-latest-version').textContent = '更新渠道：公司飞书';
+          message('点击“打开飞书更新页”，使用公司飞书账号下载。');
+          sync();
+        }
       }).catch(() => {}).finally(check);
     } else {
       void check();
