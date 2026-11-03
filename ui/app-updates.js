@@ -8,7 +8,7 @@
   const banner = find('app-update-banner'), status = find('app-update-status');
   const progressWrap = find('app-update-progress-wrap'), progress = find('app-update-progress');
   let release = null, checking = false, downloading = false, dismissed = false, started = false;
-  let internalChannel = false;
+  let hasFeishu = false, githubFailed = false;
 
   function ready() { return !!window.pywebview?.api; }
   function canDownload() { return !!(release?.available && release.can_download && release.supported !== false); }
@@ -19,13 +19,14 @@
     return result;
   }
   function sync() {
-    checkButton.hidden = releaseButton.hidden = internalChannel;
-    internalButton.hidden = !internalChannel;
-    find('app-latest-version').hidden = internalChannel;
+    internalButton.hidden = !hasFeishu;
     checkButton.disabled = !ready() || checking || downloading;
     releaseButton.disabled = !ready();
     const downloadAvailable = canDownload();
-    checkButton.classList.toggle('primary', !downloadAvailable);
+    const useFallback = hasFeishu && githubFailed;
+    internalButton.classList.toggle('primary', useFallback);
+    checkButton.classList.toggle('primary', !downloadAvailable && !useFallback);
+    downloadButton.classList.toggle('primary', !useFallback);
     downloadButton.hidden = !downloadAvailable;
     downloadButton.disabled = checking || downloading;
     folderButton.disabled = downloading;
@@ -49,7 +50,8 @@
     sync();
   }
   async function check() {
-    if(internalChannel || checking || downloading || !ready()) return;
+    if(checking || downloading || !ready()) return;
+    githubFailed = false;
     checking = true; release = null; banner.hidden = true;
     progressWrap.hidden = true; folderButton.hidden = true; find('app-release-details').hidden = true;
     find('app-latest-version').textContent = '最新版本：检查中…';
@@ -60,12 +62,15 @@
       render(release);
     } catch(error) {
       release = null;
+      githubFailed = true;
       find('app-latest-version').textContent = '最新版本：未能确认';
-      message('检查失败：' + (error.message || error) + '\n可稍后重试或打开官方发布页。', true);
+      message('检查失败：' + (error.message || error) + '\n' +
+        (hasFeishu ? '可打开飞书更新页查看并下载新版。' : '可稍后重试或打开官方发布页。'), true);
     } finally { checking = false; sync(); }
   }
   async function download() {
     if(checking || downloading || !canDownload() || !ready()) return;
+    githubFailed = false;
     downloading = true; folderButton.hidden = true;
     progressWrap.hidden = false; progress.removeAttribute('value');
     find('app-update-progress-text').textContent = '等待选择保存位置';
@@ -95,8 +100,10 @@
         message('下载完成' + (result.sha256 ? '，已通过 SHA-256 校验' : '') + '。\n' + (result.path || '') + '\n请先保存当前工作，再关闭旧版并启动下载的新版。车型数据和方案继续保留在原工作目录；自定义目录请沿用原启动参数。');
       }
     } catch(error) {
+      githubFailed = true;
       progressWrap.hidden = true;
-      message('下载失败：' + (error.message || error) + '\n可重试或从官方发布页下载。', true);
+      message('下载失败：' + (error.message || error) + '\n' +
+        (hasFeishu ? '可重试或打开飞书更新页下载。' : '可重试或从官方发布页下载。'), true);
     } finally { clearInterval(timer); downloading = false; sync(); }
   }
   async function open(method) {
@@ -116,12 +123,10 @@
     if(window.pywebview.api.ping) {
       void call('ping').then(info => {
         if(info.version) find('app-current-version').textContent = '当前版本：' + info.version;
-        internalChannel = !!info.has_internal_release_page;
-        if(internalChannel) {
-          find('app-update-channel').textContent = '公司飞书';
-          find('app-update-description').textContent = '通过公司飞书更新页查看更新说明并下载新版。';
-          message('点击“打开飞书更新页”，使用公司飞书账号下载。');
-          sync();
+        hasFeishu = !!info.has_internal_release_page;
+        if(hasFeishu) {
+          find('app-update-channel').textContent = 'GitHub · 飞书备用';
+          find('app-update-description').textContent = '优先从 GitHub 检查更新，也可到飞书更新页下载。';
         }
       }).catch(() => {}).finally(check);
     } else {

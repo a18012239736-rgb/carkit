@@ -100,13 +100,23 @@ class Bridge:
         return self._open_web_url(RELEASES_URL)
 
     def _internal_release_url(self):
-        folder = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(self.workdir)
-        try:
-            url = (folder / 'carkit-update-url.local.txt').read_text(encoding='utf-8-sig').strip()
-        except (OSError, UnicodeError):
-            return ''
-        if re.fullmatch(r'https://[a-zA-Z0-9-]+\.feishu\.cn/wiki/[a-zA-Z0-9]+', url):
-            return url
+        config = Path(self.workdir) / 'carkit-update-url.local.txt'
+        candidates = [config]
+        if getattr(sys, 'frozen', False):
+            candidates.insert(0, Path(sys.executable).with_name(config.name))
+        for candidate in candidates:
+            try:
+                url = candidate.read_text(encoding='utf-8-sig').strip()
+            except (OSError, UnicodeError):
+                continue
+            if re.fullmatch(r'https://[a-zA-Z0-9-]+\.feishu\.cn/wiki/[a-zA-Z0-9]+', url):
+                # Keep the fallback when a later GitHub download runs from another folder.
+                try:
+                    if candidate != config and not config.exists():
+                        atomic_write_text(config, url + '\n')
+                except OSError:
+                    pass
+                return url
         return ''
 
     def open_internal_release_page(self):
