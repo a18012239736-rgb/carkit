@@ -1,9 +1,6 @@
 name: Build macOS disk images
 on:
-  workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
 permissions:
   contents: write
 jobs:
@@ -74,7 +71,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Add disk image to the matching GitHub release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           ASSET_NAME: ${{ steps.version.outputs.asset }}
