@@ -154,3 +154,6 @@ jobs:
             --title "产品小工具 $env:GITHUB_REF_NAME" `
             --verify-tag @notesArgs
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release publication failed.' }
+  build-macos:
+    needs: build
+    uses: ./.github/workflows/macos.yml
