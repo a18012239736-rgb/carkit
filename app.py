@@ -2,7 +2,7 @@
 """carkit exe 入口 — pywebview 窗口 + Bridge
 
 用法：python app.py [工作目录]
-工作目录缺省 = 用户文档目录/carkit（Windows: Documents\\carkit）
+工作目录缺省 = 用户桌面目录/Codex
 """
 from __future__ import annotations
 import os
