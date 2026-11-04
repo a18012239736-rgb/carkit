@@ -45,7 +45,7 @@ class Bridge:
         self._comparison_records = {}
         self._plan_sessions = {}
         from engine.updater import AppUpdater
-        executable = Path(sys.executable) if sys.platform == 'win32' and getattr(sys, 'frozen', False) else None
+        executable = Path(sys.executable) if sys.platform in {'win32', 'darwin'} and getattr(sys, 'frozen', False) else None
         self._installed = bool(executable and executable.with_name('carkit-installed.marker').is_file())
         if self._installed:
             from engine.installer_update import InstallerUpdater
@@ -95,7 +95,8 @@ class Bridge:
             release = self._updater._release
             if not release or not release['can_download']:
                 return {'ok': False, 'error': '请先检查可用更新'}
-            destination = self.save_file_dialog(release['asset_name'], ['Windows 程序 (*.exe)'])
+            file_types = ['磁盘映像 (*.dmg)'] if release.get('platform', '').startswith('macos-') else ['Windows 程序 (*.exe)']
+            destination = self.save_file_dialog(release['asset_name'], file_types)
             if isinstance(destination, dict):
                 return {'ok': False, 'error': destination.get('error', '无法选择保存位置')}
             if not destination:
@@ -155,6 +156,13 @@ class Bridge:
         path = self._updater.status().get('path')
         if not path or not Path(path).is_file():
             return {'ok': False, 'error': '尚无已校验完成的下载文件'}
+        if sys.platform == 'darwin' and Path(path).suffix.lower() == '.dmg':
+            try:
+                import subprocess
+                subprocess.Popen(['open', path])
+                return {'ok': True}
+            except OSError:
+                return {'ok': False, 'error': '无法打开磁盘映像，请在 Finder 中找到已下载的 DMG'}
         return self._open_folder(str(Path(path).parent))
 
     def prepare_feedback(self, payload):

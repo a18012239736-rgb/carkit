@@ -34,6 +34,7 @@
     downloadButton.hidden = !updateAvailable;
     downloadButton.disabled = checking || downloading;
     folderButton.disabled = downloading;
+    folderButton.textContent = release?.platform?.startsWith('macos-') ? '打开安装包' : '打开下载位置';
     checkButton.textContent = checking ? '检查中…' : '检查更新';
     const action = hasCachedInstaller() ? '安装并重启' :
       (release?.installer_update ? '下载并安装' : '下载新版');
@@ -54,7 +55,7 @@
     message(info.reason || (info.available ? label + '。下载前可先查看更新说明。' : '未发现需要下载的正式版本更新。'));
     if(hasCachedInstaller() && canUpdate()) message('安装包已下载。点击「安装并重启」后，程序会再次校验安装包。');
     else if(info.installer_update && canUpdate()) message(label + '。下载并安装后，carkit 将重新打开。');
-    if(info.supported === false) message((info.reason || '') + (info.reason ? '\n' : '') + '当前运行环境不支持下载 Windows 更新包，可打开官方发布页查看。');
+    if(info.supported === false) message((info.reason || '') + (info.reason ? '\n' : '') + '当前运行环境不支持程序内下载，可打开官方发布页查看。');
     if(info.downloaded_path && !info.installer_update) showDownloaded(info.downloaded_path);
     sync();
   }
@@ -64,8 +65,12 @@
     progress.value = 100;
     find('app-update-progress-text').textContent = '下载完成';
     folderButton.hidden = !path;
-    message('更新包已下载并通过 SHA-256 校验。\n' + (path || '') +
-      '\n请先保存当前工作，再关闭旧版并启动下载的新版。自定义工作目录请沿用原启动参数。');
+    if(release?.platform?.startsWith('macos-')) {
+      message('DMG 已下载并通过 SHA-256 校验。点击「打开安装包」，将 carkit.app 拖入“应用程序”并替换旧版。此 macOS 版本尚未经过 Apple 公证；若系统阻止打开且你确认文件来自官方发布页，可到“系统设置 → 隐私与安全性”选择“仍要打开”。\n' + (path || ''));
+    } else {
+      message('更新包已下载并通过 SHA-256 校验。\n' + (path || '') +
+        '\n请先保存当前工作，再关闭旧版并启动下载的新版。自定义工作目录请沿用原启动参数。');
+    }
   }
   async function check() {
     if(checking || downloading || installationStarted || !ready()) return;

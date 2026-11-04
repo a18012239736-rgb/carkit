@@ -10,6 +10,10 @@ carkit 用于整理车型配置阶梯和比较产品竞争力。可以从汽车�
 
 界面需要 WebView2 Runtime，读取汽车之家配置需要 Edge 或 Chrome。Python 和程序运行文件已打包。
 
+**macOS** · 发布页提供 Apple silicon（`carkit-<版本>-macos-arm64.dmg`）和 Intel（`carkit-<版本>-macos-x86_64.dmg`）安装包。打开 DMG，将 `carkit.app` 拖到“应用程序”。程序内检查更新时会按 Mac 芯片类型下载对应 DMG，下载后点“打开安装包”即可挂载。
+
+当前 macOS 包尚未使用 Apple Developer ID 签名和公证。首次打开如被系统拦截，可在“系统设置 → 隐私与安全性”确认后选择“仍要打开”；若公司设备策略禁止运行未公证应用，需要先完成企业签名和公证。
+
 程序默认使用桌面上的 `Codex` 文件夹保存车型、规则、方案和结果。可以在「设置与帮助」查看实际工作目录。
 
 ## 检查与下载更新
@@ -17,9 +21,9 @@ carkit 用于整理车型配置阶梯和比较产品竞争力。可以从汽车�
 1. 程序启动后优先检查 GitHub 最新正式发布。也可以在「设置与帮助 → 程序更新」点击「检查更新」，查看版本和更新说明。
 2. 发布版本高于当前版本时才提示更新。安装版先验证发布清单的签名，再校验安装包的文件大小和 SHA-256。保存工作后，点击「下载并安装」并确认。安装结束后，程序按原工作目录重新打开。
 3. 如果 GitHub 检查或下载失败，点击「打开飞书更新页」，使用有访问权限的公司飞书账号下载最新版安装包。手动安装后，若曾自定义工作目录，可沿用原启动参数。
-4. 便携版可以在程序内下载并校验新版 EXE。下载后关闭旧版，再运行新版。
+4. Windows 便携版可以在程序内下载并校验新版 EXE。下载后关闭旧版，再运行新版。macOS 会下载本机架构对应的 DMG；挂载后将新 `carkit.app` 拖入“应用程序”替换旧版。
 
-GitHub 与飞书提供同一个 Windows 程序，飞书备用入口随程序提供。较早的版本如果没有更新入口，先从 GitHub 发布页或公司飞书更新文档下载一次新版即可。
+GitHub 与飞书提供 Windows 程序；macOS 两种架构的 DMG 从 GitHub 发布页下载。Windows 用户可在程序内打开飞书备用入口。较早的版本如果没有更新入口，先从 GitHub 发布页或公司飞书更新文档下载一次新版即可。
 
 ### 近期更新
 
@@ -112,4 +116,4 @@ python -m pytest tests -q
 powershell -ExecutionPolicy Bypass -File .\build\build_windows.ps1
 ```
 
-代码中默认不展示的配置由 `engine/stage_one.py` 的 `DEFAULT_EXCLUDED_ROWS` 维护。日常使用可在界面调整并保存展示清单。
+代码中默认不展示的配置由 `engine/stage_one.py` 的 `DEFAULT_EXCLUDED_ROWS` 维护。日常使用可在界面调整并保存展示清单。GitHub Actions 的 `windows.yml` 构建 Windows EXE／安装包，`macos.yml` 分别构建 Apple silicon 和 Intel DMG；标签发布时 macOS 工作流会尝试把两个 DMG 附加到对应 GitHub Release。

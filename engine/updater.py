@@ -1,11 +1,13 @@
-"""Read official releases and download a verified new exe; never replace a running app."""
+"""Read official releases and download a verified platform installer."""
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import re
+import sys
 import tempfile
 from threading import Lock
 from urllib.error import HTTPError, URLError
@@ -56,6 +58,19 @@ def _sha256(path):
     return digest.hexdigest()
 
 
+def _runtime_target():
+    """Return this frozen build's package target, extension, and display name."""
+    machine = platform.machine().lower()
+    if sys.platform == 'win32' and machine in {'amd64', 'x86_64'}:
+        return 'windows-x64', '.exe', 'Windows x64'
+    if sys.platform == 'darwin':
+        if machine in {'arm64', 'aarch64'}:
+            return 'macos-arm64', '.dmg', 'macOS Apple silicon'
+        if machine in {'amd64', 'x86_64'}:
+            return 'macos-x86_64', '.dmg', 'macOS Intel'
+    return None
+
+
 def _message(error):
     if isinstance(error, HTTPError):
         if error.code in (403, 429):
@@ -75,6 +90,7 @@ class AppUpdater:
         _version(current_version)
         self.current_version = current_version
         self.executable = Path(executable).resolve() if executable else None
+        self.target = _runtime_target() if self.executable else None
         self._downloaded = None
         self._release = None
         self._operation = Lock()
@@ -112,7 +128,13 @@ class AppUpdater:
             assets = release.get('assets', [])
             if not isinstance(assets, list):
                 raise ValueError('安装包信息无效，请到官方发布页查看')
-            asset = next((a for name in (f'carkit-{version}.exe', 'carkit.exe')
+            candidates = []
+            if self.target:
+                target, extension, _ = self.target
+                candidates = [f'carkit-{version}-{target}{extension}']
+                if target == 'windows-x64':
+                    candidates.extend((f'carkit-{version}.exe', 'carkit.exe'))
+            asset = next((a for name in candidates
                           for a in assets if isinstance(a, dict) and a.get('name') == name
                           and a.get('state') == 'uploaded'), None)
             digest = ''
@@ -130,11 +152,11 @@ class AppUpdater:
             reason = '发现新版本，可下载后更新' if available else '当前已是最新正式版本'
             if latest < current:
                 reason = '当前程序版本高于 GitHub 正式版本，不提供降级'
-            supported = self.executable is not None
+            supported = self.executable is not None and self.target is not None
             if not supported:
-                reason += '；当前为源码或非 Windows 单文件运行，请在官方发布页查看'
+                reason += '；当前为源码运行或暂不支持的设备，请在官方发布页查看'
             elif not asset:
-                reason += '；该版本尚未提供 Windows 安装包'
+                reason += f'；该版本尚未提供 {self.target[2]} 安装包'
             elif available and not digest:
                 reason += '；安装包缺少 SHA256 摘要，已禁用程序内下载'
             downloaded_path = ''
@@ -148,6 +170,8 @@ class AppUpdater:
             result = {'ok': True, 'current_version': self.current_version,
                       'latest_version': version, 'same_version': same_version,
                       'available': available, 'supported': supported,
+                      'platform': self.target[0] if self.target else '',
+                      'platform_name': self.target[2] if self.target else '',
                       'can_download': bool(available and supported and asset and digest and not downloaded_path),
                       'downloaded_path': downloaded_path,
                       'release_url': f'https://github.com/{REPOSITORY}/releases/tag/{tag}',
@@ -178,10 +202,12 @@ class AppUpdater:
         try:
             release = self._release
             if not release or not release['can_download']:
-                raise ValueError('请先检查并选择可校验的 Windows 更新')
+                raise ValueError('请先检查并选择可校验的更新')
             target = Path(destination)
-            if not target.is_absolute() or target.suffix.lower() != '.exe':
-                raise ValueError('请选择新的 .exe 文件保存位置')
+            extension = self.target[1] if self.target else ''
+            if not target.is_absolute() or target.suffix.lower() != extension:
+                expected = extension or '安装包'
+                raise ValueError(f'请选择新的 {expected} 文件保存位置')
             if target.resolve() == self.executable or (target.exists() and self.executable.exists()
                                                        and os.path.samefile(target, self.executable)):
                 raise ValueError('不能覆盖正在运行的程序，请选择其他文件名或文件夹')
@@ -204,7 +230,8 @@ class AppUpdater:
                     self._set_state(state='downloading', downloaded=downloaded, total=total)
                 output.flush()
                 os.fsync(output.fileno())
-            if downloaded != total or digest.hexdigest() != release['digest'] or prefix != b'MZ':
+            valid_header = self.target[0] != 'windows-x64' or prefix == b'MZ'
+            if downloaded != total or digest.hexdigest() != release['digest'] or not valid_header:
                 raise ValueError('安装包完整性校验失败，已丢弃；请重新检查更新后下载')
             # Windows rename fails if the destination appeared while downloading.
             # The offline test path uses an equally exclusive, atomic POSIX link.

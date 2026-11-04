@@ -20,6 +20,8 @@ MAX_MANIFEST = 2 * 1024 * 1024
 class InstallerUpdater(updater.AppUpdater):
     def __init__(self, current_version, public_key, executable=None):
         super().__init__(current_version, executable or sys.executable)
+        # This updater is selected only by the Windows installed-app path.
+        self.target = ('windows-x64', '.exe', 'Windows x64')
         self._public_key = Ed25519PublicKey.from_public_bytes(public_key)
 
     def _read_manifest(self):
@@ -83,6 +85,7 @@ class InstallerUpdater(updater.AppUpdater):
             result = {'ok': True, 'current_version': self.current_version,
                       'latest_version': version, 'same_version': latest == current,
                       'available': available, 'supported': True, 'installer_update': True,
+                      'platform': 'windows-x64', 'platform_name': 'Windows x64',
                       'can_download': available and path is None, 'downloaded_path': str(path) if path else '',
                       'release_url': release_url, 'asset_name': name, 'asset_size': size,
                       'release_notes': str(manifest.get('notes') or '本次发布未填写更新说明'),

@@ -49,7 +49,10 @@ def mock_network(monkeypatch, metadata, binary=BINARY, response=None):
 def client(tmp_path, version='0.2.9'):
     executable = tmp_path / 'current.exe'
     executable.write_bytes(b'MZoriginal-program')
-    return updater.AppUpdater(version, executable), executable
+    instance = updater.AppUpdater(version, executable)
+    # These existing cases exercise the Windows portable-package path on every host OS.
+    instance.target = ('windows-x64', '.exe', 'Windows x64')
+    return instance, executable
 
 
 @pytest.mark.parametrize('current,latest,available', [
@@ -214,6 +217,57 @@ def test_successful_download_preserves_executable_and_user_data(tmp_path, monkey
     assert check.status()['path'] == str(target)
     target.unlink()
     assert check.check()['can_download']
+
+
+@pytest.mark.parametrize('machine,target', [
+    ('arm64', 'macos-arm64'),
+    ('x86_64', 'macos-x86_64'),
+])
+def test_macos_uses_matching_architecture_dmg_and_accepts_disk_image_bytes(tmp_path, monkeypatch, machine, target):
+    monkeypatch.setattr(updater.sys, 'platform', 'darwin')
+    monkeypatch.setattr(updater.platform, 'machine', lambda: machine)
+    package = b'UDIF-macos-installer'
+    name = f'carkit-0.2.10-{target}.dmg'
+    executable = tmp_path / 'carkit'
+    executable.write_bytes(b'current-macos-app')
+    check = updater.AppUpdater('0.2.9', executable)
+    metadata = release(assets=[
+        {**asset(name=f'carkit-0.2.10-macos-arm64.dmg'),
+         'size': len(package), 'digest': 'sha256:' + hashlib.sha256(package).hexdigest()},
+        {**asset(name='carkit-0.2.10-macos-x86_64.dmg'),
+         'size': len(package), 'digest': 'sha256:' + hashlib.sha256(package).hexdigest()},
+    ])
+    mock_network(monkeypatch, metadata, binary=package)
+    info = check.check()
+    assert info['ok'] and info['platform'] == target
+    assert info['asset_name'] == name and info['can_download']
+    path = tmp_path / name
+    result = check.download_to(path)
+    assert result['ok'] and path.read_bytes() == package
+
+
+def test_macos_download_requires_dmg_extension(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater.sys, 'platform', 'darwin')
+    monkeypatch.setattr(updater.platform, 'machine', lambda: 'arm64')
+    package = b'UDIF-macos-installer'
+    name = 'carkit-0.2.10-macos-arm64.dmg'
+    executable = tmp_path / 'carkit'
+    executable.write_bytes(b'current-macos-app')
+    check = updater.AppUpdater('0.2.9', executable)
+    metadata = release(assets=[{
+        **asset(name=name), 'size': len(package),
+        'digest': 'sha256:' + hashlib.sha256(package).hexdigest(),
+    }])
+    mock_network(monkeypatch, metadata, binary=package)
+    assert check.check()['can_download']
+    assert not check.download_to(tmp_path / 'new.exe')['ok']
+
+
+def test_windows_prefers_legacy_release_assets_when_versioned_asset_is_missing(tmp_path, monkeypatch):
+    check, _ = client(tmp_path)
+    mock_network(monkeypatch, release(assets=[asset(name='carkit.exe')]))
+    result = check.check()
+    assert result['ok'] and result['asset_name'] == 'carkit.exe'
 
 
 def test_destination_created_during_download_is_not_overwritten(tmp_path, monkeypatch):

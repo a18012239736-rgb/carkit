@@ -44,6 +44,27 @@ def test_update_save_dialog_cancel_and_errors_keep_existing_data(bridge, tmp_pat
     assert original.read_text(encoding='utf-8') == '已保存方案'
 
 
+def test_macos_update_uses_dmg_save_filter_and_opens_downloaded_disk_image(bridge, tmp_path, monkeypatch):
+    downloaded = tmp_path / 'carkit-0.3.3-macos-arm64.dmg'
+    downloaded.write_bytes(b'dmg')
+    choices = []
+    bridge._installed = False
+    bridge._updater = SimpleNamespace(
+        _release={'can_download': True, 'asset_name': downloaded.name, 'platform': 'macos-arm64'},
+        download_to=lambda path: {'ok': True, 'path': path},
+        status=lambda: {'state': 'complete', 'path': str(downloaded)},
+    )
+    monkeypatch.setattr(sys, 'platform', 'darwin')
+    monkeypatch.setattr(bridge, 'save_file_dialog', lambda name, types: choices.append((name, types)) or str(downloaded))
+    assert bridge.download_app_update()['ok']
+    assert choices == [(downloaded.name, ['磁盘映像 (*.dmg)'])]
+
+    opened = []
+    monkeypatch.setattr('subprocess.Popen', lambda args: opened.append(args))
+    assert bridge.open_app_update_folder()['ok']
+    assert opened == [['open', str(downloaded)]]
+
+
 def test_update_check_and_folder_are_bound_to_backend_state(bridge, tmp_path, monkeypatch):
     checked = []
     bridge._updater = SimpleNamespace(check=lambda: checked.append(True) or {'ok': True},
