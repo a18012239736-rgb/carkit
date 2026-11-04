@@ -42,6 +42,7 @@
       const options = computed(() => [...new Set([value.value, ...(props.sub ? ['✕','●','[待定]'] : props.choices || [])])]);
       function label(v) {
         if(props.no===32 && v==='✕') return '未注明（按基础接口数）';
+        if(props.no===13 && v==='●') return '普通电动后备箱';
         return v === '✕' ? '无' : v === '●' ? '有' : v;
       }
       const choose = e => e.target.value === '__custom__' ? custom.value = true : send(e.target.value);

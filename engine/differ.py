@@ -442,7 +442,15 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
 
             # ---- 通用 value_type 分派 ----
             vt = item.get("value_type", "bool")
-            if vt in ("bool", "bool_memo", "trunk") or item.get("normalize") in ("bool", "trunk"):
+            if no == 13:
+                from .tailgate import components, label
+                from .valuer import dynamic_delta, tailgate_params
+                params = {key: value for key, value in tailgate_params(vitem or {}).items() if value is not None}
+                amount = dynamic_delta(no, sv, cv, params)
+                v = MORE if amount > 0 else LESS if amount < 0 else SAME
+                ss, cs = ((label(sv), label(cv)) if components(sv)[1] or components(cv)[1]
+                          else (_short_bool(sv), _short_bool(cv)))
+            elif vt in ("bool", "bool_memo", "trunk") or item.get("normalize") in ("bool", "trunk"):
                 v, ss, cs = cmp_bool(sv, cv)
             elif vt == "airbag_count":
                 v, ss, cs = cmp_num(_num(sv, 0), _num(cv, 0))
@@ -507,7 +515,7 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
             if vitem and vitem.get('rule') == 'dynamic':
                 from .valuer import dynamic_delta
                 amount = dynamic_delta(no, sv, cv, vitem.get('params'))
-                if amount or no == 6:
+                if amount or no in (6, 13):
                     verdict = MORE if amount > 0 else LESS if amount < 0 else SAME
             disp = f"{verdict} {ss}({cs})"
             # BACKUP 显示串
@@ -711,6 +719,9 @@ def _backup_display(no, verdict, sv, cv, ss, cs, name=''):
     out = ""
     if no == 3:
         out = f'{s}({c})' if _has(cv) else s
+    elif no == 13:
+        from .tailgate import label
+        out = f'{label(sv)}({label(cv)})' if _has(cv) else label(sv)
     elif no == 40:
         out = "热泵空调"
     elif no == 27:

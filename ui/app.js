@@ -69,7 +69,7 @@ function configurationChoices(no, kind='ladder') {
     3:['400V','800V'],
     4:Array.from({length:8},(_,i)=>i+16).flatMap(n=>[`R${n}钢轮毂`,`R${n}铝轮毂`]),
     7:['360影像','540影像'],9:['定速巡航','基础L2','高速NOA','城市NOA'],
-    11:['●'],12:['手动前备箱','电动前备箱'],13:['●'],14:['●'],15:['●'],16:['●'],
+    11:['●'],12:['手动前备箱','电动前备箱'],13:['●','感应电动后备箱'],14:['●'],15:['●'],16:['●'],
     17:['卤素大灯','LED大灯'],18:['电动天窗','不可开启全景天窗','可开启全景天窗'],19:['●'],
     20:['电调','折叠','加热','电调+折叠','电调+加热','折叠+加热','电调+折叠+加热'],
     24:['●'],25:['塑料','仿皮','真皮','翻毛皮','NAPPA'],26:['手调','电调'],27:['●'],28:['●'],
@@ -131,7 +131,7 @@ function addConfigurationChoices(root, snapshotCells=null) {
     const select=document.createElement('select');
     select.style.cssText='width:100%;min-width:190px';
     const values=[...new Set([current,...options])];
-    values.forEach(value=>select.add(new Option(value==='✕'?(no===32?'未注明（按基础接口数）':'无配置'):value==='●'?'有':value,value)));
+    values.forEach(value=>select.add(new Option(value==='✕'?(no===32?'未注明（按基础接口数）':'无配置'):value==='●'?(no===13?'普通电动后备箱':'有'):value,value)));
     select.add(new Option('自定义填写…','__custom__'));
     const input=snapshotCells?field:document.createElement('input');
     input.value=current;input.hidden=true;

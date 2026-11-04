@@ -34,6 +34,7 @@ DEFAULT_DYNAMIC_PARAMS = {
     7: {'reverse_or_360': 1000, 'image_540': 1500},
     9: {'cruise': 500, 'l2': 1000, 'highway_noa': 5000, 'city_noa': 8000},
     12: {'manual': 500, 'electric': 1000},
+    13: {'electric': 800, 'sensing_bonus': 400},
     17: {'led': 1000},
     18: {'electric': 1000, 'fixed_panorama': 2000, 'opening_panorama': 2500},
     20: {'per_function': 100},
@@ -65,6 +66,7 @@ EDITOR_FIELDS = {
     7: [('reverse_or_360', '倒车/360影像', '元'), ('image_540', '540影像', '元')],
     9: [('cruise', '定速巡航', '元'), ('l2', '基础L2', '元'), ('highway_noa', '高速NOA', '元'), ('city_noa', '城市NOA', '元')],
     12: [('manual', '手动前备箱', '元'), ('electric', '电动前备箱', '元')],
+    13: [('electric', '电动后备箱', '元'), ('sensing_bonus', '感应功能加价', '元')],
     17: [('led', 'LED大灯', '元')],
     18: [('electric', '普通电动天窗', '元'), ('fixed_panorama', '不可开启全景', '元'), ('opening_panorama', '可开启全景', '元')],
     20: [('per_function', '每项后视镜功能', '元')],
@@ -126,7 +128,11 @@ def normalize_valuation(data, rules):
         if rules.items_by_no[item['no']].get('display_only'):
             item['rule'] = 'display_only'
         params = dict(item.get('params') or {})
-        for key, value in (custom.get('params') or {}).items():
+        custom_params = custom.get('params') or {}
+        if item['no'] == 13 and custom.get('rule', 'flat') == 'flat' and custom.get('pricing', 'manual') in ('flat', 'manual'):
+            custom_params = tailgate_params(custom)
+            item['rule'] = 'dynamic'
+        for key, value in custom_params.items():
             if key not in params:
                 continue
             try:
@@ -153,6 +159,14 @@ def normalize_valuation(data, rules):
 def _num(v, default=None):
     m = re.search(r"[\d.]+", str(v))
     return float(m.group(0)) if m else default
+
+
+def tailgate_params(item):
+    """Keep the saved electric-tailgate base price when adding sensing pricing."""
+    params = dict(item.get('params') or {})
+    if item.get('rule') != 'dynamic' and item.get('pricing', 'manual') in ('flat', 'manual') and 'val' in item:
+        params['electric'] = item['val']
+    return params
 
 
 def item_amount(vitem: dict, self_val, comp_val) -> float | None:
@@ -248,8 +262,12 @@ def value_pair(more_map: dict, less_map: dict, self_price, comp_price,
             item = valuation.item(no)
             if item and item.get('rule') in ('excluded', 'display_only'):
                 continue
-            if item and (item.get('rule') == 'dynamic' or no == 12):
-                amt = dynamic_delta(no, cell['self_config'], cell['comp_config'], item.get('params'))
+            if item and (item.get('rule') == 'dynamic' or no in (12, 13)):
+                params = tailgate_params(item) if no == 13 else item.get('params')
+                amt = (None if no == 13 and params.get('electric', DEFAULT_DYNAMIC_PARAMS[13]['electric']) is None
+                       else dynamic_delta(no, cell['self_config'], cell['comp_config'], params))
+                if amt is None and verdict == '同':
+                    continue
             elif verdict == '同':
                 continue
             elif item and item.get('pricing') in ('band', 'segmented_per_km', 'per_unit'):
@@ -312,6 +330,7 @@ _DYNAMIC_RULE_TEXT = {
     7: '倒车影像或360影像{reverse_or_360}元，540影像{image_540}元，无配置0元',
     9: '定速巡航{cruise}元，基础L2 {l2}元，高速NOA {highway_noa}元，城市NOA {city_noa}元',
     12: '手动前备箱{manual}元、电动前备箱{electric}元',
+    13: '电动后备箱{electric}元，标配感应功能另加{sensing_bonus}元；位置记忆不单独加价',
     17: 'LED大灯{led}元，其他灯光0元',
     18: '普通电动天窗{electric}元，不可开启全景天窗{fixed_panorama}元，可开启全景天窗{opening_panorama}元',
     20: '电调、折叠、加热各{per_function}元，按功能数量差计价',
@@ -342,10 +361,10 @@ def explain_rule(valuation, no):
 def _explain_item_rule(item, no):
     if item.get('rule') == 'display_only':
         return '独立展示配置差异，暂不单独赋值' + ('；不计入座椅调节方向' if no in (46, 47) else '')
-    if item.get('rule') != 'dynamic':
+    if item.get('rule') != 'dynamic' and no != 13:
         return f"{item.get('pricing', 'flat')}：{item.get('val')} 元；{item.get('note', '')}"
     params = dict(DEFAULT_DYNAMIC_PARAMS.get(no, {}))
-    params.update(item.get('params') or {})
+    params.update(tailgate_params(item) if no == 13 else item.get('params') or {})
     if no == 45:
         params['front_seats'] = params['per_seat'] * 2
     return _DYNAMIC_RULE_TEXT.get(no, '未配置规则说明').format_map(params) + '；按双方配置价值之差计价'
@@ -362,8 +381,11 @@ def _amount_for_item(vitem, no, disp, side):
         return None
     if vitem.get('rule') == 'display_only':
         return 0
-    if no == 12 or vitem.get("rule") == "dynamic":
-        return _default_rule_amount(no, disp, side, vitem.get('params'))
+    if no in (12, 13) or vitem.get("rule") == "dynamic":
+        params = tailgate_params(vitem) if no == 13 else vitem.get('params')
+        if no == 13 and params.get('electric', DEFAULT_DYNAMIC_PARAMS[13]['electric']) is None:
+            return None
+        return _default_rule_amount(no, disp, side, params)
     pricing = vitem.get("pricing", "flat")
     if pricing in ("flat", "manual"):
         return vitem.get("val")
@@ -436,6 +458,15 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
     params = dict(DEFAULT_DYNAMIC_PARAMS.get(no, {}))
     params.update(custom_params or {})
     p = lambda key: params[key]
+    if no == 13:
+        from .tailgate import components
+        # Parenthetical position-memory/sensing notes belong to one tailgate.
+        if values is None and bits and not re.search(r'电动|^[●✕×○]|^无$', prev):
+            cur, prev = text, '✕'
+        def tailgate(value):
+            powered, sensing = components(value)
+            return (p('electric') + p('sensing_bonus') * sensing) if powered else 0
+        return abs(tailgate(cur) - tailgate(prev))
     if no == 12:
         def front(v): return p('manual') if '手动' in v else p('electric') if '电动' in v or v == '●' else 0
         return abs(front(cur)-front(prev))

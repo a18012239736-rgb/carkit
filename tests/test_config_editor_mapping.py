@@ -62,6 +62,30 @@ def q05_mapping():
     return map_raw_to_ladder(raw, Rules())
 
 
+def test_tailgate_choices_preserve_sensing_and_existing_memory_values():
+    run_editor(r"""
+load('function configurationChoices(', 'function addConfigurationChoices(');
+for(const kind of ['snapshot','ladder']) {
+  const choices=context.configurationChoices(13,kind);
+  assert.deepStrictEqual(Array.from(choices),['✕','[待定]','●','感应电动后备箱']);
+  for(const original of ['●','●（位置记忆）','感应电动后备箱','●感应+位置记忆','○感应电动后备箱']) {
+    const instance=makeCell(original,13,undefined,undefined,kind);
+    instance.props.choices=choices;
+    assert.strictEqual(instance.cell.value.value,original);
+    assert.strictEqual(instance.cell.options.value[0],original);
+    assert(instance.cell.options.value.includes('感应电动后备箱'));
+    assert.strictEqual(instance.cell.label('●'),'普通电动后备箱');
+    assert.deepStrictEqual(instance.emitted,[]);
+    instance.cell.choose({target:{value:'感应电动后备箱'}});
+    instance.cell.choose({target:{value:'●'}});
+    assert.deepStrictEqual(instance.emitted,['感应电动后备箱','●']);
+    await instance.update(original);
+    assert.strictEqual(instance.cell.value.value,original);
+  }
+}
+""")
+
+
 def test_self_seat_default_is_explicit_and_competitor_none_remains_available():
     run_editor(r"""
 load('function configurationChoices(', 'function addConfigurationChoices(');

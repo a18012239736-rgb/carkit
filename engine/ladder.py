@@ -2,7 +2,7 @@
 from __future__ import annotations
 import datetime
 from .models import Ladder, LadderItem, RawTable
-from .mapper import legacy_mapped_item, map_raw_to_ladder, n_front_trunk, n_text
+from .mapper import legacy_mapped_item, map_raw_to_ladder, n_front_trunk, n_text, n_trunk
 from .powertrain import energy_types, not_applicable
 from .rules import display_order_key
 
@@ -51,20 +51,21 @@ def upgrade_ladder(ladder, rules):
             raw = RawTable.from_dict(saved)
     except (KeyError, TypeError, ValueError, IndexError, AttributeError):
         pass
-    front = ladder.item(12)
-    front_cfg = rules.items_by_no.get(12)
-    if front and front_cfg and raw:
+    for no, normalize in ((12, n_front_trunk), (13, n_trunk)):
+        item, cfg = ladder.item(no), rules.items_by_no.get(no)
+        if not item or not cfg or not raw:
+            continue
         for i, trim in enumerate(ladder.trims):
             matches = [j for j, source in enumerate(raw.trims)
                        if source.short == trim['name']]
             if not matches:
                 matches = [j for j, source in enumerate(raw.trims)
                            if source.short.rstrip('版') == trim['name'].rstrip('版')]
-            if len(matches) == 1 and i < len(front.values):
+            if len(matches) == 1 and i < len(item.values):
                 j = matches[0]
-                if front.values[i] == legacy_mapped_item(raw, j, 12)['value']:
-                    front.values[i] = n_front_trunk(raw, j, front_cfg)
-        front.row_absent = raw.row(*front_cfg['source_rows']) is None
+                if item.values[i] == legacy_mapped_item(raw, j, no)['value']:
+                    item.values[i] = normalize(raw, j, cfg)
+        item.row_absent = raw.row(*cfg['source_rows']) is None
     cfg = rules.items_by_no.get(48)
     if not cfg or ladder.item(48) is not None:
         return ladder

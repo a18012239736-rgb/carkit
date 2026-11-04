@@ -322,6 +322,7 @@ def _parse_table_page(path, page, blocks):
             '表格未明确继承关系，默认各版型独立配置。']}
 
 def _apply(text, values, evidence, leftovers):
+    tailgate_sensing = False
     def put(no,value,line):
         values[no]=value;evidence.setdefault(no,[]).append(line)
     for line in text.splitlines():
@@ -442,7 +443,14 @@ def _apply(text, values, evidence, leftovers):
             setv(45,'前排座椅记忆' if '前排' in t or ('主驾' in t and '副驾' in t)
                  else '主驾座椅记忆' if '主驾' in t else '副驾座椅记忆' if '副驾' in t
                  else '[待定]座椅记忆位置未说明')
-        if any(word in t for word in ('电动后备箱','电动后备厢','电动尾门')):setv(13,'●')
+        from .tailgate import components, has_sensing
+        tailgate_parts = [part for part in re.split(r'[+＋、,，；;]', t) if re.search(r'后备[箱厢]|尾门', part)]
+        sensing = any(has_sensing(part) for part in tailgate_parts)
+        tailgate_sensing = tailgate_sensing or sensing
+        if any(re.search(r'电动(?:感应(?:式)?)?(?:后备[箱厢]|尾门)', part) for part in tailgate_parts):
+            setv(13, '感应电动后备箱' if tailgate_sensing or has_sensing(values.get(13, '')) else '●')
+        elif sensing:
+            setv(13, '感应电动后备箱' if components(values.get(13, ''))[0] else values.get(13, '✕'))
         for no, aliases in {6:['悬架软硬','可变阻尼','FSD','悬架高低'],11:['电吸门','电动吸合门'],12:['电动前备箱','电动前备厢'],14:['车顶行李架'],15:['主动进气格栅','主动闭合式进气格栅'],16:['对外放电'],18:['全景天窗','全景天幕','电动天窗'],22:['副驾娱乐屏','副驾屏'],24:['KTV'],26:['方向盘调节','方向盘手动'],28:['方向盘记忆'],31:['内后视镜'],32:['USB','Type-C']}.items():
             if no != 22 and any(a.lower() in t.lower() for a in aliases):setv(no,t)
         if re.search(r'前备[箱厢]',t):

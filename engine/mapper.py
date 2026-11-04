@@ -292,11 +292,17 @@ def n_seat_memory(raw, i, cfg):
 
 
 def n_trunk(raw, i, cfg):
-    c = _cell(raw, ["电动后备厢", "电动后备箱"], i)
-    if not _solid(c):
-        return _bool_val(c)
-    memo = _cell(raw, ["电动后备厢位置记忆"], i)
-    return "●(带位置记忆)" if _solid(memo) else "●"
+    from .tailgate import has_sensing
+    powered = [_cell(raw, [name], i) for name in ('电动后备厢', '电动后备箱', '电动尾门')]
+    standard = [c for c in powered if c and any(_solid(part) for part in (c, *c.subs))]
+    if not standard:
+        return '○(选装)' if any(_optional(c) for c in powered) else ABSENT
+    sensing = any(has_sensing('电动后备箱' + text) for c in standard for text in _standard_parts(c))
+    sensing = sensing or any(has_sensing(name + text)
+                             for name in ('感应后备厢', '感应后备箱', '感应尾门')
+                             for text in _standard_parts(_cell(raw, [name], i)))
+    memo = any(_solid(_cell(raw, [name], i)) for name in ('电动后备厢位置记忆', '电动后备箱位置记忆'))
+    return ('感应电动后备箱' if sensing else '●') + ('(带位置记忆)' if memo else '')
 
 
 def n_v2l(raw, i, cfg):
@@ -632,6 +638,11 @@ def legacy_mapped_item(raw, i, no, *, legacy_side=True):
     """Frozen automatic outputs for upgrading untouched pre-fix caches only."""
     if no == 12:
         return {'value': n_front_trunk(raw, i, {}, include_volume=False)}
+    if no == 13:
+        cell = _cell(raw, ['电动后备厢', '电动后备箱'], i)
+        memo = _cell(raw, ['电动后备厢位置记忆'], i)
+        value = '●(带位置记忆)' if _solid(cell) and _solid(memo) else _bool_val(cell)
+        return {'value': value}
     if no == 5:
         from .ladder import _airbag_display
         old = [_legacy_airbag(raw, index, legacy_side=legacy_side) for index in range(len(raw.trims))]
