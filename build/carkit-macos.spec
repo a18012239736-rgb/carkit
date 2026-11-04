@@ -41,7 +41,7 @@ exe = EXE(
 app = BUNDLE(
     exe,
     name="carkit.app",
-    icon=None,
+    icon=str(ROOT / "build" / "carkit.icns"),
     bundle_identifier="com.a18012239736.carkit",
     version=__version__,
     info_plist={"NSHighResolutionCapable": True},

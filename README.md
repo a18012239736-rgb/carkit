@@ -32,7 +32,7 @@ GitHub 与飞书提供 Windows 程序；macOS 两种架构的 DMG 从 GitHub 发
 - 配置阶梯页面已移除本地 HTML／原始 JSON 导入入口。请通过在线读取或「打开历史车型」继续工作。
 - 可在侧栏或设置页打开「反馈使用情况」，整理文字说明和截图。
 
-[查看 v0.3.2 更新记录](docs/release-v0.3.2.md) · [v0.3.1 更新记录](docs/release-v0.3.1.md)
+[查看 v0.3.3 更新记录](docs/release-v0.3.3.md) · [v0.3.2 更新记录](docs/release-v0.3.2.md) · [v0.3.1 更新记录](docs/release-v0.3.1.md)
 
 ## 配置阶梯
 

@@ -8,6 +8,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+SetupIconFile=carkit.ico
 UninstallDisplayIcon={app}\carkit.exe
 OutputDir=..\dist
 OutputBaseFilename=carkit-{#AppVersion}-setup

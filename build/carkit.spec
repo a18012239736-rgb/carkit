@@ -43,6 +43,6 @@ exe = EXE(
     [],
     name="carkit",
     console=False,               # GUI 程序不带控制台
-    icon=None,
+    icon=str(ROOT / "build" / "carkit.ico"),
     version=None,
 )
