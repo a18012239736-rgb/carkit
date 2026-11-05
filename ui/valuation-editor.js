@@ -12,6 +12,14 @@
         const rows = computed(() => [...valuation.value.items]
           .filter(item => names[item.no] != null)
           .sort((a,b) => configurationOrderKey(a.no)-configurationOrderKey(b.no)));
+        const groups = computed(() => {
+          let start = 0;
+          return window.ConfigEditor.groupRows(rows.value, item=>item.no).map(group => {
+            const numbered = {...group, start};
+            start += group.rows.length;
+            return numbered;
+          });
+        });
         const label = no => names[no] || String(no);
         const specs = no => schema[String(no)] || [];
         const setFixed = (item, value) => { item.val = value === '' ? null : Number(value); };
@@ -22,16 +30,18 @@
           const gap = threshold + 30;
           return `未触发豁免时，续航差≥${threshold}km 按全差值×${rate}元/km 计价；例：${gap}km×${rate}元/km＝${Number((gap*rate).toFixed(2))}元，不扣除阈值。`;
         };
-        return {valuation, rows, label, specs, setFixed, setParam, rangeExplanation};
+        return {valuation, rows, groups, label, specs, setFixed, setParam, rangeExplanation};
       },
       template: `<table class="grid valuation-grid vue-valuation-table"><thead><tr><th>#</th><th>配置项</th><th>计价方式</th><th>可修改的金额与阈值</th></tr></thead><tbody>
-        <tr v-for="(item,index) in rows" :key="item.no" :class="{'valuation-excluded':item.rule==='excluded'}">
-          <td class="no">{{index+1}}</td><td>{{label(item.no)}}</td>
+        <template v-for="group in groups" :key="group.name">
+        <tr class="valuation-group-row"><th colspan="4"><span class="valuation-group-title">{{group.name}}</span></th></tr>
+        <tr v-for="(item,index) in group.rows" :key="item.no" :class="{'valuation-excluded':item.rule==='excluded'}">
+          <td class="no">{{group.start+index+1}}</td><td>{{label(item.no)}}</td>
           <td><span class="valuation-rule" :class="'valuation-rule-'+item.rule">{{item.rule==='excluded'?'不参与赋值':item.rule==='display_only'?'仅展示':item.rule==='dynamic'?'动态分档':'固定金额'}}</span></td>
           <td v-if="item.rule==='excluded'" class="dim">本轮对比不纳入；原始配置仍可查看</td>
           <td v-else-if="item.rule==='display_only'">独立对比，暂不单独赋值</td>
           <td v-else><div class="valuation-fields"><label v-if="item.rule!=='dynamic'" class="valuation-field"><span>固定金额</span><span class="valuation-input"><input type="number" min="0" step="any" :value="item.val ?? ''" @input="setFixed(item,$event.target.value)"><em>元</em></span></label><label v-for="spec in specs(item.no)" :key="spec.key" class="valuation-field"><span>{{spec.label}}</span><span class="valuation-input"><input type="number" min="0" step="any" :value="item.params?.[spec.key] ?? ''" @input="setParam(item,spec.key,$event.target.value)"><em>{{spec.unit||''}}</em></span></label></div><p v-if="item.no===1 && item.rule==='dynamic'" class="valuation-explanation">{{rangeExplanation(item)}}</p></td>
-        </tr></tbody></table>`
+        </tr></template></tbody></table>`
     });
     root.classList.add('vue-valuation-editor');
     app.mount(root);

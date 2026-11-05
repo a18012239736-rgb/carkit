@@ -101,3 +101,21 @@
 .vue-valuation-editor .valuation-excluded td,
 .vue-valuation-editor .vue-valuation-table tbody tr.valuation-excluded:hover td { background:#f7faf8; color:#87939e; }
 .vue-valuation-editor .valuation-excluded td:nth-child(2) { color:#7c8995; }
+.vue-valuation-editor .vue-valuation-table .valuation-group-row > th {
+  position:static;
+  width:auto;
+  min-width:0;
+  max-width:none;
+  overflow:visible;
+  padding:10px 12px;
+  background:#eaf2ee;
+  color:var(--ink-strong);
+  text-align:left;
+  font-size:12px;
+}
+.vue-valuation-editor .valuation-group-title {
+  position:sticky;
+  left:12px;
+  display:block;
+  width:max-content;
+}

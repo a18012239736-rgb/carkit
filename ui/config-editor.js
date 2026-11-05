@@ -9,7 +9,7 @@
   // Use Autohome's category names and order; keep merged configuration items together.
   const categories = [
     ['基本参数', [1]],
-    ['电池/充电', [3]],
+    ['电池/充电', [2,3]],
     ['车轮制动', [4]],
     ['被动安全', [5]],
     ['驾驶操控', [6]],
@@ -26,6 +26,16 @@
     ['音响/车内灯光', [37,38,39]],
     ['空调/冰箱', [40,41,43]],
   ];
+  function groupRows(rows, getNo) {
+    const remaining = new Set(rows);
+    const groups = categories.map(([name, numbers]) => {
+      const items = rows.filter(row => numbers.includes(Number(getNo(row))));
+      items.forEach(row => remaining.delete(row));
+      return {name, rows:items};
+    });
+    if(remaining.size) groups.push({name:'其他配置', rows:[...remaining]});
+    return groups.filter(group => group.rows.length);
+  }
   const Cell = {
     props: ['value', 'no', 'sub', 'kind', 'choices', 'parseSeatAdjust'],
     emits: ['change'],
@@ -170,16 +180,8 @@
           });
         });
         const groups = computed(() => {
-          const displayed = rows.value;
-          const remaining = new Set(displayed);
-          const grouped = categories.map(([name, numbers]) => {
-            const items = displayed.filter(row => numbers.includes(Number(row.cell.no)));
-            items.forEach(row => remaining.delete(row));
-            return {name, rows:items};
-          });
-          if(remaining.size) grouped.push({name:'其他配置', rows:[...remaining]});
           let serial = 0;
-          return grouped.filter(group => group.rows.length).map(group => ({...group,
+          return groupRows(rows.value, row=>row.cell.no).map(group => ({...group,
             rows:group.rows.map(row => ({...row, serial:++serial}))}));
         });
         function get(c,i,sub) {
@@ -261,5 +263,5 @@
     root.classList.remove('vue-config-editor');
   }
   function validate(root) {return [...root.querySelectorAll('input')].every(input=>input.reportValidity());}
-  window.ConfigEditor = {mount,unmount,validate,isMounted:root=>mounted.has(root)};
+  window.ConfigEditor = {mount,unmount,validate,isMounted:root=>mounted.has(root),groupRows};
 })();

@@ -81,7 +81,7 @@ Carkit 是一款车型配置对比工具。想知道同一款车的高配多了�
 - **macOS：** 点击「下载新版」，程序会按芯片选择对应的 DMG。下载完成后点击「打开安装包」，退出旧版，把新版拖入「应用程序」替换。
 - **GitHub 无法访问：** 点击「打开飞书更新页」，用有权限的公司飞书账号下载对应系统的安装包。
 
-[查看最新发布与更新日志](https://github.com/a18012239736-rgb/carkit/releases/latest) · [v0.3.4](docs/release-v0.3.4.md) · [v0.3.3](docs/release-v0.3.3.md) · [v0.3.2](docs/release-v0.3.2.md) · [v0.3.1](docs/release-v0.3.1.md)
+[查看最新发布与更新日志](https://github.com/a18012239736-rgb/carkit/releases/latest) · [v0.3.5](docs/release-v0.3.5.md) · [v0.3.4](docs/release-v0.3.4.md) · [v0.3.3](docs/release-v0.3.3.md) · [v0.3.2](docs/release-v0.3.2.md) · [v0.3.1](docs/release-v0.3.1.md)
 
 ## 工作目录与恢复
 
