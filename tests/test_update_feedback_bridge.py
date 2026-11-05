@@ -158,13 +158,13 @@ def test_browser_open_failures_are_reported_without_submitting_or_deleting(bridg
 
 def test_ignored_update_version_survives_restart_and_can_be_restored(bridge):
     assert bridge.update_reminder() == {'ok': True, 'skipped_version': ''}
-    assert bridge.save_update_reminder('0.4.0')['ok']
+    assert bridge.save_update_reminder('0.3.4')['ok']
     restarted = Bridge(bridge.workdir)
     try:
-        assert restarted.update_reminder()['skipped_version'] == '0.4.0'
+        assert restarted.update_reminder()['skipped_version'] == '0.3.4'
         for invalid in ('../0.4.0', '01.4.0', None):
             assert not restarted.save_update_reminder(invalid)['ok']
-        assert restarted.update_reminder()['skipped_version'] == '0.4.0'
+        assert restarted.update_reminder()['skipped_version'] == '0.3.4'
         assert restarted.save_update_reminder('')['ok']
         assert bridge.update_reminder()['skipped_version'] == ''
     finally:
