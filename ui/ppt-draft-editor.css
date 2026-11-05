@@ -19,7 +19,7 @@
   padding:10px 16px;
   border-bottom:1px solid var(--line);
   border-radius:10px 10px 0 0;
-  background:#f5f7fa;
+  background:#f0f4f2;
 }
 .vue-ppt-draft .ppt-column-index { color:var(--navy); font-size:12px; font-weight:600; letter-spacing:0; }
 .vue-ppt-draft .ppt-column label { display:flex; flex-direction:column; gap:7px; margin:0; color:#556574; font-size:12px; font-weight:500; line-height:1.6; }
@@ -31,8 +31,8 @@
   min-width:0;
   margin:0;
   padding:8px 10px;
-  border:1px solid #d8e1e6;
-  border-radius:6px;
+  border:1px solid var(--line-strong);
+  border-radius:7px;
   background-color:#fff;
   color:var(--ink);
   font:inherit;
@@ -43,8 +43,8 @@
 .vue-ppt-draft .ppt-column :is(input,select) { min-height:36px; }
 .vue-ppt-draft .ppt-column textarea { min-height:170px; resize:vertical; line-height:1.75; }
 .vue-ppt-draft .ppt-column .ppt-options { min-height:92px; }
-.vue-ppt-draft .ppt-column :is(input,select,textarea):focus { outline:none; border-color:var(--cyan); box-shadow:0 0 0 3px rgb(20 125 115 / 12%); }
-.vue-ppt-draft .ppt-column :is(input,select,textarea):disabled { border-color:#e5eaee; background-color:#f3f5f7; color:#8b98a3; cursor:not-allowed; opacity:1; }
+.vue-ppt-draft .ppt-column :is(input,select,textarea):focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--focus-ring); }
+.vue-ppt-draft .ppt-column :is(input,select,textarea):disabled { border-color:#e0e6ea; background-color:#f1f4f6; color:#8b98a3; cursor:not-allowed; opacity:1; }
 .vue-ppt-draft .ppt-remove {
   min-height:28px;
   padding:4px 7px;
@@ -56,7 +56,7 @@
 }
 .vue-ppt-draft .ppt-remove:hover { border-color:transparent; background:#fcefee; color:#a83f38; }
 .vue-ppt-draft .ppt-remove:focus-visible,
-.vue-ppt-draft .ppt-add-column:focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+.vue-ppt-draft .ppt-add-column:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
 .vue-ppt-draft .ppt-draft-toolbar { display:flex; margin-top:14px; }
-.vue-ppt-draft .ppt-add-column { min-height:36px; padding:7px 12px; border-color:#cedbd9; color:var(--cyan); background:#fff; }
-.vue-ppt-draft .ppt-add-column:hover { border-color:var(--cyan); background:#f0f8f6; color:var(--cyan); }
+.vue-ppt-draft .ppt-add-column { min-height:36px; padding:7px 12px; border-color:#c9e2d8; color:var(--accent-strong); background:#fff; }
+.vue-ppt-draft .ppt-add-column:hover { border-color:#9cc9bd; background:#f4faf7; color:var(--accent-strong); }

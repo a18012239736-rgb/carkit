@@ -86,6 +86,24 @@ class Bridge:
     def app_update_status(self):
         return self._updater.status()
 
+    def update_reminder(self):
+        try:
+            path = Path(self.workdir) / '更新提醒.json'
+            data = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+            return {'ok': True, 'skipped_version': data.get('skipped_version', '')}
+        except (OSError, ValueError, AttributeError):
+            return {'ok': False, 'error': '无法读取更新提醒设置，可手动检查更新'}
+
+    def save_update_reminder(self, version):
+        if not isinstance(version, str) or (version and not re.fullmatch(r'(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}', version)):
+            return {'ok': False, 'error': '更新版本号无效'}
+        try:
+            path = Path(self.workdir) / '更新提醒.json'
+            atomic_write_text(path, json.dumps({'skipped_version': version})+'\n')
+            return {'ok': True}
+        except OSError:
+            return {'ok': False, 'error': '无法保存更新提醒设置，请重试'}
+
     def download_app_update(self):
         if self._installed:
             return {'ok': False, 'error': '安装版请使用“下载并安装”。'}

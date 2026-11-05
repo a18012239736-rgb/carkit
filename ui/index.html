@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>carkit — 汽车产品分析工作台</title>
-<link rel="stylesheet" href="style.css?v=workspace-polish-20261103">
-<link rel="stylesheet" href="config-editor.css?v=compact-seats-20261023">
-<link rel="stylesheet" href="valuation-editor.css?v=workspace-20261021-final">
-<link rel="stylesheet" href="ppt-draft-editor.css?v=workspace-20261021-final">
-<link rel="stylesheet" href="feedback.css?v=workspace-polish-20261103">
-<link rel="stylesheet" href="workspace.css?v=app-icon">
+<link rel="stylesheet" href="style.css?v=topbar-20261105">
+<link rel="stylesheet" href="config-editor.css?v=topbar-20261105">
+<link rel="stylesheet" href="valuation-editor.css?v=topbar-20261105">
+<link rel="stylesheet" href="ppt-draft-editor.css?v=topbar-20261105">
+<link rel="stylesheet" href="feedback.css?v=topbar-20261105">
+<link rel="stylesheet" href="workspace.css?v=topbar-20261105-3">
 <script src="vendor/vue/vue.global.prod.js"></script>
 <script src="stage-editor.js?v=workspace-20261021-final"></script>
 </head>
@@ -20,12 +20,8 @@
       <img class="brand-mark" src="carkit-icon.png" alt="">
       <span class="brand-copy"><strong>carkit<span class="brand-dot">.</span></strong><small>汽车产品分析工作台</small></span>
     </div>
-    <div class="nav-caption">分析工具</div>
     <button class="nav-item active" data-page="scrape" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15h4v4M10 10h4v9M15 5h4v14"/></svg>配置阶梯</button>
     <button class="nav-item" data-page="diff"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4"/></svg>竞争力对比</button>
-    <div class="nav-caption nav-library">数据与规则</div>
-    <button class="nav-item" data-page="snapshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>本品配置导入</button>
-    <button class="nav-item" data-page="valuation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h8m4 0h4M4 17h3m4 0h9"/><circle cx="14" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>赋值规则</button>
     <div class="sidebar-bottom">
       <button class="nav-item" data-page="settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 11v6M12 7v1"/></svg>设置与帮助</button>
       <button id="btn-open-feedback-sidebar" class="feedback-button feedback-shortcut" type="button" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15a3 3 0 0 1-3 3H8l-4 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3zM8 8h8M8 12h5"/></svg><span>反馈使用情况</span></button>
@@ -36,8 +32,7 @@
   <button id="sidebar-show" class="sidebar-toggle sidebar-show" type="button" aria-label="显示侧边栏" title="显示侧边栏">›</button>
 
   <main id="main">
-    <div class="workspace-topbar"><span>工作台 <span class="breadcrumb-divider">/</span> <strong id="current-page-label">配置阶梯</strong></span><span class="workspace-tag">车型配置 · 产品分析</span></div>
-    <div id="app-update-banner" class="app-update-banner" role="status" hidden><span id="app-update-banner-text"></span><button id="btn-view-update" type="button">查看更新</button><button id="btn-dismiss-update" type="button" class="quiet-button" aria-label="暂时关闭更新提醒">×</button></div>
+    <div id="app-update-banner" class="app-update-banner" role="status" hidden><span id="app-update-banner-text"></span><button id="btn-view-update" type="button">查看更新</button><button id="btn-skip-update" type="button" class="quiet-button">忽略此版本</button><button id="btn-dismiss-update" type="button" class="quiet-button" aria-label="暂时关闭更新提醒">×</button></div>
     <!-- ① 抓取 -->
     <section id="page-scrape" class="page active">
       <header class="page-header"><div><h1>配置阶梯</h1><p class="intro">看清各版型的配置变化，整理成可交付的分析文档。</p></div><span class="page-category">单车型分析</span></header>
@@ -94,10 +89,69 @@
       </div>
     </section>
 
-    <!-- ③ 快照 -->
-    <section id="page-snapshot" class="page">
-      <header class="page-header"><div><h1>本品配置</h1><p class="intro">导入产品配置阶梯，核对后保存为可复用的本品数据。</p></div><button data-goto="diff" class="quiet-button">返回竞争力对比 →</button></header>
-      <div class="card">
+    <!-- 竞争力对比（含本品配置、赋值规则子页签） -->
+    <section id="page-diff" class="page">
+<header class="page-header"><div><h1>竞争力对比</h1><p class="intro">准备本品配置与赋值规则，手动配对版型，查看配置差异与赋值结果。</p></div><span class="page-category">多车型分析</span></header>
+      <ol class="workflow-steps" aria-label="竞争力对比工作流程"><li class="is-current"><span>1</span><div>选择车型<small>指定本品与对照车型</small></div></li><li><span>2</span><div>配对版型<small>设置配对与双方底价</small></div></li><li><span>3</span><div>检查结果<small>核对差配并保存方案</small></div></li></ol>
+      <nav class="diff-tabs" aria-label="竞争力对比模块">
+        <button type="button" class="diff-tab active" data-sub="compare">对比</button>
+        <button type="button" class="diff-tab" data-sub="snapshot">本品配置</button>
+        <button type="button" class="diff-tab" data-sub="valuation">赋值规则</button>
+      </nav>
+      <div class="diff-sub active" data-sub="compare" id="diff-sub-compare">
+      <p class="notice" hidden>金额规则需按你的业务口径完成校准。</p>
+      <details class="card comparison-plans">
+        <summary>打开已保存方案 <span class="dim">继续之前的对比工作</span></summary>
+        <p class="dim">打开时使用独立工作副本，不覆盖原始数据或全局规则。生成结果后可在下方保存方案。</p>
+        <div class="row"><label for="comparison-plan-list">已保存方案</label><select id="comparison-plan-list"></select><button id="btn-open-plan">打开方案</button><button id="btn-refresh-plans">刷新</button></div>
+        <p id="comparison-plan-status" class="dim" role="status"></p>
+      </details>
+      <div id="comparison-plan-banner" class="notice" hidden><span id="comparison-plan-context"></span><button id="btn-leave-plan">退出方案，开始新对比</button></div>
+      <div class="card" id="comparison-setup">
+        <div class="compare-mode"><h2>选择对比车型</h2><label for="diff-mode" class="sr-only">对比模式</label><select id="diff-mode"><option value="self">本品 vs 竞品</option><option value="competitor">竞品 vs 竞品</option></select><button id="diff-toggle-valuation" class="quiet-button">调整赋值规则 ↗</button></div>
+        <div class="compare-sides">
+          <div class="compare-side"><h3><span class="side-marker">A</span>左侧 · 比较主体</h3><select id="diff-left-vehicle" aria-label="左侧竞品车型" hidden></select><select id="diff-snapshot" aria-label="本品车型"></select><div class="workspace-section-actions"><button id="diff-edit-self">修改本品配置</button><button type="button" data-sub-goto="snapshot">导入 / 添加本品</button><details class="secondary-menu"><summary>更多</summary><div><button id="delete-self-file">删除本品文件</button></div></details></div></div>
+          <span class="compare-divider" aria-hidden="true">VS</span>
+          <div class="compare-side"><h3><span class="side-marker">B</span>右侧 · 对照车型</h3><select id="diff-vehicle" aria-label="右侧历史竞品"></select><select id="diff-ladder" hidden></select><div class="workspace-section-actions"><button id="review-competitor">修改竞品配置</button><button id="diff-get-vehicle" class="quiet-button">获取新车型 ↗</button></div></div>
+        </div>
+        <div class="compare-rules" hidden><label for="diff-valuation">赋值规则</label><select id="diff-valuation"></select></div>
+        <div id="diff-self-editor" class="card" hidden><div class="workspace-heading"><h3>修改本品配置</h3><button id="diff-back-self">收起，返回配对</button></div><p class="dim">修改会同步到继承该项的版型，保存后重新对比。</p><div id="diff-self-table" class="table-wrap"></div><button id="diff-save-self" class="primary">保存本品修正</button></div>
+        <div id="pairs-editor" class="pairs-editor">
+          <div class="row"><strong>版型配对</strong>
+            <button id="btn-add-pair">+ 添加配对组</button></div>
+          <p class="dim pair-price-help">底价单位为元，仅用于本次配对，不修改车型价格。留空仍可比较配置；填写双方底价后计算综合竞争力。</p>
+          <div class="pairs-empty"><span aria-hidden="true">⇄</span>选择两侧车型后，在这里指定要比较的版型。</div>
+        </div>
+        <p id="comparison-action-hint" class="dim" role="status" aria-live="polite">请选择左右两侧车型，再指定版型配对。</p>
+        <div class="row compare-actions">
+          <button id="btn-run-diff" class="primary big">开始对比</button>
+          <button id="btn-export-result">导出结果 md</button>
+        </div>
+        <div id="diff-status" class="status"></div>
+      </div>
+      <div id="diff-result" class="card" hidden>
+        <div class="workspace-heading"><div><h2>竞争力结果</h2><p class="dim">先核对差配，再导出或保存本次方案</p></div><div id="comparison-result-actions" class="workspace-actions"></div></div>
+        <div id="comparison-save-controls" class="row" hidden><label for="comparison-plan-name">方案名称</label><input id="comparison-plan-name" type="text" maxlength="100" placeholder="如 项目A－10月竞品对比"><button id="btn-save-plan" disabled>保存当前方案</button></div>
+        <p id="comparison-save-status" class="dim" role="status" aria-live="polite"></p>
+        <details id="comparison-review" class="comparison-review" hidden>
+          <summary id="comparison-review-summary">待核清单</summary>
+          <p class="dim">这里只提示需要检查的内容，不自动补配置、不改变计算金额。</p>
+          <label><input id="comparison-review-info" type="checkbox">同时查看来源提示</label>
+          <div id="comparison-review-list" class="table-wrap"></div>
+        </details>
+        <h2>竞争力对比表</h2>
+        <div class="table-wrap" id="backup-table"></div>
+        <details id="comparison-detail-section"><summary>配置项判定明细</summary><div class="table-wrap" id="detail-table"></div></details>
+      </div>
+      </div>
+      <div class="diff-sub" data-sub="snapshot" id="diff-sub-snapshot">
+        <div class="sub-head">
+          <div class="workspace-heading">
+            <div><h2>本品配置</h2><p class="dim">导入 PowerPoint 配置阶梯，或从空白版型开始，核对后保存为可复用的本品数据。</p></div>
+            <div class="workspace-actions"><button type="button" data-goto="diff" class="quiet-button">← 返回对比</button></div>
+          </div>
+        </div>
+<div class="card">
         <div class="workspace-heading"><div><h2>准备本品数据</h2><p class="dim">支持 PowerPoint 配置阶梯，也可以从空白版型开始。</p></div></div>
         <div class="row import-actions">
           <button id="btn-import-ppt" class="primary">导入本品PPT…</button>
@@ -131,61 +185,14 @@
         <div id="ppt-status" class="status"></div>
       </div>
       <div class="card table-wrap" id="snapshot-table-wrap"></div>
-    </section>
-
-    <!-- ⑤ 对比 -->
-    <section id="page-diff" class="page">
-      <header class="page-header"><div><h1>竞争力对比</h1><p class="intro">手动配对版型，查看配置差异与赋值结果。</p></div><span class="page-category">多车型分析</span></header>
-      <ol class="workflow-steps" aria-label="竞争力对比工作流程"><li class="is-current"><span>1</span><div>选择车型<small>指定本品与对照车型</small></div></li><li><span>2</span><div>配对版型<small>设置配对与双方底价</small></div></li><li><span>3</span><div>检查结果<small>核对差配并保存方案</small></div></li></ol>
-      <p class="notice" hidden>金额规则需按你的业务口径完成校准。</p>
-      <details class="card comparison-plans">
-        <summary>打开已保存方案 <span class="dim">继续之前的对比工作</span></summary>
-        <p class="dim">打开时使用独立工作副本，不覆盖原始数据或全局规则。生成结果后可在下方保存方案。</p>
-        <div class="row"><label for="comparison-plan-list">已保存方案</label><select id="comparison-plan-list"></select><button id="btn-open-plan">打开方案</button><button id="btn-refresh-plans">刷新</button></div>
-        <p id="comparison-plan-status" class="dim" role="status"></p>
-      </details>
-      <div id="comparison-plan-banner" class="notice" hidden><span id="comparison-plan-context"></span><button id="btn-leave-plan">退出方案，开始新对比</button></div>
-      <div class="card" id="comparison-setup">
-        <div class="compare-mode"><h2>选择对比车型</h2><label for="diff-mode" class="sr-only">对比模式</label><select id="diff-mode"><option value="self">本品 vs 竞品</option><option value="competitor">竞品 vs 竞品</option></select><button id="diff-toggle-valuation" class="quiet-button">调整赋值规则 ↗</button></div>
-        <div class="compare-sides">
-          <div class="compare-side"><h3><span class="side-marker">A</span>左侧 · 比较主体</h3><select id="diff-left-vehicle" aria-label="左侧竞品车型" hidden></select><select id="diff-snapshot" aria-label="本品车型"></select><div class="workspace-section-actions"><button id="diff-edit-self">修改本品配置</button><button data-goto="snapshot">导入 / 添加本品</button><details class="secondary-menu"><summary>更多</summary><div><button id="delete-self-file">删除本品文件</button></div></details></div></div>
-          <span class="compare-divider" aria-hidden="true">VS</span>
-          <div class="compare-side"><h3><span class="side-marker">B</span>右侧 · 对照车型</h3><select id="diff-vehicle" aria-label="右侧历史竞品"></select><select id="diff-ladder" hidden></select><div class="workspace-section-actions"><button id="review-competitor">修改竞品配置</button><button id="diff-get-vehicle" class="quiet-button">获取新车型 ↗</button></div></div>
-        </div>
-        <div class="compare-rules" hidden><label for="diff-valuation">赋值规则</label><select id="diff-valuation"></select></div>
-        <div id="diff-self-editor" class="card" hidden><div class="workspace-heading"><h3>修改本品配置</h3><button id="diff-back-self">收起，返回配对</button></div><p class="dim">修改会同步到继承该项的版型，保存后重新对比。</p><div id="diff-self-table" class="table-wrap"></div><button id="diff-save-self" class="primary">保存本品修正</button></div>
-        <div id="pairs-editor" class="pairs-editor">
-          <div class="row"><strong>版型配对</strong>
-            <button id="btn-add-pair">+ 添加配对组</button></div>
-          <p class="dim pair-price-help">底价单位为元，仅用于本次配对，不修改车型价格。留空仍可比较配置；填写双方底价后计算综合竞争力。</p>
-          <div class="pairs-empty"><span aria-hidden="true">⇄</span>选择两侧车型后，在这里指定要比较的版型。</div>
-        </div>
-        <p id="comparison-action-hint" class="dim" role="status" aria-live="polite">请选择左右两侧车型，再指定版型配对。</p>
-        <div class="row compare-actions">
-          <button id="btn-run-diff" class="primary big">开始对比</button>
-          <button id="btn-export-result">导出结果 md</button>
-        </div>
-        <div id="diff-status" class="status"></div>
       </div>
-      <div id="diff-result" class="card" hidden>
-        <div class="workspace-heading"><div><h2>竞争力结果</h2><p class="dim">先核对差配，再导出或保存本次方案</p></div><div id="comparison-result-actions" class="workspace-actions"></div></div>
-        <div id="comparison-save-controls" class="row" hidden><label for="comparison-plan-name">方案名称</label><input id="comparison-plan-name" type="text" maxlength="100" placeholder="如 项目A－10月竞品对比"><button id="btn-save-plan" disabled>保存当前方案</button></div>
-        <p id="comparison-save-status" class="dim" role="status" aria-live="polite"></p>
-        <details id="comparison-review" class="comparison-review" hidden>
-          <summary id="comparison-review-summary">待核清单</summary>
-          <p class="dim">这里只提示需要检查的内容，不自动补配置、不改变计算金额。</p>
-          <label><input id="comparison-review-info" type="checkbox">同时查看来源提示</label>
-          <div id="comparison-review-list" class="table-wrap"></div>
-        </details>
-        <h2>竞争力对比表</h2>
-        <div class="table-wrap" id="backup-table"></div>
-        <details id="comparison-detail-section"><summary>配置项判定明细</summary><div class="table-wrap" id="detail-table"></div></details>
-      </div>
-    </section>
-
-    <section id="page-valuation" class="page">
-      <div class="valuation-page-nav"><button id="diff-close-valuation">← 返回竞争力对比</button></div>
-      <header class="page-header"><div><h1>赋值规则</h1><p class="intro">统一配置项的金额、档位与计价阈值。</p></div><span class="page-category">对比设置</span></header>
+      <div class="diff-sub" data-sub="valuation" id="diff-sub-valuation">
+        <div class="sub-head">
+          <div class="workspace-heading">
+            <div><h2>赋值规则</h2><p class="dim">统一配置项的金额、档位与计价阈值，保存后应用于后续对比。</p></div>
+            <div class="workspace-actions"><button type="button" id="diff-close-valuation" class="quiet-button">← 返回对比</button></div>
+          </div>
+        </div>
       <section class="card valuation-panel">
         <div class="valuation-heading">
           <div><h2>当前赋值规则</h2><p class="dim">修改金额、档位与阈值，保存后应用于后续对比。灰色项目不纳入本轮对比，原始配置仍可查看。</p></div>
@@ -199,6 +206,7 @@
         </div>
         <div class="table-wrap" id="valuation-table-wrap"></div>
       </section>
+      </div>
     </section>
 
     <!-- ⑥ 设置 -->
@@ -231,6 +239,7 @@
           <span id="app-update-progress-text"></span>
         </div>
         <p id="app-update-status" class="dim" role="status" aria-live="polite">启动后自动检查，也可手动检查。</p>
+        <p id="app-update-skipped" class="dim" hidden><span id="app-update-skipped-text"></span><button id="btn-restore-update" type="button" class="link-button">恢复提醒</button></p>
         <details id="app-release-details" hidden>
           <summary>更新说明</summary>
           <pre id="app-release-notes"></pre>
@@ -267,9 +276,10 @@
 <script src="valuation-editor.js?v=cockpit-chip-20261023"></script>
 <script src="ppt-draft-editor.js?v=product-options-20261015"></script>
 <script src="stage-display-settings.js?v=workspace-20261021-final"></script>
-<script src="app.js?v=remove-local-import-20261103"></script>
+<script src="app.js?v=subtabs-20261105"></script>
 <script src="comparison-tools.js?v=workspace-20261020"></script>
-<script src="app-updates.js?v=installer-update-20261103"></script>
+<script src="diff-subtabs.js?v=topbar-20261105"></script>
+<script src="app-updates.js?v=skip-20261105"></script>
 <script src="feedback.js?v=feedback-20261103"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
   border:1px solid var(--line);
   border-radius:10px;
   background:#fff;
-  scrollbar-color:#c4cfd5 #f5f7fa;
+  scrollbar-color:#c4ccd2 transparent;
 }
 .vue-config-editor .ce-table { border-collapse:separate; border-spacing:0; }
 .vue-config-editor .ce-table th,
@@ -29,11 +29,12 @@
   z-index:2;
   padding-top:12px;
   padding-bottom:12px;
-  background:#f5f7fa;
-  color:#556574;
-  font-size:12px;
-  font-weight:600;
-  letter-spacing:0;
+  background:#f0f4f2;
+  border-bottom:1px solid var(--line-strong);
+  color:#4c625c;
+  font-size:11px;
+  font-weight:650;
+  letter-spacing:.02em;
 }
 .vue-config-editor .ce-table thead th:nth-child(n+3) { white-space:normal; overflow-wrap:anywhere; }
 .vue-config-editor .ce-table th:first-child,
@@ -63,7 +64,7 @@
   box-shadow:2px 0 0 var(--line);
 }
 .vue-config-editor .ce-table thead th:first-child,
-.vue-config-editor .ce-table thead th:nth-child(2) { z-index:5; background:#f5f7fa; }
+.vue-config-editor .ce-table thead th:nth-child(2) { z-index:5; background:#f0f4f2; }
 .vue-config-editor .ce-table .ce-group-row > th {
   position:static;
   width:auto;
@@ -71,7 +72,7 @@
   max-width:none;
   overflow:visible;
   padding:9px 12px;
-  background:#edf4f3;
+  background:var(--surface-soft);
   color:var(--navy);
   text-align:left;
   font-size:12px;
@@ -82,7 +83,7 @@
   left:12px;
   display:inline-block;
 }
-.vue-config-editor .ce-table tbody tr:hover td { background:#f8fbfa; }
+.vue-config-editor .ce-table tbody tr:hover td { background:#f5f8f6; }
 .vue-config-editor .ce-cell,
 .vue-config-editor .ce-seat-functions,
 .vue-config-editor .ce-seat-adjust { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; }
@@ -112,8 +113,8 @@
   min-width:0 !important;
   margin:0;
   padding:5px 9px !important;
-  border:1px solid #d8e1e6;
-  border-radius:6px;
+  border:1px solid var(--line-strong);
+  border-radius:7px;
   background-color:#fff;
   color:var(--ink);
   font:inherit;
@@ -142,8 +143,8 @@
   min-width:0;
   min-height:90px;
   padding:9px 10px;
-  border:1px solid #d8e1e6;
-  border-radius:6px;
+  border:1px solid var(--line-strong);
+  border-radius:7px;
   background:#fff;
   color:var(--ink);
   resize:vertical;
@@ -153,12 +154,12 @@
 }
 #main .vue-config-editor :is(input,select,textarea):focus {
   outline:none;
-  border-color:var(--cyan);
-  box-shadow:0 0 0 3px rgb(20 125 115 / 12%);
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--focus-ring);
 }
 #main .vue-config-editor :is(input,select,textarea):disabled {
-  border-color:#e5eaee;
-  background-color:#f3f5f7;
+  border-color:#e0e6ea;
+  background-color:#f1f4f6;
   color:#8b98a3;
   cursor:not-allowed;
   opacity:1;

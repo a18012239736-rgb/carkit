@@ -9,6 +9,15 @@
   const progressWrap = find('app-update-progress-wrap'), progress = find('app-update-progress');
   let release = null, checking = false, downloading = false, dismissed = false, started = false;
   let githubFailed = false, installationStarted = false;
+  // 保存到工作目录；pywebview 私密模式的 localStorage 不跨重启保留。
+  let skippedVersion = '';
+  function syncSkipNotice() {
+    find('app-update-skipped').hidden = !skippedVersion;
+    find('app-update-skipped-text').textContent = skippedVersion
+      ? '已忽略 ' + skippedVersion + ' 的更新提醒；出现更新的版本时会再次提示。'
+      : '';
+    find('btn-restore-update').hidden = !skippedVersion;
+  }
 
   function ready() { return !!window.pywebview?.api; }
   function hasCachedInstaller() { return !!(release?.installer_update && release.downloaded_path); }
@@ -16,9 +25,9 @@
     return !!(release?.available && release.supported !== false &&
       (release.can_download || hasCachedInstaller()));
   }
-  async function call(method) {
+  async function call(method, ...args) {
     if(!ready()) throw new Error('请在桌面程序中使用更新功能。');
-    const result = await window.pywebview.api[method]();
+    const result = await window.pywebview.api[method](...args);
     if(!result || result.ok === false || result.error) throw new Error(result?.error || '更新操作未能完成。');
     return result;
   }
@@ -50,13 +59,16 @@
     find('app-release-notes').textContent = info.release_notes || '该版本暂未提供更新说明。';
     find('app-release-details').hidden = !info.latest_version;
     const label = '发现新版 ' + info.latest_version;
-    banner.hidden = !info.available || !!info.downloaded_path || dismissed;
+    const skipped = !!(info.available && info.latest_version && info.latest_version === skippedVersion);
+    banner.hidden = !info.available || !!info.downloaded_path || dismissed || skipped;
     find('app-update-banner-text').textContent = label + '，可在设置与帮助中查看。';
     message(info.reason || (info.available ? label + '。下载前可先查看更新说明。' : '未发现需要下载的正式版本更新。'));
     if(hasCachedInstaller() && canUpdate()) message('安装包已下载。点击「安装并重启」后，程序会再次校验安装包。');
     else if(info.installer_update && canUpdate()) message(label + '。下载并安装后，carkit 将重新打开。');
     if(info.supported === false) message((info.reason || '') + (info.reason ? '\n' : '') + '当前运行环境不支持程序内下载，可打开官方发布页查看。');
+    if(skipped) message('已忽略 ' + info.latest_version + ' 的更新提醒；出现更新的版本时会再次提示，也可在下方「恢复提醒」。');
     if(info.downloaded_path && !info.installer_update) showDownloaded(info.downloaded_path);
+    syncSkipNotice();
     sync();
   }
   function showDownloaded(path) {
@@ -152,9 +164,31 @@
   folderButton.addEventListener('click', () => open('open_app_update_folder'));
   find('btn-view-update').addEventListener('click', () => { showPage('settings'); find('app-update-heading').scrollIntoView({block:'start'}); });
   find('btn-dismiss-update').addEventListener('click', () => { dismissed = true; banner.hidden = true; });
-  function start() {
+  find('btn-skip-update').addEventListener('click', async () => {
+    if(!release?.latest_version) return;
+    try { await call('save_update_reminder', release.latest_version); }
+    catch(error) { message(error.message || String(error), true); return; }
+    skippedVersion = release.latest_version;
+    banner.hidden = true;  // 不设置 dismissed：新版本出现时横幅可再次出现
+    message('已忽略 ' + skippedVersion + ' 的更新提醒；出现更新的版本时会再次提示，可在设置与帮助中「恢复提醒」。');
+    syncSkipNotice();
+  });
+  find('btn-restore-update').addEventListener('click', async () => {
+    try { await call('save_update_reminder', ''); }
+    catch(error) { message(error.message || String(error), true); return; }
+    skippedVersion = ''; dismissed = false;
+    message('已恢复更新提醒。');
+    syncSkipNotice();
+    if(release?.available && !installationStarted) render(release);
+  });
+  syncSkipNotice();
+  async function start() {
     if(started || !ready()) return;
     started = true;
+    if(window.pywebview.api.update_reminder) {
+      try { skippedVersion = (await call('update_reminder')).skipped_version || ''; syncSkipNotice(); }
+      catch { /* 提醒设置异常不阻断检查更新。 */ }
+    }
     if(window.pywebview.api.ping) {
       void call('ping').then(info => {
         if(info.version) find('app-current-version').textContent = '当前版本：' + info.version;

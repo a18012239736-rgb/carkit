@@ -801,9 +801,8 @@ function collectSnapshotEdits() {
 /* ---------- ④ 赋值表 ---------- */
 let valuationEditorSchema = {};
 
-$("#diff-toggle-valuation").addEventListener("click", async () => {
+$("#diff-toggle-valuation").addEventListener("click", () => {
   showPage('valuation');
-  await loadCurrentValuation();
 });
 $("#diff-close-valuation").addEventListener("click", async () => {
   showPage('diff');
@@ -1185,6 +1184,11 @@ setTimeout(() => {
 
 
 function showPage(name) {
+  // 本品配置与赋值规则已整合为竞争力对比的子页签
+  if ((name === 'snapshot' || name === 'valuation') && window.showDiffSub) {
+    window.showDiffSub(name);
+    return;
+  }
   $$('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));
   const navName=name==='ladder'?'diff':name;
   $$('.nav-item').forEach(b=>{
@@ -1193,6 +1197,7 @@ function showPage(name) {
     if(active) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
+  if (name === 'diff' && window.showDiffSub) window.showDiffSub('compare', true);
   const label=$('#current-page-label');
   if(label) label.textContent=$('#page-'+name+' h1')?.textContent || '';
   window.scrollTo({top:0,left:0,behavior:'auto'});

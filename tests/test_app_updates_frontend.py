@@ -221,3 +221,47 @@ assert.strictEqual(installs,2);
 assert(button.hidden);
 assert(node('app-update-status').textContent.includes('安装完成后，程序将重新打开'));
 """)
+
+
+def test_skip_version_hides_banner_until_newer_release_or_restore():
+    run_node(r"""
+const saved=[];
+let version='0.2.4';
+load({check_app_update:async()=>latest({latest_version:version}),
+  save_update_reminder:async value=>{saved.push(value);return {ok:true};}});
+await flush();
+assert(!node('app-update-banner').hidden);            // 未忽略时正常提醒
+assert(!node('btn-skip-update').hidden);
+await click('btn-skip-update');
+assert(node('app-update-banner').hidden);             // 忽略后本次不再显示
+assert.strictEqual(saved.at(-1),'0.2.4');  // 并持久化
+assert(node('app-update-status').textContent.includes('已忽略 0.2.4'));
+assert(!node('app-update-skipped').hidden);           // 设置页出现忽略说明
+assert(!node('btn-restore-update').hidden);
+await click('btn-check-update');await flush();        // 重新检查同版本：仍不弹横幅
+assert(node('app-update-banner').hidden);
+assert(!node('btn-download-update').hidden);          // 手动更新入口仍可用
+version='0.2.5';                                      // 出现更新的版本：恢复提醒
+await click('btn-check-update');await flush();
+assert(!node('app-update-banner').hidden);
+assert(node('app-update-banner-text').textContent.includes('0.2.5'));
+await click('btn-skip-update');
+assert(node('app-update-skipped-text').textContent.includes('0.2.5'));
+await click('btn-restore-update');                    // 手动恢复提醒
+assert.strictEqual(saved.at(-1),'');
+assert(!node('app-update-banner').hidden);
+assert(node('app-update-skipped').hidden);
+assert(node('btn-restore-update').hidden);
+""")
+
+
+def test_skipped_version_persists_across_restart():
+    run_node(r"""
+load({check_app_update:async()=>latest(),
+  update_reminder:async()=>({ok:true,skipped_version:'0.2.4'})});           // 模拟重启后再次启动检查
+await flush();
+assert(node('app-update-banner').hidden);             // 0.2.4 已被忽略：不再弹横幅
+assert(node('app-update-status').textContent.includes('已忽略 0.2.4'));
+assert(!node('app-update-skipped').hidden);
+assert(!node('btn-download-update').hidden);          // 手动更新不受影响
+""")
