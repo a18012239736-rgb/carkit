@@ -168,7 +168,7 @@ class Bridge:
         return self._open_web_url(RELEASES_URL)
 
     def open_internal_release_page(self):
-        return self._open_web_url('https://my-ichery.feishu.cn/wiki/OkmFwGcV3iKq1Fk6qDocpjgcnXh')
+        return self._open_web_url('https://my.feishu.cn/wiki/RbVTwWOJFiCjOukyBO8csx2Rnwd')
 
     def open_app_update_folder(self):
         path = self._updater.status().get('path')

@@ -5,9 +5,12 @@
   min-width:0;
   gap:14px;
   padding:18px;
-  border:1px solid var(--line);
-  border-radius:10px;
-  background:#fff;
+  border:1px solid var(--glass-edge,var(--line));
+  border-radius:var(--radius-panel);
+  background:var(--glass-sheen) var(--glass-surface);
+  -webkit-backdrop-filter:var(--glass-filter);
+  backdrop-filter:var(--glass-filter);
+  box-shadow:var(--glass-shadow);
 }
 .vue-ppt-draft .ppt-column-head {
   display:flex;
@@ -18,8 +21,8 @@
   margin:-18px -18px 2px;
   padding:10px 16px;
   border-bottom:1px solid var(--line);
-  border-radius:10px 10px 0 0;
-  background:#f0f4f2;
+  border-radius:calc(var(--radius-panel) - 1px) calc(var(--radius-panel) - 1px) 0 0;
+  background:rgb(240 244 242 / 88%);
 }
 .vue-ppt-draft .ppt-column-index { color:var(--navy); font-size:12px; font-weight:600; letter-spacing:0; }
 .vue-ppt-draft .ppt-column label { display:flex; flex-direction:column; gap:7px; margin:0; color:#556574; font-size:12px; font-weight:500; line-height:1.6; }

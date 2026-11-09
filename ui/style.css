@@ -6,6 +6,11 @@
   --surface-soft: #eef2f0;
   --surface-selected: #e0f0ea;
   --surface-shadow: 0 1px 2px rgb(13 27 38 / 4%), 0 10px 28px -14px rgb(13 27 38 / 14%);
+  --glass-surface: rgb(255 255 255 / 52%);
+  --glass-sheen: linear-gradient(145deg,rgb(255 255 255 / 14%),transparent 62%);
+  --glass-edge: rgb(255 255 255 / 76%);
+  --glass-filter: blur(28px) saturate(140%);
+  --glass-shadow: inset 0 1px 0 rgb(255 255 255 / 85%), 0 18px 48px -24px rgb(13 44 40 / 34%);
   --navy: #131f2b;
   --navy-2: #243b4e;
   --cyan: #0f8371;
@@ -30,7 +35,7 @@
   --warn-ink: #8f6a1f;
   --focus: #2fa08d;
   --focus-ring: rgb(15 131 113 / 24%);
-  --radius-panel: 14px;
+  --radius-panel: 24px;
   --font-sans: -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
   --font-mono: ui-monospace,SFMono-Regular,Menlo,Consolas,"Microsoft YaHei",monospace;
 }
@@ -38,7 +43,11 @@
 [hidden] { display:none !important; }
 html { font-size:16px; }
 body {
-  background:var(--bg);
+  background:radial-gradient(ellipse 122% 84% at 17% -24%,transparent 72%,rgb(255 255 255 / 42%) 74%,rgb(255 255 255 / 12%) 77%,transparent 81%),
+             radial-gradient(ellipse 102% 100% at 118% 93%,transparent 74%,rgb(255 255 255 / 32%) 77%,transparent 82%),
+             radial-gradient(ellipse at 2% 1%,#b6dacf,transparent 63%),
+             linear-gradient(154deg,#d8ebe4,#d8e5e2 51%,var(--bg) 100%);
+  background-attachment:fixed;
   color:var(--ink);
   font:13px/1.6 var(--font-sans);
   -webkit-font-smoothing:antialiased;
@@ -130,7 +139,7 @@ input[type=checkbox]:focus-visible,input[type=radio]:focus-visible { outline:2px
 
 /* Tables retain native horizontal scrolling, including nested editor tables. */
 .table-wrap { min-width:0; overflow-x:auto; border-radius:8px; scrollbar-color:#c4ccd2 transparent; }
-table.grid { width:max-content; min-width:100%; border-collapse:collapse; color:var(--ink); font-size:12.5px; font-variant-numeric:tabular-nums; }
+table.grid { width:max-content; min-width:100%; border-collapse:collapse; background:var(--card); color:var(--ink); font-size:12.5px; font-variant-numeric:tabular-nums; }
 table.grid th,table.grid td { max-width:340px; padding:8px 11px; border:1px solid #e7ebee; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 table.grid thead th { position:sticky; top:0; z-index:2; background:#f0f4f2; border-bottom-color:var(--line-strong); color:#4c625c; font-size:11px; font-weight:650; letter-spacing:.02em; }
 table.grid tbody tr:hover td { background:#f5f8f6; }
@@ -209,26 +218,45 @@ table.grid input[data-seat-count] { width:60px !important; min-width:60px !impor
 #ppt-page { flex:1; min-width:0; max-width:100%; }
 
 /* Configuration ladder: each column keeps its own scrollable card width. */
-#ladder-visual { margin-bottom:14px; padding:20px; border:1px solid #d8e5de; border-radius:var(--radius-panel); background:linear-gradient(180deg,#f2f7f4,#fff); }
+#ladder-visual { margin-bottom:14px; padding:20px; }
 .ladder-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .ladder-heading h2 { margin:0; }
 .ladder-heading button { min-height:30px; padding:5px 9px; font-size:11px; }
-.ladder-scroll { overflow-x:auto; padding:16px 1px 18px; scrollbar-color:#c4ccd2 transparent; }
+.ladder-scroll { overflow-x:auto; container-type:inline-size; padding:16px 1px 18px; scrollbar-color:#c4ccd2 transparent; }
 .ladder-sheet { width:max-content; min-width:100%; }
 .ladder-model { margin:0 0 14px; color:var(--dim); font-size:12px; font-weight:500; }
 .ladder-columns { display:flex; align-items:stretch; gap:14px; }
-.ladder-column { width:268px; flex:none; padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--card); box-shadow:0 1px 2px rgb(13 27 38 / 4%); }
-.ladder-column.is-base { border-color:#b9d9cc; box-shadow:inset 0 3px 0 var(--accent), 0 1px 2px rgb(13 27 38 / 4%); }
+.ladder-column { width:268px; flex:none; padding:18px; border:1px solid var(--glass-edge); border-radius:var(--radius-panel); background:var(--glass-sheen) var(--glass-surface); -webkit-backdrop-filter:var(--glass-filter); backdrop-filter:var(--glass-filter); box-shadow:var(--glass-shadow); }
+.ladder-column.is-base {
+  background:linear-gradient(150deg,rgb(185 217 204 / 72%),rgb(224 240 234 / 56%) 62%,transparent) var(--glass-surface);
+  border-color:#a9d0c1;
+  box-shadow:inset 0 2px 0 var(--accent),var(--glass-shadow);
+}
 .ladder-card-tools { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:7px; margin-bottom:14px; }
 .ladder-badge { display:inline-block; padding:3px 9px; border-radius:999px; background:var(--gray-bg); color:#5c6a75; font-size:10px; font-weight:600; white-space:nowrap; }
 .is-base .ladder-badge { background:var(--accent-soft); color:var(--accent-strong); }
 .ladder-card-actions { display:flex; gap:4px; }
 .ladder-card-actions button { min-height:26px; padding:3px 6px; font-size:10px; white-space:nowrap; }
+.ladder-card-title { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:7px; }
 .ladder-column h4 { margin:0; color:var(--ink-strong); font-size:17px; font-weight:650; letter-spacing:-.015em; }
+.ladder-detail-toggle { flex:none; min-height:26px; padding:3px 8px; font-size:11px; }
+.ladder-detail-toggle[aria-expanded="true"] { background:var(--accent-soft); color:var(--accent-strong); border-color:#b9d9cc; }
+.ladder-column.is-expanded { width:min(680px,calc(100vw - 120px)); width:min(680px,100cqw); border-color:#b9d9cc; }
+.ladder-card-detail { max-height:min(46vh,400px); }
+.ladder-card-detail:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.ladder-card-detail p { margin:0; padding:12px; }
+.ladder-card-detail .status.err { background:var(--red-bg); }
+.ladder-card-detail table.grid { width:100%; table-layout:fixed; }
+.ladder-card-detail .grid :is(th,td) { white-space:normal; overflow-wrap:anywhere; vertical-align:top; }
+.ladder-card-detail .grid th:first-child { width:38%; }
+@media (prefers-reduced-motion:no-preference) {
+  .ladder-column.is-expanded .ladder-card-detail { animation:ladder-detail-in .18s ease-out; }
+  @keyframes ladder-detail-in { from { opacity:.55; transform:translateY(-4px); } }
+}
 .ladder-price { margin:9px 0 16px; padding-bottom:15px; border-bottom:1px solid var(--line); color:var(--ink-strong); font-size:28px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
 .ladder-price small { margin-left:7px; color:var(--dim); font-size:11px; font-weight:400; letter-spacing:0; }
-.ladder-column > strong { display:block; }
-.ladder-column > strong,.ladder-column details summary { padding:7px 9px; border-radius:6px; background:#f0f4f2; color:#4c625c; font-size:11px; font-weight:600; }
+.ladder-card-summary > strong { display:block; }
+.ladder-card-summary > strong,.ladder-column details summary { padding:7px 9px; border-radius:6px; background:#f0f4f2; color:#4c625c; font-size:11px; font-weight:600; }
 .ladder-column ul { margin:9px 0 16px; list-style:none; color:#3d5058; font-size:12px; line-height:1.75; }
 .ladder-column li { padding:6px 0; border-bottom:1px solid #edf1ee; overflow-wrap:anywhere; }
 .ladder-column li:last-child { border-bottom:0; }
@@ -306,8 +334,8 @@ table.grid input[data-seat-count] { width:60px !important; min-width:60px !impor
 .comparison-plans input[type=text] { flex:1; min-width:180px; }
 #comparison-plan-banner { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .evidence-link { display:block; min-height:26px; margin-top:8px; padding:3px 7px; border-color:#cbe2d6; background:#fff; color:var(--accent-strong); font-size:10px; font-weight:500; }
-#comparison-evidence { width:min(1120px,92vw); max-height:88vh; margin:auto; padding:24px; overflow:auto; border:1px solid var(--line-strong); border-radius:14px; background:#fff; color:var(--ink); box-shadow:0 24px 72px rgb(13 27 38 / 24%); }
-#comparison-evidence::backdrop { background:rgb(13 27 38 / 42%); }
+#comparison-evidence { width:min(1120px,92vw); max-height:88vh; margin:auto; padding:24px; overflow:auto; border:1px solid var(--glass-edge); border-radius:var(--radius-panel); background:var(--glass-sheen) var(--glass-surface); -webkit-backdrop-filter:var(--glass-filter); backdrop-filter:var(--glass-filter); color:var(--ink); box-shadow:var(--glass-shadow); }
+#comparison-evidence::backdrop { background:rgb(13 27 38 / 42%); -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px); }
 .evidence-heading { position:sticky; top:-24px; z-index:4; display:flex; align-items:center; justify-content:space-between; gap:16px; margin:0 0 18px; padding:16px 0 12px; border-bottom:1px solid var(--line); background:#fff; }
 .evidence-heading h2 { margin:0; font-size:15px; }
 .evidence-sides { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:18px; }
@@ -324,7 +352,7 @@ table.grid input[data-seat-count] { width:60px !important; min-width:60px !impor
 .evidence-rule p { margin:6px 0; font-size:12px; overflow-wrap:anywhere; }
 
 /* The floating bar controls whichever wide table or ladder is in view. */
-#floating-scroll { position:fixed; bottom:12px; z-index:40; display:flex; align-items:center; gap:12px; min-height:44px; padding:8px 12px; border:1px solid var(--line-strong); border-radius:10px; background:rgb(255 255 255 / 96%); box-shadow:0 6px 24px rgb(13 27 38 / 13%); }
+#floating-scroll { position:fixed; bottom:12px; z-index:40; display:flex; align-items:center; gap:12px; min-height:44px; padding:8px 12px; border:1px solid var(--glass-edge); border-radius:16px; background:var(--glass-sheen) var(--glass-surface); -webkit-backdrop-filter:var(--glass-filter); backdrop-filter:var(--glass-filter); box-shadow:var(--glass-shadow); }
 #floating-scroll-label { flex:none; color:#5c6c76; font-size:11px; font-weight:600; }
 #floating-scroll-target { width:160px; min-width:0; min-height:28px; padding:3px 25px 3px 8px; border-radius:6px; font-size:11px; }
 #floating-scroll-range { flex:1; width:100%; min-width:60px; height:24px; min-height:0; margin:0; padding:0; border:0; background:transparent; appearance:none; cursor:ew-resize; }

@@ -283,15 +283,30 @@ async function api(method, ...args) {
 
 /* ---------- 导航 ---------- */
 const layout = $('#layout');
+if (localStorage.getItem('carkit.dockPosition') !== 'bottom') layout.classList.add('dock-left');
+const dockPositionToggle = $('#dock-position-toggle');
+const syncDockPositionLabel = () => {
+  const label = layout.classList.contains('dock-left') ? '切换为底部居中停靠' : '切换为左侧停靠';
+  dockPositionToggle.setAttribute('aria-label', label);
+  dockPositionToggle.title = label;
+  dockPositionToggle.querySelector('.dock-label').textContent = label;
+};
+syncDockPositionLabel();
 const sidebarCollapsed = localStorage.getItem('carkit.sidebarHidden') === '1';
 if (sidebarCollapsed) layout.classList.add('sidebar-collapsed');
 function setSidebarHidden(hidden) {
   layout.classList.toggle('sidebar-collapsed', hidden);
   localStorage.setItem('carkit.sidebarHidden', hidden ? '1' : '0');
-  $('#sidebar-hide').setAttribute('aria-label', hidden ? '显示侧边栏' : '隐藏侧边栏');
+  $(hidden ? '#sidebar-show' : '#sidebar-hide').focus({preventScroll:true});
 }
 $('#sidebar-hide').addEventListener('click', () => setSidebarHidden(true));
 $('#sidebar-show').addEventListener('click', () => setSidebarHidden(false));
+$('#dock-position-toggle').addEventListener('click', () => {
+  const left = !layout.classList.contains('dock-left');
+  layout.classList.toggle('dock-left', left);
+  localStorage.setItem('carkit.dockPosition', left ? 'left' : 'bottom');
+  syncDockPositionLabel();
+});
 $$(".nav-item").forEach((btn) =>
   btn.addEventListener("click", async () => {
     if (btn.dataset.page === 'valuation' && ST.plan)
@@ -497,7 +512,8 @@ previewButton.className = 'primary';
 $('#btn-stage-export').before(previewButton);
 previewButton.onclick = async () => {
   const revision = stageDisplayRevision;
-  const res = await api('stage_preview', stagePlan());
+  const plan = stagePlan();
+  const res = await api('stage_preview', plan);
   if (revision !== stageDisplayRevision) return;
   if (!res.ok) return toast(res.error, 'err');
   document.querySelector('#ladder-visual')?.remove();
@@ -505,12 +521,15 @@ previewButton.onclick = async () => {
   panel.id = 'ladder-visual';
   panel.className = 'card';
   const list = items => `<ul>${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;
-  panel.innerHTML = `<div class="ladder-heading"><h2>配置阶梯</h2><button class="close-ladder">收起</button></div><p class="dim">指导价单位：万元 · 按上方所选比较基准显示；选装单列。卡片可左移／右移，仅调整当前展示位置，不改变比较基准和导出顺序。</p><div class="ladder-scroll"><div class="ladder-sheet"><h3 class="ladder-model">${esc(res.model)}</h3><div class="ladder-columns">${res.columns.map(c => {
+  panel.innerHTML = `<div class="ladder-heading"><h2>配置阶梯</h2><button class="close-ladder">收起</button></div><p class="dim">按所选基准显示配置差异，选装单列。点击卡片上的「完整配置」查看原文；左右移动卡片只调整展示顺序。</p><div class="ladder-scroll"><div class="ladder-sheet"><h3 class="ladder-model">${esc(res.model)}</h3><div class="ladder-columns">${res.columns.map((c, i) => {
     const items = c.display_items ?? c.items, removed = c.removed_items ?? [];
-    return `<article class="ladder-column"><h4>${esc(c.name)}</h4><div class="ladder-price">${c.price == null ? '待核' : Number(c.price).toFixed(2)}</div>
+    return `<article class="ladder-column"><div class="ladder-card-title"><h4>${esc(c.name)}</h4>
+      <button type="button" class="ladder-detail-toggle" aria-controls="ladder-trim-detail-${i}" aria-expanded="false">完整配置</button></div>
+      <div class="ladder-price">${c.price == null ? '待核' : Number(c.price).toFixed(2)}</div><div class="ladder-card-summary">
       ${items.length || !removed.length ? `<strong>${c.base == null ? '基本配置：' : esc(c.base)+'+：'}</strong>${list(items.length ? items : ['配置相同，仅价格/续航差异。'])}` : ''}
       ${removed.length ? `<strong>${esc(c.base)}-：</strong>${list(removed)}` : ''}
-      ${c.options.length ? `<details><summary>选装配置</summary>${list(c.options)}</details>` : ''}</article>`;
+      ${c.options.length ? `<details><summary>选装配置</summary>${list(c.options)}</details>` : ''}</div>
+      <div id="ladder-trim-detail-${i}" class="ladder-card-detail table-wrap" role="region" aria-label="${esc(c.name)}完整配置" tabindex="0" hidden></div></article>`;
   }).join('')}</div></div></div>`;
   panel.querySelector('.ladder-heading h2').textContent = res.model + ' · 配置阶梯';
   panel.querySelector('.ladder-model').textContent = `${res.columns.length} 个版型 · 指导价与配置一览`;
@@ -526,7 +545,7 @@ previewButton.onclick = async () => {
     unit.textContent = c.price == null ? '指导价待核' : '万元';
     price.append(unit);
   });
-  enableLadderCardMoves(panel);
+  enableLadderCardMoves(panel, enableLadderCardDetails(panel, plan));
   $('#stage-result-tools').after(panel);
   panel.querySelector('.close-ladder').onclick = () => { panel.remove(); window.syncWorkspace?.(); };
   window.syncWorkspace?.();
@@ -534,7 +553,63 @@ previewButton.onclick = async () => {
   panel.querySelector('.ladder-scroll').scrollLeft = 0;
 };
 
-function enableLadderCardMoves(panel) {
+function enableLadderCardDetails(panel, plan) {
+  const scroll = panel.querySelector('.ladder-scroll');
+  let expanded, returnPosition, rawRequest;
+  function close(restore = true) {
+    if (!expanded) return;
+    const {card, button, summary, detail} = expanded;
+    expanded = null;
+    card.classList.remove('is-expanded');
+    summary.hidden = false;
+    detail.hidden = true;
+    button.textContent = '完整配置';
+    button.setAttribute('aria-expanded', 'false');
+    if (restore) {
+      button.focus({preventScroll:true});
+      scroll.scrollLeft = returnPosition.left;
+      window.scrollTo(0, returnPosition.top);
+      window.syncWorkspace?.();
+    }
+  }
+  panel.querySelectorAll('.ladder-column').forEach((card, i) => {
+    const button = card.querySelector('.ladder-detail-toggle');
+    const summary = card.querySelector('.ladder-card-summary');
+    const detail = card.querySelector('.ladder-card-detail');
+    const entry = {card, button, summary, detail};
+    button.onclick = async () => {
+      if (expanded === entry) return close();
+      if (expanded) close(false);
+      else returnPosition = {left:scroll.scrollLeft, top:window.scrollY};
+      expanded = entry;
+      card.classList.add('is-expanded');
+      summary.hidden = true;
+      detail.hidden = false;
+      button.textContent = '收起详情';
+      button.setAttribute('aria-expanded', 'true');
+      scroll.scrollLeft += card.getBoundingClientRect().left - scroll.getBoundingClientRect().left - 1;
+      window.syncWorkspace?.();
+      if (detail.querySelector('table')) return;
+      detail.innerHTML = '<p class="dim" role="status">正在读取完整配置…</p>';
+      rawRequest ||= api('stage_get_raw').catch(error => { rawRequest = null; throw error; });
+      try {
+        const {raw} = await rawRequest;
+        if (panel.isConnected) detail.innerHTML = rawConfigurationTable(raw, [plan[i].target]);
+      } catch {
+        detail.innerHTML = '<p class="status err" role="status">完整配置读取失败，请收起后重试。</p>';
+      }
+    };
+  });
+  panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && expanded) {
+      event.preventDefault();
+      close();
+    }
+  });
+  return () => close(false);
+}
+
+function enableLadderCardMoves(panel, beforeMove) {
   const cards = [...panel.querySelectorAll('.ladder-column')];
   if (cards.length < 2) return;
   const buttons = new Map();
@@ -560,6 +635,7 @@ function enableLadderCardMoves(panel) {
       button.onclick = () => {
         const neighbor = direction < 0 ? card.previousElementSibling : card.nextElementSibling;
         if (!neighbor) return;
+        beforeMove?.();
         if (direction < 0) card.parentElement.insertBefore(card, neighbor);
         else card.parentElement.insertBefore(neighbor, card);
         refresh();
@@ -1159,8 +1235,6 @@ $("#btn-export-result").addEventListener("click", async () => {
 /* ---------- ⑥ 设置 ---------- */
 async function initSettings() {
   const p = await api("ping");
-  $("#rules-version").textContent = "规则 " + p.rules;
-  $("#workdir-label").textContent = p.workdir;
   $("#set-workdir").textContent = p.workdir;
   $("#set-rules").textContent = p.rules + "（engine/rules/，可热更新）";
 }
@@ -1375,12 +1449,17 @@ $$('[data-goto]').forEach(b=>b.onclick=async()=>{
   if(b.dataset.goto==='diff') await refreshDiffSelects();
 });
 $('#diff-get-vehicle').onclick=async()=>{showPage('scrape');await refreshRawList();$('#scrape-series').focus();};
+function rawConfigurationTable(raw, indices) {
+  const cell = (c = {}) => [c, ...(c.subs || [])].map(v => (v.dot || '') + (v.text || '')).filter(Boolean).join(' / ') || '—';
+  return '<table class="grid"><thead><tr><th scope="col">配置项</th>' + indices.map(i => `<th scope="col">${esc(raw.trims[i].short)}</th>`).join('') +
+    '</tr></thead><tbody>' + raw.rows.map(row => '<tr><td>' + esc(row.name) + '</td>' +
+      indices.map(i => '<td>' + esc(cell(row.cells[i])) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+}
 $('#inspect-raw').onclick=async()=>{
   const wrap=$('#raw-inspector');
   if(!wrap.hidden) {wrap.hidden=true;return;}
   const {raw}=await api('stage_get_raw');
-  const cell=c=>[c,...(c.subs||[])].map(v=>(v.dot||'')+(v.text||'')).filter(Boolean).join(' / ')||'—';
-  wrap.innerHTML='<table class="grid"><thead><tr><th>配置项</th>'+raw.trims.map(t=>`<th>${esc(t.short)}</th>`).join('')+'</tr></thead><tbody>'+raw.rows.map(r=>'<tr><td>'+esc(r.name)+'</td>'+r.cells.map(c=>'<td>'+esc(cell(c))+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
+  wrap.innerHTML=rawConfigurationTable(raw, raw.trims.map((_, i) => i));
   wrap.hidden=false;
 };
 

@@ -3,13 +3,15 @@
   max-height: calc(100vh - 40px);
   margin: auto;
   padding: 0;
-  border: 1px solid var(--line-strong, #d0d9df);
-  border-radius: 14px;
+  border: 1px solid var(--glass-edge, var(--line-strong, #d0d9df));
+  border-radius: var(--radius-panel);
   color: var(--ink, #263c46);
-  background: var(--card, #fff);
-  box-shadow: 0 24px 72px rgb(13 27 38 / 24%), 0 4px 16px rgb(13 27 38 / 8%);
+  background: var(--glass-sheen) var(--glass-surface);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-shadow), 0 24px 72px rgb(13 27 38 / 24%);
 }
-#feedback-dialog::backdrop { background: rgb(13 27 38 / 42%); }
+#feedback-dialog::backdrop { background: rgb(13 27 38 / 42%); backdrop-filter: blur(4px); }
 
 .feedback-content { padding: 24px; }
 .feedback-heading {

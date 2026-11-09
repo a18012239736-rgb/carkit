@@ -67,7 +67,7 @@ context.document={
     assert.strictEqual(tag,'section');
     return {id:'',className:'',innerHTML:'',parentElement:null,
       querySelector:selector=>{if(!fields.has(selector))fields.set(selector,{});return fields.get(selector);},
-      querySelectorAll:()=>[],scrollIntoView(){},
+      querySelectorAll:()=>[],scrollIntoView(){},addEventListener(){},
       remove(){const index=siblings.indexOf(this);if(index>=0)siblings.splice(index,1);this.parentElement=null;}};
   },
 };
