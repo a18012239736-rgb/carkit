@@ -62,6 +62,20 @@ await click('btn-dismiss-update');assert(node('app-update-banner').hidden);
 """)
 
 
+def test_update_channel_reports_feishu_or_the_selected_github_fallback():
+    run_node(r"""
+let source='feishu';
+load({check_app_update:async()=>latest({source})});
+await flush();
+assert.strictEqual(node('app-update-channel').textContent,'飞书');
+assert(!node('btn-download-update').hidden);
+source='github';
+await click('btn-check-update');
+assert.strictEqual(node('app-update-channel').textContent,'GitHub 备用');
+assert(!node('btn-download-update').hidden);
+""")
+
+
 def test_preview_and_unsupported_runtime_do_not_offer_windows_downloads():
     run_node(r"""
 load();assert(node('btn-check-update').disabled);assert(node('btn-open-release').disabled);

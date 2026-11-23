@@ -74,12 +74,12 @@ def _runtime_target():
 def _message(error):
     if isinstance(error, HTTPError):
         if error.code in (403, 429):
-            return 'GitHub 暂时限制访问，请稍后重试或打开官方发布页'
+            return '更新服务暂时限制访问，请稍后重试或打开更新页'
         if error.code == 404:
             return '尚未找到正式版本或安装包，请到官方发布页查看'
-        return 'GitHub 更新服务暂不可用，请稍后重试'
+        return '更新服务暂不可用，请稍后重试'
     if isinstance(error, (URLError, TimeoutError)):
-        return '无法连接 GitHub，请检查网络后重试；当前程序仍可正常使用'
+        return '无法连接更新服务，请检查网络后重试；当前程序仍可正常使用'
     if isinstance(error, OSError):
         return '无法读取或保存更新文件，请检查文件权限和可用空间后重试'
     return str(error)
@@ -195,6 +195,9 @@ class AppUpdater:
         finally:
             self._operation.release()
 
+    def _open_download(self, url):
+        return _open(url, 'application/octet-stream')
+
     def download_to(self, destination):
         if not self._operation.acquire(blocking=False):
             return {'ok': False, 'error': '正在检查或下载更新，请稍候'}
@@ -219,7 +222,7 @@ class AppUpdater:
             fd, temporary = tempfile.mkstemp(prefix='.carkit-download-', suffix='.part', dir=target.parent)
             digest = hashlib.sha256()
             prefix = b''
-            with os.fdopen(fd, 'wb') as output, _open(asset['browser_download_url'], 'application/octet-stream') as response:
+            with os.fdopen(fd, 'wb') as output, self._open_download(asset['browser_download_url']) as response:
                 while chunk := response.read(1024 * 1024):
                     downloaded += len(chunk)
                     if downloaded > total:

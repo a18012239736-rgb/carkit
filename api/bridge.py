@@ -53,6 +53,10 @@ class Bridge:
             self._updater = InstallerUpdater(__version__, PUBLIC_KEY, executable)
         else:
             self._updater = AppUpdater(__version__, executable)
+        from engine.feishu_update import FeishuUpdater
+        from engine.update_key import PUBLIC_KEY
+        self._updater = FeishuUpdater(__version__, PUBLIC_KEY, executable,
+                                      installed=self._installed, fallback=self._updater)
         self._update_download_lock = Lock()
         self._install_started = False
         self._feedback_issue_url = ''

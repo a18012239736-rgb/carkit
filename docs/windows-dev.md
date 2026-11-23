@@ -35,6 +35,20 @@ cd carkit
 
 正式标签发布时，构建任务从 GitHub Actions secret `CARKIT_UPDATE_SIGNING_KEY` 读取与 `engine/update_key.py` 公钥对应的 Ed25519 私钥。`scripts/sign_installer_update.py` 生成 `latest.json` 和 `latest.json.sig`。签名覆盖版本、安装包地址、文件大小和 SHA-256。私钥由发布者保管，安装版仅包含公钥。手动触发构建可以先验证安装和重启，再准备正式发布。
 
+### 飞书自动更新发布
+
+程序优先读取飞书更新文档，使用匿名访客会话下载附件；飞书不可用时尝试 GitHub。更新文档需允许获得链接的人阅读和下载。
+
+四个安装包构建并核验后，使用同一签名密钥生成飞书更新清单：
+
+```bash
+python scripts/sign_feishu_update.py --version 0.3.6 --assets /path/to/release-assets --notes docs/release-v0.3.6.md
+```
+
+`--assets` 目录需含该版本的 Windows 安装版、便携版和两个 macOS DMG。将这四个包上传到更新文档，再将新生成的 `carkit-update.json` 和 `carkit-update.json.sig` 上传到同一文档。每个校验文件名只保留一份最新版，可用飞书的文件版本功能替换。历史安装包可以保留，程序按签名清单中的版本与文件名选择。文件重名、签名不符、大小或 SHA-256 不符时程序停止更新。
+
+最后用不带飞书账号登录的程序会话检查版本、下载并校验安装包，再开放该版本的更新。发布私钥只用于本地签名，不上传到飞书，也不打入程序。
+
 > 为什么必须在 Windows 上打包：PyInstaller 不能跨系统编译，且 playwright 的
 > node driver 是平台二进制。macOS 只负责开发 engine/CLI。
 

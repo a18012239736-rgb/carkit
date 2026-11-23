@@ -8,7 +8,7 @@
   const banner = find('app-update-banner'), status = find('app-update-status');
   const progressWrap = find('app-update-progress-wrap'), progress = find('app-update-progress');
   let release = null, checking = false, downloading = false, dismissed = false, started = false;
-  let githubFailed = false, installationStarted = false;
+  let updateFailed = false, installationStarted = false;
   // 保存到工作目录；pywebview 私密模式的 localStorage 不跨重启保留。
   let skippedVersion = '';
   function syncSkipNotice() {
@@ -36,7 +36,7 @@
     checkButton.disabled = !ready() || checking || downloading || installationStarted;
     releaseButton.disabled = !ready();
     const updateAvailable = canUpdate() && !installationStarted;
-    const useFallback = githubFailed;
+    const useFallback = updateFailed;
     internalButton.classList.toggle('primary', useFallback);
     checkButton.classList.toggle('primary', !updateAvailable && !useFallback);
     downloadButton.classList.toggle('primary', !useFallback);
@@ -54,6 +54,8 @@
     status.classList.toggle('err', error);
   }
   function render(info) {
+    find('app-update-channel').textContent = info.source === 'feishu' ? '飞书' :
+      info.source === 'github' ? 'GitHub 备用' : '飞书 · GitHub 备用';
     find('app-current-version').textContent = '当前版本：' + (info.current_version || '未读取');
     find('app-latest-version').textContent = '最新正式版本：' + (info.latest_version || '未读取');
     find('app-release-notes').textContent = info.release_notes || '该版本暂未提供更新说明。';
@@ -86,18 +88,18 @@
   }
   async function check() {
     if(checking || downloading || installationStarted || !ready()) return;
-    githubFailed = false;
+    updateFailed = false;
     checking = true; release = null; banner.hidden = true;
     progressWrap.hidden = true; folderButton.hidden = true; find('app-release-details').hidden = true;
     find('app-latest-version').textContent = '最新版本：检查中…';
-    message('正在连接官方 GitHub Release…'); sync();
+    message('正在检查飞书更新，连接不可用时尝试 GitHub…'); sync();
     try {
       release = await call('check_app_update');
       if(!release.latest_version) throw new Error('未读取到有效的正式版本信息。');
       render(release);
     } catch(error) {
       release = null;
-      githubFailed = true;
+      updateFailed = true;
       find('app-latest-version').textContent = '最新版本：未能确认';
       message('检查失败：' + (error.message || error) + '\n可打开飞书更新页查看并下载新版。', true);
     } finally { checking = false; sync(); }
@@ -110,7 +112,7 @@
       message('已取消安装更新。');
       return;
     }
-    githubFailed = false;
+    updateFailed = false;
     downloading = true; folderButton.hidden = true;
     progressWrap.hidden = false; progress.removeAttribute('value');
     find('app-update-progress-text').textContent = install ? '正在准备安装包' : '等待选择保存位置';
@@ -147,7 +149,7 @@
         showDownloaded(result.path);
       }
     } catch(error) {
-      githubFailed = true;
+      updateFailed = true;
       progressWrap.hidden = true;
       message((install ? '更新失败：' : '下载失败：') + (error.message || error) +
         '\n可重试或打开飞书更新页下载。', true);
