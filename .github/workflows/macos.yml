@@ -60,8 +60,18 @@ jobs:
           mkdir -p "$stage"
           cp -R "$app" "$stage/"
           ln -s /Applications "$stage/Applications"
-          hdiutil create -quiet -volname "carkit $APP_VERSION" -srcfolder "$stage" \
-            -format UDZO -ov "dist/$ASSET_NAME"
+          # Hosted runners can briefly hold the image open while it is being created.
+          for attempt in 1 2 3; do
+            if hdiutil create -nospotlight -volname "carkit $APP_VERSION" -srcfolder "$stage" \
+              -format UDZO -ov "dist/$ASSET_NAME"; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              exit 1
+            fi
+            echo "Disk image creation failed on attempt $attempt. Retrying."
+            sleep $((attempt * 2))
+          done
           test -s "dist/$ASSET_NAME"
           shasum -a 256 "dist/$ASSET_NAME"
       - uses: actions/upload-artifact@v4
