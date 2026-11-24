@@ -5,15 +5,7 @@ permissions:
   contents: write
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            target: macos-arm64
-          - runner: macos-15-intel
-            target: macos-x86_64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +21,7 @@ jobs:
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "asset=carkit-$version-${{ matrix.target }}.dmg" >> "$GITHUB_OUTPUT"
+          echo "asset=carkit-$version-macos-arm64.dmg" >> "$GITHUB_OUTPUT"
       - name: Install build dependencies
         run: python -m pip install pywebview playwright openpyxl lxml beautifulsoup4 cryptography pyinstaller pytest
       - name: Run regression tests
@@ -40,7 +32,6 @@ jobs:
         env:
           APP_VERSION: ${{ steps.version.outputs.version }}
           ASSET_NAME: ${{ steps.version.outputs.asset }}
-          TARGET_ARCH: ${{ matrix.target }}
         run: |
           set -euo pipefail
           app="dist/carkit.app"
@@ -48,12 +39,8 @@ jobs:
           test -d "$app"
           test -x "$binary"
           archs="$(lipo -archs "$binary")"
-          if [[ "$TARGET_ARCH" == "macos-arm64" && "$archs" != *arm64* ]]; then
+          if [[ "$archs" != arm64 ]]; then
             echo "Expected arm64 app binary, got: $archs" >&2
-            exit 1
-          fi
-          if [[ "$TARGET_ARCH" == "macos-x86_64" && "$archs" != *x86_64* ]]; then
-            echo "Expected x86_64 app binary, got: $archs" >&2
             exit 1
           fi
           stage="$RUNNER_TEMP/carkit-dmg"
@@ -76,7 +63,7 @@ jobs:
           shasum -a 256 "dist/$ASSET_NAME"
       - uses: actions/upload-artifact@v4
         with:
-          name: carkit-${{ steps.version.outputs.version }}-${{ matrix.target }}
+          name: carkit-${{ steps.version.outputs.version }}-macos-arm64
           path: dist/${{ steps.version.outputs.asset }}
           if-no-files-found: error
           retention-days: 30

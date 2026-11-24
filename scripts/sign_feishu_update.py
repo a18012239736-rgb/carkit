@@ -35,7 +35,6 @@ def main():
         'windows-installer': f'carkit-{version}-setup.exe',
         'windows-x64': f'carkit-{version}.exe',
         'macos-arm64': f'carkit-{version}-macos-arm64.dmg',
-        'macos-x86_64': f'carkit-{version}-macos-x86_64.dmg',
     }
     packages = {}
     for target, name in names.items():

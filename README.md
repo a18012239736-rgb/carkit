@@ -17,7 +17,6 @@ Carkit 是一款车型配置对比工具。想知道同一款车的高配多了�
 | Windows x64，日常使用 | `carkit-<版本>-setup.exe` | 双击安装。后续可以在程序内下载并安装更新。 |
 | Windows x64，免安装 | `carkit-<版本>.exe` 或 `carkit.exe` | 双击运行。更新时下载并启动新版 EXE。 |
 | Mac，Apple 芯片（M 系列） | `carkit-<版本>-macos-arm64.dmg` | 打开 DMG，把 `carkit.app` 拖入「应用程序」。 |
-| Mac，Intel 芯片 | `carkit-<版本>-macos-x86_64.dmg` | 打开 DMG，把 `carkit.app` 拖入「应用程序」。 |
 
 不知道 Mac 用哪种芯片时，打开「 → 关于本机」，查看「芯片」或「处理器」。发布的 macOS 包尚未经过 Apple 公证；如果公司设备限制安装，请联系管理员。
 
@@ -78,7 +77,7 @@ Carkit 是一款车型配置对比工具。想知道同一款车的高配多了�
 
 - **Windows 安装版：** 保存工作后点击「下载并安装」。程序会校验发布清单签名和安装包，安装完成后按原工作目录重新打开。
 - **Windows 便携版：** 点击「下载新版」。下载完成后保存工作、退出旧版，再运行新版 EXE。想使用程序内安装更新，可以先运行一次 `-setup.exe` 安装版。
-- **macOS：** 点击「下载新版」，程序会按芯片选择对应的 DMG。下载完成后点击「打开安装包」，退出旧版，把新版拖入「应用程序」替换。
+- **Apple 芯片 Mac：** 点击「下载新版」。下载完成后点击「打开安装包」，退出旧版，把新版拖入「应用程序」替换。
 - **程序内更新无法连接：** 点击「打开飞书更新页」手动下载对应系统的安装包。更新文档和附件已开放链接阅读与下载。
 
 [查看最新发布与更新日志](https://github.com/a18012239736-rgb/carkit/releases/latest) · [v0.3.7](docs/release-v0.3.7.md) · [v0.3.6](docs/release-v0.3.6.md) · [v0.3.5](docs/release-v0.3.5.md) · [v0.3.4](docs/release-v0.3.4.md) · [v0.3.3](docs/release-v0.3.3.md) · [v0.3.2](docs/release-v0.3.2.md) · [v0.3.1](docs/release-v0.3.1.md)
@@ -117,4 +116,4 @@ python app.py
 python -m pytest tests -q
 ```
 
-需要构建 Windows EXE 或安装器时，见 [Windows 构建指南](docs/windows-dev.md)。GitHub Actions 分别在 Windows、Apple 芯片 Mac 和 Intel Mac 上构建安装包。
+需要构建 Windows EXE 或安装器时，见 [Windows 构建指南](docs/windows-dev.md)。GitHub Actions 在 Windows 和 Apple 芯片 Mac 上构建安装包。

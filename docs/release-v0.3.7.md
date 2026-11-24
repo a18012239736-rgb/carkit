@@ -5,6 +5,6 @@
 
 如果 v0.3.6 无法连接 GitHub，可以打开程序里的「打开飞书更新页」，手动下载并安装 v0.3.7。安装后，后续更新即可使用飞书渠道。
 
-Windows 提供安装版和便携版。Mac 请按芯片选择 Apple 芯片（arm64）或 Intel 芯片（x86_64）的 DMG，将新版拖入「应用程序」替换。macOS 安装包尚未经过 Apple 公证。
+Windows 提供安装版和便携版。Mac 提供 Apple 芯片（arm64）DMG，将新版拖入「应用程序」替换。macOS 安装包尚未经过 Apple 公证。
 
 此前版本见 [v0.3.6 更新记录](https://github.com/a18012239736-rgb/carkit/releases/tag/v0.3.6)。
