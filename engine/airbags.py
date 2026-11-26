@@ -54,6 +54,8 @@ def _knee_components(cells):
             text = part.text or ''
             # A dedicated row supplies the position when its cell is only ●.
             if name != '膝部气囊' and not re.search(_DRIVER_POSITION, text):
+                if not _standard(part):
+                    continue
                 text = name + text
             mentioned.update(re.findall(_DRIVER_POSITION, text))
             positions.update(_positions(Cell(dot=part.dot, text=text), _DRIVER_POSITION, ('主', '副')))

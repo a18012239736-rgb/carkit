@@ -12,19 +12,17 @@ def display_order_key(no):
     return {45: 36.5, 46: 35.1, 47: 35.2, 48: 22.5}.get(int(no), int(no))
 
 
-def _load(name):
-    with open(os.path.join(RULES_DIR, name), encoding="utf-8") as f:
+def _load(name, base_dir=RULES_DIR):
+    with open(os.path.join(base_dir, name), encoding="utf-8") as f:
         return json.load(f)
 
 
 class Rules:
     def __init__(self, rules_dir: str | None = None):
-        global RULES_DIR
-        if rules_dir:
-            RULES_DIR = rules_dir
-        self.checklist = _load("checklist_v1.json")
-        self.exemptions = _load("exemptions.json")
-        self.aliases = _load("aliases.json")
+        base_dir = rules_dir or RULES_DIR
+        self.checklist = _load("checklist_v1.json", base_dir)
+        self.exemptions = _load("exemptions.json", base_dir)
+        self.aliases = _load("aliases.json", base_dir)
         self._index()
 
     def _index(self):

@@ -6,7 +6,7 @@
   const filters = [...document.querySelectorAll('label')].filter(l => /隐藏相同参数|隐藏暂无内容/.test(l.textContent));
   if (filters.some(l => l.querySelector('input')?.checked)) throw Error('请取消隐藏相同参数和隐藏暂无内容后再抓取');
   const cell = el => {
-    const subs = [...el.querySelectorAll('div[class*="style_col_sub"]')];
+    const subs = [...el.querySelectorAll('div[class*="style_col_sub"]')].filter(s => !s.querySelector('div[class*="style_col_sub"]'));
     if (subs.length) return subs.map(cell).join(' | ');
     const clone = el.cloneNode(true);
     clone.querySelectorAll('i').forEach(i => i.replaceWith(/outline/.test(i.className) ? '○' : /solid/.test(i.className) ? '●' : ''));

@@ -38,7 +38,7 @@ def main():
             height=640,
             min_size=(960, 560),
             maximized=sys.platform != "darwin",
-            background_color="#f5f7fa",
+            background_color="#f5f6f8",
             text_select=True,
         )
         if sys.platform == "darwin":

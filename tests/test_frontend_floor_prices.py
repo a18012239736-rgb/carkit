@@ -12,7 +12,8 @@ context.document={createElement(){
     html=value;
     for(const name of ['pair-self','pair-comp','pair-self-floor','pair-comp-floor','pair-del']) {
       const match=value.match(new RegExp('<select class="'+name+'"[^>]*>([\\s\\S]*?)</select>'));
-      fields['.'+name]={value:match?.[1].match(/<option>(.*?)<\/option>/)?.[1]||'',
+      const opt=match?.[1].match(/<option(?: value="([^"]*)")?[^>]*>(.*?)<\/option>/);
+      fields['.'+name]={value:opt?(opt[1]??opt[2]):'',
         validity:{badInput:false},listeners:{},
         addEventListener(event,handler){(this.listeners[event] ||= []).push(handler);},
         setCustomValidity(message){this.error=message;},

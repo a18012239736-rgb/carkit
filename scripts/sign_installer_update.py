@@ -36,7 +36,10 @@ def main():
         if not 0 < size <= MAX_DOWNLOAD or f.read(2) != b'MZ':
             parser.error('Installer is not a supported Windows executable.')
         f.seek(0)
-        digest = hashlib.file_digest(f, 'sha256').hexdigest()
+        h = hashlib.sha256()
+        for chunk in iter(lambda: f.read(1 << 20), b''):
+            h.update(chunk)
+        digest = h.hexdigest()
     manifest = json.dumps({
         'version': version,
         'notes': args.notes.read_text(encoding='utf-8'),

@@ -244,7 +244,9 @@ DEFAULT_EXCLUDED_ROWS = (
     '爆胎稳行系统',
     '环境感知摄像头像素',
     '环视摄像头像素',
-    '中控屏幕分辨率'
+    '中控屏幕分辨率',
+    '功放最大输出功率(W)',
+    '扬声器布局'
 )
 
 
@@ -633,13 +635,14 @@ def features(raw, excluded_rows=None):
         elif name in {'前排座椅功能','第二排座椅功能','后排座椅功能'}:
             v=[]
             for vs in values:
+                from .seat_functions import _front_scopes, _split_phrases
                 feats=[]
                 for item in vs:
                     if not _detail(item):
                         feats.append(name)
                         continue
-                    scope=['主驾'] if re.search('仅驾驶位|仅主驾|主驾驶',item) else ['副驾'] if '副驾驶' in item else ['主驾','副驾'] if name.startswith('前') else ['后排']
-                    for token in re.split(r'[+/、]', item):
+                    for token in _split_phrases(clean(item)):
+                        scope=list(_front_scopes(token)) if name.startswith('前') else ['后排']
                         matched = [f for f in ['加热','通风','按摩','头枕扬声器','头枕音响'] if f in token.replace('头枕加热', '')]
                         feats.extend(p+'座椅'+f for f in matched for p in scope)
                         remainder=clean(token)
@@ -648,7 +651,8 @@ def features(raw, excluded_rows=None):
                         if name == '前排座椅功能':
                             for pattern in _SUPPORTS.values():
                                 remainder = re.sub(r'(?:电动|手动)?(?:'+pattern+r')(?:调节)?(?:\(\d+向\))?', '', remainder)
-                        remainder=re.sub(r'\((?:仅)?(?:驾驶位|主驾驶|副驾驶|主驾|副驾|主副驾|前排|后排)\)', '', remainder).strip()
+                        remainder=re.sub(r'\((?:(?:仅)?(?:驾驶位|主驾驶|副驾驶|主驾|副驾|主副驾|前排|后排)(?:\s*[/、+＋]\s*)?)+\)', '', remainder)
+                        remainder=remainder.strip(' /+＋、，,')
                         if _detail(remainder):
                             feats.append(name+'：'+(clean(token) if remainder.startswith('(') else remainder))
                 v.append(list(dict.fromkeys(feats)))

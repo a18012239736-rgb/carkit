@@ -20,9 +20,10 @@ def normalize_screen(value, no, strict=False):
             return text
         size = f'{float(match[1]):g}'
         suffix = '全液晶仪表' if no == 29 and '全液晶' in text else SCREEN_NAMES[no]
-        optional = '○' if text.startswith('○') else ''
-        extra = re.search(r'[,，]\s*(○[\d.]+选装)', text)
-        return optional + size + '寸' + suffix + (',' + extra[1] if extra else '')
+        optional = '○' if (text.startswith('○') or re.search(r'○\s*$', text[:match.start()])) else ''
+        extra = re.search(r'[,，]\s*(○[^,，()（）]*选装)|[（(]\s*(○[^()（）]*选装)\s*[)）]', text)
+        opt_suffix = (',' + extra[1]) if extra and extra[1] else (f'({extra[2]})' if extra and extra[2] else '')
+        return optional + size + '寸' + suffix + opt_suffix
     if strict:
         raise ValueError(f'{SCREEN_NAMES[no]}：请填写有效尺寸（英寸），或选择无配置／待定；当前值：{text or "空"}')
     return '[待定]' + (text or SCREEN_NAMES[no] + '尺寸未填写')

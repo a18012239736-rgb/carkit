@@ -42,12 +42,18 @@ def render_md(raw, model: str = "", series_id: str = "", date: str = "") -> str:
     date = date or datetime.date.today().isoformat()
     trims = sorted(raw.trims, key=lambda t: (t.price_guide is None, t.price_guide or 0))
     n = len(trims)
+    if not n:
+        return f"# 5C-看竞争-{model}\n\n{model}：暂无版型数据。\n"
     row_values = []
     for row in raw.rows:
         values = []
         for trim in trims:
             cell = row.cells[trim.idx] if trim.idx < len(row.cells) else None
-            values.append((cell is not None and cell.dot == '●', _val_text(cell), _opt_text(cell)))
+            vt = _val_text(cell)
+            present = cell is not None and cell.dot != "○" and (
+                cell.dot == "●" or vt not in ("", "-", "—", "✕", "×", "无")
+            )
+            values.append((present, vt, _opt_text(cell)))
         row_values.append((row.name, values))
     config_rows = [(name, values) for name, values in row_values if name not in SKIP_ROWS]
     lines = []
@@ -60,10 +66,17 @@ def render_md(raw, model: str = "", series_id: str = "", date: str = "") -> str:
                  _val_text(body.cells[0]) if body and body.cells else "",
                  _val_text(energy.cells[0]) if energy and energy.cells else "" ]
     pos = " ".join(b for b in pos_bits if b)
+    prices = [t.price_guide for t in trims if t.price_guide is not None]
+    if not prices:
+        price_range = "—"
+    elif min(prices) == max(prices):
+        price_range = _fmt_price(min(prices))
+    else:
+        price_range = f"{_fmt_price(min(prices))}-{_fmt_price(max(prices))}"
     lines.append(f"# 5C-看竞争-{model}")
     lines.append("")
     lines.append(f"{model}：{pos or '（定位一句话待人工补充）'}，指导价 "
-                 f"{_fmt_price(trims[0].price_guide)}-{_fmt_price(trims[-1].price_guide)} 万，共 {n} 个版型。")
+                 f"{price_range} 万，共 {n} 个版型。")
 
     # ---- 数据源与版本说明 ----
     lines.append("")
@@ -105,9 +118,13 @@ def render_md(raw, model: str = "", series_id: str = "", date: str = "") -> str:
             lines.append(f"{name}：{value}" if value and value != "●" else name)
     # ---- 升档段 ----
     for index, (prev, cur) in enumerate(zip(trims, trims[1:]), 1):
-        dp = (cur.price_guide or 0) - (prev.price_guide or 0)
         lines.append("")
-        lines.append(f"**较{prev.short} +{dp:g}万:（{cur.short}）**")
+        if cur.price_guide is None or prev.price_guide is None:
+            lines.append(f"**较{prev.short}（价格待定）:（{cur.short}）**")
+        else:
+            dp = cur.price_guide - prev.price_guide
+            diff_str = f"+{dp:g}万" if dp >= 0 else f"{dp:g}万"
+            lines.append(f"**较{prev.short} {diff_str}:（{cur.short}）**")
         lines.append("")
         adds, dels = [], []
         for name, values in config_rows:

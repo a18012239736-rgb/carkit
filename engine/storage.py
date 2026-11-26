@@ -8,6 +8,9 @@ import uuid
 
 def unique_filename(stem, suffix):
     stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', str(stem)).strip(' .') or '未命名'
+    raw_bytes = stem.encode('utf-8')
+    if len(raw_bytes) > 160:
+        stem = raw_bytes[:160].decode('utf-8', errors='ignore').rstrip(' .') or '未命名'
     stamp = datetime.datetime.now().strftime('%Y-%m-%d-%H%M%S-%f')
     return f'{stem}-{stamp}-{uuid.uuid4().hex[:8]}{suffix}'
 

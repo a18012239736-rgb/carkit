@@ -57,6 +57,8 @@ function syncActionButtons() {
 function invalidateDiff() {
   ST.diff = null;
   $('#diff-result').hidden = true;
+  const kpi = $('#diff-kpi-strip');
+  if (kpi) { kpi.hidden = true; kpi.innerHTML = ''; }
   $('#diff-status').textContent = '';
   $('#diff-status').className = 'status';
   syncActionButtons();
@@ -267,16 +269,14 @@ async function api(method, ...args) {
   try {
     const res = await window.pywebview.api[method](...args);
     if (res && typeof res === "object" && res.error && res.ok === undefined) {
-      toast(res.error, "err");
       throw new Error(res.error);
     }
     if (res && res.ok === false) {
-      toast(res.error || "操作失败", "err");
-      throw new Error(res.error);
+      throw new Error(res.error || "操作失败");
     }
     return res;
   } catch (e) {
-    if (e.message !== "api not ready") toast(String(e.message || e), "err");
+    if (e.message !== "api not ready") toast(String(e.message || e || "操作失败"), "err");
     throw e;
   }
 }
@@ -364,6 +364,7 @@ $("#btn-scrape-open").addEventListener("click", async () => {
   button.disabled = true;
   button.textContent = '正在读取…';
   $("#btn-scrape-capture").hidden = true;
+  const cf = $('#capture-filters'); if (cf) { cf.hidden = true; cf.open = false; }
   $("#scrape-status").textContent = "搜索和读取中…";
   $("#scrape-status").className = "status";
   try {
@@ -379,15 +380,27 @@ $("#btn-scrape-open").addEventListener("click", async () => {
 });
 
 $("#btn-scrape-capture").addEventListener("click", async () => {
-  $("#btn-scrape-capture").hidden = true;
-  const res = await api("stage_continue");
-  handleStageResult(res);
+  const button = $("#btn-scrape-capture");
+  if (button.disabled) return;
+  button.disabled = true;
+  button.textContent = "正在读取…";
+  try {
+    const res = await api("stage_continue");
+    handleStageResult(res);
+  } catch (error) {
+    $("#scrape-status").textContent = error.message || "继续读取失败，请完成验证后重试";
+    $("#scrape-status").className = "status err";
+  } finally {
+    button.disabled = false;
+    button.textContent = "验证后继续读取";
+  }
 });
 
 function handleStageResult(res) {
   $("#btn-scrape-capture").hidden = !res.needs_browser;
   if (res.filters) { renderCaptureFilters(res.filters); return; }
   if (res.candidates) {
+    const cf = $('#capture-filters'); if (cf) { cf.hidden = true; cf.open = false; }
     $("#stage-candidates").hidden = false;
     $("#stage-candidate-list").innerHTML = res.candidates.map(c => `<button class="candidate" data-sid="${c.id}">${esc(c.name)}（车系 ${c.id}）</button>`).join(" ");
     $$(".candidate").forEach(b => b.addEventListener("click", async () => handleStageResult(await api("stage_choose_series", b.dataset.sid))));
@@ -398,7 +411,7 @@ function handleStageResult(res) {
   if (!res.ok) { $("#scrape-status").textContent = "✕ " + res.error; $("#scrape-status").className = "status err"; return; }
   $("#stage-candidates").hidden = true;
   $('#raw-history').open=false;
-  const filters=$('#capture-filters'); if(filters) filters.open=false;
+  const filters=$('#capture-filters'); if(filters){filters.open=false;filters.hidden=true;}
   $('#raw-inspector').hidden=true; $('#raw-inspector').replaceChildren(); $('#md-preview').hidden=true; $('#stage-export-status').textContent='';
   ST.stage = {trims: res.trims, seriesId: res.series_id, model: res.model};
   StageDisplaySettings.refresh();
@@ -520,19 +533,36 @@ previewButton.onclick = async () => {
   const panel = document.createElement('section');
   panel.id = 'ladder-visual';
   panel.className = 'card';
-  const list = items => `<ul>${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`;
+  const list = (items, mode = '') => `<ul>${items.map(x => {
+    const text = String(x);
+    if (mode === 'removed') {
+      return `<li class="ladder-item-removed">${esc(text)}</li>`;
+    }
+    if (mode === 'added') {
+      if (text === '配置相同，仅价格/续航差异。') return `<li class="ladder-item-empty">${esc(text)}</li>`;
+      const upgraded = text.match(/^(.+?)([（(]原[\s\S]+[)）])$/);
+      if (upgraded) {
+        return `<li class="ladder-item-upgraded">${esc(upgraded[1])}<span class="ladder-item-old">${esc(upgraded[2])}</span></li>`;
+      }
+      return `<li class="ladder-item-added">${esc(text)}</li>`;
+    }
+    if (mode === 'option') return `<li class="ladder-item-option">${esc(text)}</li>`;
+    return `<li class="ladder-item-base">${esc(text)}</li>`;
+  }).join('')}</ul>`;
   panel.innerHTML = `<div class="ladder-heading"><h2>配置阶梯</h2><button class="close-ladder">收起</button></div><p class="dim">按所选基准显示配置差异，选装单列。点击卡片上的「完整配置」查看原文；左右移动卡片只调整展示顺序。</p><div class="ladder-scroll"><div class="ladder-sheet"><h3 class="ladder-model">${esc(res.model)}</h3><div class="ladder-columns">${res.columns.map((c, i) => {
     const items = c.display_items ?? c.items, removed = c.removed_items ?? [];
+    const mode = c.base == null ? 'base' : 'added';
     return `<article class="ladder-column"><div class="ladder-card-title"><h4>${esc(c.name)}</h4>
       <button type="button" class="ladder-detail-toggle" aria-controls="ladder-trim-detail-${i}" aria-expanded="false">完整配置</button></div>
       <div class="ladder-price">${c.price == null ? '待核' : Number(c.price).toFixed(2)}</div><div class="ladder-card-summary">
-      ${items.length || !removed.length ? `<strong>${c.base == null ? '基本配置：' : esc(c.base)+'+：'}</strong>${list(items.length ? items : ['配置相同，仅价格/续航差异。'])}` : ''}
-      ${removed.length ? `<strong>${esc(c.base)}-：</strong>${list(removed)}` : ''}
-      ${c.options.length ? `<details><summary>选装配置</summary>${list(c.options)}</details>` : ''}</div>
+      ${items.length || !removed.length ? `<strong>${c.base == null ? '基本配置：' : esc(c.base)+'+：'}</strong>${list(items.length ? items : ['配置相同，仅价格/续航差异。'], mode)}` : ''}
+      ${removed.length ? `<strong class="ladder-section-removed">${esc(c.base)}-：</strong>${list(removed, 'removed')}` : ''}
+      ${c.options.length ? `<details class="ladder-options"><summary><span>选装配置</span><span class="ladder-option-count">${c.options.length} 项</span></summary>${list(c.options, 'option')}</details>` : ''}</div>
       <div id="ladder-trim-detail-${i}" class="ladder-card-detail table-wrap" role="region" aria-label="${esc(c.name)}完整配置" tabindex="0" hidden></div></article>`;
   }).join('')}</div></div></div>`;
   panel.querySelector('.ladder-heading h2').textContent = res.model + ' · 配置阶梯';
   panel.querySelector('.ladder-model').textContent = `${res.columns.length} 个版型 · 指导价与配置一览`;
+  const priceByName = new Map(res.columns.map(col => [col.name, col.price]));
   panel.querySelectorAll('.ladder-column').forEach((card, i) => {
     const c = res.columns[i];
     card.classList.toggle('is-base', c.base == null);
@@ -544,6 +574,17 @@ previewButton.onclick = async () => {
     const unit = document.createElement('small');
     unit.textContent = c.price == null ? '指导价待核' : '万元';
     price.append(unit);
+    if (c.base != null && c.price != null && Number.isFinite(Number(c.price))) {
+      const basePrice = priceByName.get(c.base);
+      if (basePrice != null && Number.isFinite(Number(basePrice))) {
+        const delta = Number(c.price) - Number(basePrice);
+        const pill = document.createElement('span');
+        pill.className = 'ladder-price-delta ' + (Math.abs(delta) < 1e-6 ? 'is-even' : delta > 0 ? 'is-up' : 'is-down');
+        pill.textContent = Math.abs(delta) < 1e-6 ? '同价' : `${delta > 0 ? '+' : ''}${delta.toFixed(2)} 万`;
+        pill.title = `较「${c.base}」指导价差`;
+        price.append(pill);
+      }
+    }
   });
   enableLadderCardMoves(panel, enableLadderCardDetails(panel, plan));
   $('#stage-result-tools').after(panel);
@@ -630,7 +671,7 @@ function enableLadderCardMoves(panel, beforeMove) {
     const moves = [-1, 1].map(direction => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.textContent = direction < 0 ? '← 左移' : '右移 →';
+      button.textContent = direction < 0 ? '←' : '→';
       button.title = button.ariaLabel = `${card.querySelector('h4').textContent}${direction < 0 ? '左移' : '右移'}一个位置`;
       button.onclick = () => {
         const neighbor = direction < 0 ? card.previousElementSibling : card.nextElementSibling;
@@ -728,7 +769,7 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
     return;
   }
   let html = '<table class="grid"><thead><tr><th>#</th><th>配置项</th>';
-  html += lad.trims.map((t) => `<th>${t.name}<br><span class="dim">${t.price_guide ?? ""}万</span></th>`).join("");
+  html += lad.trims.map((t) => `<th>${esc(t.name)}<br><span class="dim">${esc(t.price_guide ?? "")}万</span></th>`).join("");
   html += "</tr></thead><tbody>";
   for (const [rowIndex,it] of configurationDisplayOrder(lad.items).filter(it=>Number(it.no)!==2).entries()) {
     const serial=rowIndex+1;
@@ -745,20 +786,20 @@ function renderLadderTable(target="#ladder-table-wrap", lad=ST.ladder) {
       continue;
     }
     if(it.no===20){
-      html += `<tr><td class="no">${serial}</td><td>${it.name}</td>`;
+      html += `<tr><td class="no">${serial}</td><td>${esc(it.name)}</td>`;
       html += it.values.map((v,i)=>`<td data-no="20" data-i="${i}" data-mirror-cell>${mirrorEditorCell(v,`${i}`)}</td>`).join('');
       html += '</tr>'; continue;
     }
-    html += `<tr><td class="no">${serial}</td><td>${it.name}${it.unmapped ? ' <span class="tag warn">待映射</span>' : ""}</td>`;
+    html += `<tr><td class="no">${serial}</td><td>${esc(it.name)}${it.unmapped ? ' <span class="tag warn">待映射</span>' : ""}</td>`;
     html += it.values.map((v, i) =>
       it.no===1 || it.no===37
         ? `<td data-no="${it.no}" data-i="${i}" class="${cellCls(v)}"><input data-step type="number" min="0" step="1" value="${(String(v).match(/\d+(?:\.\d+)?/)||[''])[0]}"></td>`
         : `<td contenteditable data-no="${it.no}" data-i="${i}" class="${cellCls(v)}">${esc(v)}</td>`).join("");
     html += "</tr>";
     for (const sr of it.subs || []) {
-      html += `<tr><td class="no">—</td><td class="dim">${seatSubLabel(sr.sub)}</td>`;
+      html += `<tr><td class="no">—</td><td class="dim">${esc(seatSubLabel(sr.sub))}</td>`;
       html += sr.values.map((v, i) =>
-        `<td contenteditable data-no="${it.no}" data-sub="${sr.sub}" data-i="${i}" class="${cellCls(v)}">${esc(v)}</td>`).join("");
+        `<td contenteditable data-no="${it.no}" data-sub="${esc(sr.sub)}" data-i="${i}" class="${cellCls(v)}">${esc(v)}</td>`).join("");
       html += "</tr>";
     }
   }
@@ -1075,9 +1116,9 @@ function addPairRow(st, ct) {
   row.className = "pair-row";
   const [left, right] = $('#diff-mode').value === 'competitor' ? ['左侧', '右侧'] : ['本品', '竞品'];
   row.innerHTML = `
-    <div class="pair-side"><label><span class="pair-trim-heading"><span>${left}版型</span><span class="pair-guide-price pair-self-guide" aria-live="polite"></span></span><select class="pair-self" aria-label="${left}配对版型">${st.map((t) => `<option>${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${left}底价（元）</span><input class="pair-self-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${left}底价（元）"></label></div>
+    <div class="pair-side"><label><span class="pair-trim-heading"><span>${left}版型</span><span class="pair-guide-price pair-self-guide" aria-live="polite"></span></span><select class="pair-self" aria-label="${left}配对版型">${st.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${left}底价（元）</span><input class="pair-self-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${left}底价（元）"></label></div>
     <span class="dim pair-vs">VS</span>
-    <div class="pair-side"><label><span class="pair-trim-heading"><span>${right}版型</span><span class="pair-guide-price pair-comp-guide" aria-live="polite"></span></span><select class="pair-comp" aria-label="${right}配对版型">${ct.map((t) => `<option>${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${right}底价（元）</span><input class="pair-comp-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${right}底价（元）"></label></div>
+    <div class="pair-side"><label><span class="pair-trim-heading"><span>${right}版型</span><span class="pair-guide-price pair-comp-guide" aria-live="polite"></span></span><select class="pair-comp" aria-label="${right}配对版型">${ct.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></label><label class="pair-floor"><span>${right}底价（元）</span><input class="pair-comp-floor" type="number" min="0" step="any" inputmode="decimal" placeholder="可留空" aria-label="${right}底价（元）"></label></div>
     <button class="pair-del" aria-label="删除此配对组" title="删除此配对组">✕</button>`;
   row.querySelector(".pair-del").addEventListener("click", () => {row.remove();invalidateDiff();});
   row.addEventListener('input', event => {event.target.setCustomValidity('');invalidateDiff();});
@@ -1158,10 +1199,11 @@ function renderDiff(res) {
   const groups = res.groups;
   const [left, right] = $('#diff-mode').value === 'competitor' ? ['左侧', '右侧'] : ['本品', '竞品'];
   const reason = (g, k) => g.valuation?.[k+'_reason'] || (k==='overall' ? (g.self_floor_price==null || g.comp_floor_price==null ? '请填写双方底价后计算综合竞争力' : '缺少赋值规则') : k==='flat_adv' && (g.self_price==null || g.comp_price==null) ? '左侧或右侧指导价未填写' : '缺少赋值规则');
+  renderDiffKpiStrip(res);
   // P21 layout: each manually paired comparison is a column; metrics are rows.
   let h = '<table class="grid backup-table"><thead><tr><th class="backup-label"></th>';
   h += groups.map((g) =>
-    `<th>${esc(g.pair.self_trim)} ${fmtP(g.self_price)}<br><span class="dim">VS</span><br>${esc(g.pair.comp_trim)} ${fmtP(g.comp_price)}</th>`).join("") + "</tr></thead><tbody>";
+    `<th><div class="backup-th-pair"><div class="backup-th-side is-left"><strong>${esc(g.pair.self_trim)}</strong><small>${fmtP(g.self_price)}</small></div><span class="backup-th-vs">VS</span><div class="backup-th-side is-right"><strong>${esc(g.pair.comp_trim)}</strong><small>${fmtP(g.comp_price)}</small></div></div></th>`).join("") + "</tr></thead><tbody>";
   h += "<tr><th class=\"backup-label\">版型</th>" + groups.map((g) =>
     `<td>${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</td>`).join("") + "</tr>";
   h += `<tr><th class="backup-label">${esc(res.self_model || "本品")}多</th>` + groups.map((g) =>
@@ -1188,6 +1230,7 @@ function renderDiff(res) {
     const overall=v.overall==null ? esc(reason(g,'overall')) : `${fmtMoney(v.config_adv)}＋${fmtMoney(g.comp_floor_price)}－${fmtMoney(g.self_floor_price)}＝${fmtMoney(v.overall)} 元`;
     return `<details><summary>展开赋值计算明细：${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</summary><p>配置优势＝多配置合计 ${fmtMoney(v.total_more)} − 少配置合计 ${fmtMoney(v.total_less)} ＝ ${fmtMoney(v.config_adv)} 元</p><p>拉平指导价优势＝配置优势＋（右侧指导价−左侧指导价）×10000</p><p>${floors}</p><p>综合竞争力＝配置优势＋${right}底价－${left}底价；${overall}</p><table class="grid"><tr><th>配置差异</th><th>计价依据</th><th>金额（元）</th></tr>${(v.detail||[]).map(x=>`<tr><td>${esc(x.side)}：${esc(x.display||String(x.no))}</td><td>${esc(x.rule||'')}</td><td>${fmtMoney(x.amount)}</td></tr>`).join('')}</table></details>`;
   }).join('');
+  decorateBackupMetrics($("#backup-table"), groups);
   // 判定明细
   const nos = [...new Set(res.cells.map((c) => c.no))].sort((a, b) => configurationOrderKey(a) - configurationOrderKey(b));
   const nameByNo = {};
@@ -1213,6 +1256,54 @@ function renderDiff(res) {
 
 const fmtP = p => p == null ? '指导价未填写' : `指导价 ${Number(p).toFixed(2)} 万元`;
 const fmtMoney = value => value == null ? '待计算' : Number(value).toLocaleString('zh-CN', {useGrouping:false, maximumFractionDigits:2});
+
+function decorateBackupMetrics(container, groups = []) {
+  if (!container || typeof container.querySelectorAll !== 'function') return;
+  const rows = container.querySelectorAll('table.backup-table tbody tr');
+  if (rows.length < 6) return;
+  rows[5].classList?.add('backup-overall-row');
+  for (const [rowIdx, key] of [[3, 'config_adv'], [4, 'flat_adv'], [5, 'overall']]) {
+    const cells = rows[rowIdx]?.querySelectorAll?.('td') || [];
+    cells.forEach((td, colIdx) => {
+      const value = groups[colIdx]?.valuation?.[key];
+      if (value == null) td.classList.add('metric-pending');
+      else if (Number(value) > 0) td.classList.add('metric-pos');
+      else if (Number(value) < 0) td.classList.add('metric-neg');
+      else td.classList.add('metric-zero');
+    });
+  }
+}
+
+function renderDiffKpiStrip(res) {
+  const strip = $('#diff-kpi-strip');
+  if (!strip) return;
+  const groups = res?.groups || [];
+  if (!groups.length) {
+    strip.hidden = true;
+    strip.innerHTML = '';
+    return;
+  }
+  strip.hidden = false;
+  strip.innerHTML = groups.map(g => {
+    const v = g.valuation || {};
+    const metric = v.overall != null
+      ? {label: '综合竞争力', value: Number(v.overall)}
+      : v.flat_adv != null
+        ? {label: '拉平指导价优势', value: Number(v.flat_adv)}
+        : v.config_adv != null
+          ? {label: '配置优势', value: Number(v.config_adv)}
+          : {label: '综合竞争力', value: null};
+    const tone = metric.value == null ? 'is-pending' : metric.value > 0 ? 'is-pos' : metric.value < 0 ? 'is-neg' : 'is-zero';
+    const badge = metric.value == null ? '待补数据' : metric.value > 0 ? '左侧占优' : metric.value < 0 ? '左侧落后' : '双方持平';
+    const valueText = metric.value == null ? '待计算' : `${fmtMoney(metric.value)}<small>元</small>`;
+    const moreCount = (g.more || []).length, lessCount = (g.less || []).length;
+    return `<article class="diff-kpi-card ${tone}">
+      <div class="diff-kpi-head"><span class="diff-kpi-pair">${esc(g.pair.self_trim)} vs ${esc(g.pair.comp_trim)}</span><span class="diff-kpi-badge">${badge}</span></div>
+      <div class="diff-kpi-main"><span class="diff-kpi-label">${metric.label}</span><strong class="diff-kpi-value">${valueText}</strong></div>
+      <div class="diff-kpi-meta"><span>配置差 ${fmtMoney(v.config_adv)}</span><span>拉平价 ${fmtMoney(v.flat_adv)}</span><span>多 ${moreCount} / 少 ${lessCount}</span></div>
+    </article>`;
+  }).join('');
+}
 
 $("#btn-export-result").addEventListener("click", async () => {
   const button = $('#btn-export-result');
@@ -1358,7 +1449,7 @@ $('#delete-self-file').onclick=async()=>{
   clearComparisonSelf();
   ST.snapshot=null;ST.snapshotPath='';invalidateDiff();
   ConfigEditor.unmount($('#snapshot-table-wrap'));
-  $('#diff-self-editor').hidden=true;$('#diff-result').hidden=true;
+  $('#diff-self-editor').hidden=true;$('#diff-result').hidden=true;$('#ppt-review').hidden=true;$('#ppt-confirm').checked=false;$('#btn-save-snapshot').hidden=true;
   $('#snapshot-table-wrap').innerHTML='';$('#snapshot-trims').innerHTML='';$('#snapshot-info').textContent='';
   $('#diff-status').textContent='已移入回收站';
   await refreshDiffSelects();await rebuildPairs();
@@ -1378,7 +1469,7 @@ $('#diff-edit-self').onclick=async()=>{
   if(competitor){
     const r=await api(ST.plan?'load_ladder':'prepare_competitor',ST.plan?ST.plan.paths.left:file);
     if(!isCurrent())return;
-    ST.leftLadder=r.ladder; ST.leftLadderPath=r.path;
+    ST.leftLadder=r.ladder; ST.leftLadderPath=ST.plan?ST.plan.paths.left:r.path;
     $('#diff-self-editor h3').textContent='修改左侧竞品配置';
     $('#diff-self-editor p').textContent='修正会用于该历史车型的后续对比，不修改原始抓取数据。';
     renderLadderTable('#diff-self-table',ST.leftLadder);
@@ -1407,7 +1498,18 @@ $('#diff-save-self').onclick=async()=>{
     if(!ST.leftLadder||!ST.leftLadderPath)return toast('请先选择左侧竞品','err');
     collectLadderEdits('#diff-self-table',ST.leftLadder);
     const r=await api('save_ladder_edit',ST.leftLadderPath,ST.leftLadder);
-    if(r&&r.ok){invalidateDiff();if(!ST.plan)await rebuildPairs();else if(revision===ST.selfEditorRevision)setPairGuidePrices('self',ST.leftLadder.trims);toast('左侧竞品修正已保存，请运行对比','ok');if(revision===ST.selfEditorRevision && !$('#diff-self-editor').hidden)returnToComparisonPairs();}
+    if(r&&r.ok){
+      invalidateDiff();
+      if(ST.ladderPath && ST.ladderPath===ST.leftLadderPath){
+        ST.ladder=JSON.parse(JSON.stringify(ST.leftLadder));
+        ConfigEditor.unmount($('#diff-ladder-table-wrap'));
+        $('#diff-ladder-table-wrap').innerHTML='';
+        setPairGuidePrices('comp',ST.ladder.trims);
+      }
+      if(revision===ST.selfEditorRevision)setPairGuidePrices('self',ST.leftLadder.trims);
+      toast('左侧竞品修正已保存，请运行对比','ok');
+      if(revision===ST.selfEditorRevision && !$('#diff-self-editor').hidden)returnToComparisonPairs();
+    }
     return;
   }
   if(!comparisonSelf)return;
@@ -1432,7 +1534,19 @@ $('#diff-save-competitor').onclick=async()=>{
   const ladder=ST.ladder;
   collectLadderEdits('#diff-ladder-table-wrap');
   const r=await api('save_ladder_edit',ST.ladderPath,ST.ladder);
-  if(r && r.ok){ if(ladder===ST.ladder)setPairGuidePrices('comp',ladder.trims); invalidateDiff(); toast('竞品修正已保存，请运行对比','ok'); if(ladder===ST.ladder && !$('#diff-competitor-editor').hidden)returnToComparisonPairs(); }
+  if(r && r.ok){
+    if(ladder===ST.ladder)setPairGuidePrices('comp',ladder.trims);
+    if(ST.leftLadderPath && ST.leftLadderPath===ST.ladderPath){
+      ST.leftLadder=JSON.parse(JSON.stringify(ladder));
+      delete $('#diff-self-editor').dataset.source;
+      ConfigEditor.unmount($('#diff-self-table'));
+      $('#diff-self-table').innerHTML='';
+      setPairGuidePrices('self',ST.leftLadder.trims);
+    }
+    invalidateDiff();
+    toast('竞品修正已保存，请运行对比','ok');
+    if(ladder===ST.ladder && !$('#diff-competitor-editor').hidden)returnToComparisonPairs();
+  }
 };
 $('#back-to-diff').onclick=async()=>{
   collectLadderEdits();
@@ -1474,6 +1588,11 @@ function collectDraftColumns() {
 }
 function invalidateDraftPreview() {
   $('#ppt-review').hidden=true; $('#ppt-confirm').checked=false;
+  $('#btn-save-snapshot').hidden=true;
+  ConfigEditor.unmount($('#snapshot-table-wrap'));
+  $('#snapshot-table-wrap').innerHTML='';
+  $('#snapshot-info').textContent='';
+  ST.snapshot=null; ST.snapshotPath='';
   syncActionButtons();
 }
 function updateProductDraftCopy(manual) {
@@ -1537,11 +1656,14 @@ $('#ppt-expand').onclick=async()=>{
   const previous=ST.pptDraft.columns.map(c=>c.name);
   const rows=$$('#ppt-columns .ppt-column');
   const names=rows.map(r=>r.querySelector('.ppt-name').value.trim());
-  const rename=Object.fromEntries(previous.map((n,i)=>[n,names[i]]));
+  const rename=Object.fromEntries(previous.map((n,i)=>[n,names[i]]).filter(([n])=>n));
   const draft={...ST.pptDraft,model:$('#ppt-model').value.trim(),price_kind:$('#ppt-price-kind').value,
-    columns:rows.map((r,i)=>({name:names[i],base:rename[r.querySelector('.ppt-base').value]||null,
-      price:r.querySelector('.ppt-price').value||null,text:r.querySelector('.ppt-text').value,
-      options:r.querySelector('.ppt-options')?.value || ''}))};
+    columns:rows.map((r,i)=>{
+      const rawBase=r.querySelector('.ppt-base').value;
+      return {name:names[i],base:rawBase?(rename[rawBase]||rawBase):null,
+        price:r.querySelector('.ppt-price').value||null,text:r.querySelector('.ppt-text').value,
+        options:r.querySelector('.ppt-options')?.value || ''};
+    })};
   const res=await api('ppt_preview',draft);
   ST.snapshot=res.snapshot;ST.snapshotPath='';
   $('#snapshot-info').textContent='本品配置草稿 · 尚未保存';
@@ -1562,8 +1684,9 @@ $('#ppt-save').onclick=async()=>{
   ST.snapshot=res.snapshot;ST.snapshotPath=res.path;
   await renderSnapshot();
   $('#snapshot-info').textContent=res.path;
-  $('#ppt-status').textContent='已保存，可到竞争力对比选择本品。';
+  $('#ppt-status').textContent='已保存，可到竞争力对比选择本品，或在下方继续微调后点保存。';
   $('#ppt-review').hidden=true;
+  $('#btn-save-snapshot').hidden=false;
   syncActionButtons();
   toast('本品配置已保存','ok');
 };

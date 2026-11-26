@@ -157,7 +157,7 @@ def normalize_valuation(data, rules):
 
 
 def _num(v, default=None):
-    m = re.search(r"[\d.]+", str(v))
+    m = re.search(r"\d+(?:\.\d+)?", str(v))
     return float(m.group(0)) if m else default
 
 
@@ -422,10 +422,9 @@ def dynamic_delta(no, self_value, comp_value, custom_params=None):
                    for key in SUBS if '[待定]' not in str(left[key]) and '[待定]' not in str(right[key]))
 
     def standard(value):
-        text = str(value or '').strip()
-        if text.startswith('○'):
-            return '✕'
-        return re.sub(r'[（(]○[^()（）]*[)）]', '', text).replace('皮质', '仿皮')
+        from .differ import _standard_configuration
+        text = _standard_configuration(value)
+        return str(text or '').replace('皮质', '仿皮')
     left, right = standard(self_value), standard(comp_value)
     if no in (1, 21):
         difference = (_num(left, 0) or 0) - (_num(right, 0) or 0)
@@ -445,6 +444,15 @@ def dynamic_delta(no, self_value, comp_value, custom_params=None):
         directions = ld - rd if ld is not None and rd is not None else 0
         electric = le - relectric if le is not None and relectric is not None else 0
         return directions * params['per_direction'] + electric * params['electric_bonus']
+    if no == 38:
+        from .differ import _has
+        l_has, r_has = _has(left), _has(right)
+        l_num, r_num = _num(left), _num(right)
+        if l_has and r_has and (l_num is None or r_num is None):
+            return 0
+        l_cnt = (l_num if l_num is not None else 1) if l_has else 0
+        r_cnt = (r_num if r_num is not None else 1) if r_has else 0
+        return (l_cnt - r_cnt) * params['per_speaker']
     return (_default_rule_amount(no, '', 'more', params, values=(left, '✕'))
             - _default_rule_amount(no, '', 'more', params, values=(right, '✕')))
 
@@ -473,7 +481,20 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
     if no == 1: return 0 if abs(num(cur) - num(prev)) < p('threshold_km') else abs(num(cur) - num(prev)) * p('per_km')
     if no == 3: return abs((p('platform_800v') if '800' in cur else 0) - (p('platform_800v') if '800' in prev else 0))
     if no == 4:
-        def wheel(v): return max(0, num(v) - p('base_inch')) * p('per_inch') + (p('alloy_bonus') if "铝" in v else 0)
+        def rim_inch(v):
+            s = str(v or '')
+            m = re.search(r'R\s*(\d+(?:\.\d+)?)', s, re.I)
+            if m:
+                return float(m.group(1))
+            m = re.search(r'(\d+(?:\.\d+)?)\s*(?:英寸|吋|寸)', s)
+            if m:
+                return float(m.group(1))
+            return num(s)
+        def wheel(v):
+            inch = rim_inch(v)
+            if not inch and "铝" not in v:
+                return 0
+            return max(0, inch - p('base_inch')) * p('per_inch') + (p('alloy_bonus') if "铝" in v else 0)
         return abs(wheel(cur) - wheel(prev))
     if no == 5: return abs(num(cur) - num(prev)) * p('per_airbag')
     if no == 6:
@@ -488,9 +509,11 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
     if no == 10: return 0
     if no == 17: return abs((p('led') if 'LED' in cur else 0)-(p('led') if 'LED' in prev else 0))
     if no == 18:
-        def roof(v): return p('fixed_panorama') if "不可开启全景" in v else p('opening_panorama') if "可开启全景" in v else p('electric') if "电动" in v else 0
+        def roof(v): return p('fixed_panorama') if ("不可开启全景" in v or "天幕" in v) else p('opening_panorama') if "可开启全景" in v else p('electric') if "电动" in v else 0
         return abs(roof(cur) - roof(prev))
-    if no == 20: return abs(cur.count("电调") + cur.count("折叠") + cur.count("加热") - prev.count("电调") - prev.count("折叠") - prev.count("加热")) * p('per_function')
+    if no == 20:
+        from .differ import mirror_features
+        return abs(len(mirror_features(cur)) - len(mirror_features(prev))) * p('per_function')
     if no == 21: return p('price') if abs(num(cur) - num(prev)) >= p('threshold_inch') else 0
     if no == 22:
         def screen(v): return p('large') if num(v) > p('large_limit') else p('small') if num(v) < p('small_limit') and num(v) else p('medium') if num(v) else 0
@@ -498,7 +521,8 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
     if no == 23: return abs((p('5g') if "5G" in cur else p('4g') if "4G" in cur else 0) - (p('5g') if "5G" in prev else p('4g') if "4G" in prev else 0))
     if no == 25:
         rank = {"塑料": p('plastic'), "仿皮": p('faux'), "真皮": p('leather'), "翻毛皮": p('suede'), "NAPPA": p('nappa')}
-        return abs(next((v for k,v in reversed(list(rank.items())) if k in cur),0)-next((v for k,v in reversed(list(rank.items())) if k in prev),0))
+        cu, pu = cur.upper(), prev.upper()
+        return abs(next((v for k,v in reversed(list(rank.items())) if k in cu),0)-next((v for k,v in reversed(list(rank.items())) if k in pu),0))
     if no == 26: return abs((p('electric') if '电' in cur else 0)-(p('electric') if '电' in prev else 0))
     if no == 27: return 800 if "电调" in cur and "电调" not in prev else 0
     if no == 29:
@@ -519,7 +543,8 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
         return abs(amount(cur, p('per_charger'), p('slow_charger')) - amount(prev, p('per_charger'), p('slow_charger')))
     if no == 34:
         rank = {"织物": p('fabric'), "仿皮": p('faux'), "真皮": p('leather'), "翻毛皮": p('suede'), "NAPPA": p('nappa')}
-        return abs(next((v for k,v in reversed(list(rank.items())) if k in cur),0)-next((v for k,v in reversed(list(rank.items())) if k in prev),0))
+        cu, pu = cur.upper(), prev.upper()
+        return abs(next((v for k,v in reversed(list(rank.items())) if k in cu),0)-next((v for k,v in reversed(list(rank.items())) if k in pu),0))
     if no == 35:
         def seats(v):
             directions, electric = _seat_adjust_components(v)
@@ -536,7 +561,13 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
         return abs(seats(cur)-seats(prev))
     if no in {37, 38}:
         def speakers(v):
-            return _num(v, 1 if '扬声器' in v else 0) or 0
+            t = str(v or '').strip()
+            if not t or t.startswith('○') or t in ('✕', '×', 'X', '-', '—', '无', '无配置'):
+                return 0
+            n = _num(t)
+            if n is not None:
+                return n
+            return 1 if (no == 38 or '扬声器' in t or '喇叭' in t) else 0
         return abs(speakers(cur)-speakers(prev))*p('per_speaker')
     if no == 39:
         from .differ import ambient_level
@@ -545,7 +576,11 @@ def _default_rule_amount(no, disp, side, custom_params=None, *, values=None):
     if no == 40: return 2000 if cur not in ("✕","") and prev in ("✕","") else 0
     if no == 41: return 200 if cur not in ("✕","") and prev in ("✕","") else 0
     if no == 45:
-        def count(v): return 0 if v in ('✕','') else 2 if '前排' in v or '主副' in v else 1
+        from .differ import _has
+        def count(v):
+            if not _has(v):
+                return 0
+            return 2 if ('前排' in v or '主副' in v or ('主' in v and '副' in v)) else 1
         return abs(count(cur)-count(prev))*p('per_seat')
     return 0
 
@@ -589,7 +624,7 @@ def load_xlsx(path) -> dict:
         if not row or row[0] is None:
             continue
         no, name, pricing, val, bands, note, rule, params = (list(row) + [None] * 8)[:8]
-        if val in (None, "") and not params and rule != 'dynamic':
+        if val in (None, "") and not bands and not params and rule != 'dynamic':
             continue    # 留空 = 待赋值
         if str(val).strip() in ('/', '／'):
             rule, pricing, val = 'excluded', 'manual', 0

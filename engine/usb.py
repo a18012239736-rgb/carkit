@@ -6,10 +6,9 @@ def usb_total(value, default=3):
     text = str(value or '')
     if text.strip() in ('', '✕', '×', 'X', '-', '无'):
         return default
-    front = re.search(r'前(?:排)?\s*(\d+)', text)
-    rear = re.search(r'后(?:排)?\s*(\d+)', text)
-    if front or rear:
-        return int(front[1]) if front and not rear else int(rear[1]) if rear and not front else int(front[1]) + int(rear[1])
+    scoped = re.findall(r'(?:前|第?二|后|第?三)(?:排)?\s*(\d+)', text)
+    if scoped:
+        return sum(int(n) for n in scoped)
     count = re.search(r'(\d+(?:\.\d+)?)\s*个', text)
     return (float(count[1]) if '.' in count[1] else int(count[1])) if count else None
 

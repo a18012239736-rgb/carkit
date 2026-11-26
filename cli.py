@@ -45,10 +45,9 @@ def cmd_ladder(args):
 
 
 def cmd_snapshot(args):
-    snap = Snapshot.load(args.json) if args.json.lower().endswith(".json") else None
-    if snap is None:
-        from engine.snapshot import parse_snapshot_md, resolve
-        snap = resolve(parse_snapshot_md(args.json))
+    from engine.snapshot import parse_snapshot_md, resolve
+    snap = Snapshot.load(args.json) if args.json.lower().endswith(".json") else parse_snapshot_md(args.json)
+    snap = resolve(snap)
     out = args.o or unique_filename(f'{snap.model or "未命名"}-配置快照', '.json')
     snap.save(out)
     print(f"[ok] 快照 JSON → {out}（{len(snap.cells)}项 × {len(snap.trims)}版型）")
@@ -61,9 +60,16 @@ def cmd_diff(args):
     snap = resolve(snap)
     self_lad = snap.to_ladder(rules.checklist["items"])
     comp_lad = ladder_mod.upgrade_ladder(Ladder.load(args.ladder), rules)
+    missing_items = {it['no'] for it in rules.items} - {it.no for it in comp_lad.items}
+    if missing_items:
+        sys.exit(f"[错误] 竞品阶梯缺少新配置项: {sorted(missing_items)} —— 请重新抓取或从历史车型重新生成")
     pairs = []
-    for p in args.pairs.split(","):
-        s, c = p.split(":")
+    for raw_pair in args.pairs.split(","):
+        if ":" not in raw_pair:
+            sys.exit(f"[错误] 版型配对格式无效: {raw_pair!r}（应为 自产品:竞品）")
+        s, c = raw_pair.split(":", 1)
+        if not s.strip() or not c.strip():
+            sys.exit(f"[错误] 版型配对不能为空: {raw_pair!r}")
         pairs.append({"self_trim": s.strip(), "comp_trim": c.strip()})
     # 校验配对版型存在（铁律：配对必须显式指定且有效）
     self_trims = [t["name"] for t in self_lad.trims]

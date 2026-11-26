@@ -12,7 +12,7 @@ import json
 import re
 from .models import RawTable, RawRow, Cell, Trim
 
-_PRICE_RE = re.compile(r"([\d.]+)\s*万")
+_PRICE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*万")
 
 
 def _parse_price(text: str):
@@ -34,6 +34,10 @@ def _split_compact_cell(v: str) -> Cell:
             dot, p = "●", p[1:]
         elif p.startswith("○"):
             dot, p = "○", p[1:]
+        elif "●" in p:
+            dot = "●"
+        elif "○" in p:
+            dot = "○"
         return Cell(dot=dot, text=p.strip())
 
     head = one(parts[0])
@@ -87,7 +91,7 @@ def from_rich(data, series_id: str = "") -> RawTable:
     trims = [Trim(idx=i, short=t, full=t) for i, t in enumerate(trim_names)]
     rows = []
     for r in data.get("rows", []):
-        cells = [Cell(dot=v.get("dot", ""), text=v.get("text", "")) for v in r.get("values", [])]
+        cells = [Cell.from_dict(v) for v in r.get("values", [])]
         rows.append(RawRow(name=r["name"], cells=cells, group=r.get("group", "")))
     price_row = next((r for r in rows if r.name == "厂商指导价(元)"), None)
     if price_row:

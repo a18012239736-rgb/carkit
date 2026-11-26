@@ -1,19 +1,19 @@
-/* Configuration tables keep their row labels visible while comparing trims. */
+/* Workbench 配置编辑器：紧致数据网格、清晰分组与已修改指示 */
 .vue-config-editor {
   max-height:min(68vh,720px);
   overflow:auto;
   border:1px solid var(--line);
-  border-radius:10px;
+  border-radius:var(--radius-inner);
   background:#fff;
-  scrollbar-color:#c4ccd2 transparent;
+  scrollbar-color:#c7ccd3 transparent;
 }
 .vue-config-editor .ce-table { border-collapse:separate; border-spacing:0; }
 .vue-config-editor .ce-table th,
 .vue-config-editor .ce-table td {
-  padding:10px 12px;
+  padding:8px 11px;
   border:0;
-  border-right:1px solid var(--line);
-  border-bottom:1px solid var(--line);
+  border-right:1px solid var(--line-soft);
+  border-bottom:1px solid var(--line-soft);
   color:var(--ink);
   background:#fff;
   vertical-align:middle;
@@ -27,14 +27,13 @@
   position:sticky;
   top:0;
   z-index:2;
-  padding-top:12px;
-  padding-bottom:12px;
-  background:#f0f4f2;
-  border-bottom:1px solid var(--line-strong);
-  color:#4c625c;
-  font-size:11px;
-  font-weight:650;
-  letter-spacing:.02em;
+  padding-top:10px;
+  padding-bottom:10px;
+  background:#f8f9fb;
+  border-bottom:1px solid var(--line);
+  color:#4b5563;
+  font-size:11.5px;
+  font-weight:600;
 }
 .vue-config-editor .ce-table thead th:nth-child(n+3) { white-space:normal; overflow-wrap:anywhere; }
 .vue-config-editor .ce-table th:first-child,
@@ -42,51 +41,69 @@
   position:sticky;
   left:0;
   z-index:3;
-  width:44px;
-  min-width:44px;
-  max-width:44px;
-  padding-left:8px;
-  padding-right:8px;
-  color:var(--muted,#71808d);
+  width:42px;
+  min-width:42px;
+  max-width:42px;
+  padding-left:6px;
+  padding-right:6px;
+  color:var(--faint);
   text-align:center;
   font-variant-numeric:tabular-nums;
 }
 .vue-config-editor .ce-table th:nth-child(2),
 .vue-config-editor .ce-table td:nth-child(2) {
   position:sticky;
-  left:44px;
+  left:42px;
   z-index:3;
-  min-width:164px;
-  max-width:210px;
-  color:var(--navy);
+  min-width:160px;
+  max-width:205px;
+  color:var(--ink-strong);
   font-weight:500;
   white-space:normal;
-  box-shadow:2px 0 0 var(--line);
+  box-shadow:1px 0 0 var(--line),6px 0 10px -8px rgb(16 24 40 / 14%);
 }
 .vue-config-editor .ce-table thead th:first-child,
-.vue-config-editor .ce-table thead th:nth-child(2) { z-index:5; background:#f0f4f2; }
+.vue-config-editor .ce-table thead th:nth-child(2) { z-index:5; background:#f8f9fb; }
 .vue-config-editor .ce-table .ce-group-row > th {
   position:static;
   width:auto;
   min-width:0;
   max-width:none;
   overflow:visible;
-  padding:9px 12px;
-  background:var(--surface-soft);
-  color:var(--navy);
+  padding:8px 12px;
+  background:#f1f4f6;
+  box-shadow:inset 3px 0 0 var(--accent);
+  color:var(--ink-strong);
   text-align:left;
   font-size:12px;
-  font-weight:600;
+  font-weight:650;
 }
 .vue-config-editor .ce-group-title {
   position:sticky;
   left:12px;
-  display:inline-block;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
 }
-.vue-config-editor .ce-table tbody tr:hover td { background:#f5f8f6; }
+.vue-config-editor .ce-group-count {
+  padding:0 6px;
+  border:1px solid var(--line);
+  border-radius:4px;
+  background:#fff;
+  color:var(--dim);
+  font-size:10.5px;
+  font-weight:600;
+  font-variant-numeric:tabular-nums;
+}
+.vue-config-editor .ce-table td.ce-dirty {
+  background:#edf8f4;
+  box-shadow:inset 3px 0 0 var(--accent);
+}
+.vue-config-editor .ce-table tbody tr:hover td { background:var(--surface-hover); }
+.vue-config-editor .ce-table tbody tr:hover td.ce-dirty { background:#e2f4ed; }
 .vue-config-editor .ce-cell,
 .vue-config-editor .ce-seat-functions,
-.vue-config-editor .ce-seat-adjust { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; }
+.vue-config-editor .ce-seat-adjust { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; }
 .vue-config-editor .ce-cell { min-width:210px; font-size:12px; }
 .vue-config-editor .ce-table td > .ce-cell,
 .vue-config-editor .ce-table td > .ce-seat-functions { width:220px; min-width:0; max-width:220px; }
@@ -94,27 +111,27 @@
 .vue-config-editor .ce-seat-functions,
 .vue-config-editor .ce-seat-adjust,
 .vue-config-editor .ce-seat-support { flex-direction:column; align-items:flex-start; }
-.vue-config-editor label { display:inline-flex; align-items:center; gap:6px; color:#556574; white-space:nowrap; font-size:12px; }
+.vue-config-editor label { display:inline-flex; align-items:center; gap:6px; color:#4b5563; white-space:nowrap; font-size:12px; }
 .vue-config-editor .ce-cell > small {
   flex-basis:100%;
   max-width:100%;
-  color:#8b6429;
+  color:var(--warn-ink);
   white-space:normal;
   overflow-wrap:anywhere;
-  line-height:1.6;
+  line-height:1.55;
 }
 .vue-config-editor .ce-seat-adjust { flex-basis:100%; }
 #main .vue-config-editor select,
 #main .vue-config-editor input {
   box-sizing:border-box;
-  min-height:32px !important;
-  height:32px;
+  min-height:30px !important;
+  height:30px;
   width:auto !important;
   min-width:0 !important;
   margin:0;
-  padding:5px 9px !important;
+  padding:4px 8px !important;
   border:1px solid var(--line-strong);
-  border-radius:7px;
+  border-radius:var(--radius-control);
   background-color:#fff;
   color:var(--ink);
   font:inherit;
@@ -122,29 +139,29 @@
   line-height:20px;
   font-variant-numeric:tabular-nums;
 }
-#main .vue-config-editor select { padding-right:25px !important; background-position:right 7px center; background-size:11px; }
+#main .vue-config-editor select { padding-right:24px !important; background-position:right 7px center; background-size:11px; }
 #main .vue-config-editor .ce-binary { min-width:66px !important; max-width:170px; }
 #main .vue-config-editor .ce-main-choice { max-width:100%; }
-#main .vue-config-editor input[type=number] { width:85px !important; }
+#main .vue-config-editor input[type=number] { width:84px !important; }
 #main .vue-config-editor input[type=text] { width:100% !important; min-width:0; }
-#main .vue-config-editor .ce-seat-adjust select { width:74px !important; }
-#main .vue-config-editor .ce-seat-adjust input { width:78px !important; }
+#main .vue-config-editor .ce-seat-adjust select { width:72px !important; }
+#main .vue-config-editor .ce-seat-adjust input { width:76px !important; }
 #main .vue-config-editor input[type=checkbox] {
-  flex:0 0 16px;
-  width:16px !important;
-  height:16px;
+  flex:0 0 15px;
+  width:15px !important;
+  height:15px;
   min-height:0 !important;
   padding:0 !important;
-  accent-color:var(--cyan);
+  accent-color:var(--accent);
 }
 #main .vue-config-editor textarea {
   box-sizing:border-box;
   width:100%;
   min-width:0;
-  min-height:90px;
-  padding:9px 10px;
+  min-height:84px;
+  padding:8px 10px;
   border:1px solid var(--line-strong);
-  border-radius:7px;
+  border-radius:var(--radius-control);
   background:#fff;
   color:var(--ink);
   resize:vertical;
@@ -158,12 +175,12 @@
   box-shadow:0 0 0 3px var(--focus-ring);
 }
 #main .vue-config-editor :is(input,select,textarea):disabled {
-  border-color:#e0e6ea;
-  background-color:#f1f4f6;
-  color:#8b98a3;
+  border-color:var(--line);
+  background-color:var(--gray-bg);
+  color:var(--faint);
   cursor:not-allowed;
   opacity:1;
 }
-.vue-config-editor td > small { display:block; margin-top:6px; color:var(--muted,#71808d); font-weight:400; line-height:1.6; }
+.vue-config-editor td > small { display:block; margin-top:5px; color:var(--dim); font-weight:400; line-height:1.55; }
 .vue-config-editor .ce-seat-source { width:100%; white-space:normal; }
 .vue-config-editor .ce-seat-source summary { padding:3px 0; color:var(--dim); font-size:11px; }

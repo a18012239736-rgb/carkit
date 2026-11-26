@@ -146,6 +146,7 @@
         message('正在关闭 carkit。安装完成后，程序将重新打开。');
       } else {
         release.can_download = false;
+        release.downloaded_path = result.path || '';
         showDownloaded(result.path);
       }
     } catch(error) {

@@ -24,7 +24,7 @@ def _strip_dot(v) -> str:
 
 
 def _num(v, default=None):
-    m = re.search(r"[\d.]+", str(v))
+    m = re.search(r"\d+(?:\.\d+)?", str(v))
     return float(m.group(0)) if m else default
 
 
@@ -49,7 +49,11 @@ def _standard_configuration(value):
             or re.search(r'[（(]\s*(?:选装|选配)\s*[)）]\s*$', text)):
         return '✕'
     text = re.sub(r'[（(]\s*○(?:[^()（）]|[（(][^()（）]*[)）])*[)）]', '', text)
-    return re.split(r'[,，]\s*○', text, maxsplit=1)[0].strip()
+    text = re.split(r'[,，]\s*○', text, maxsplit=1)[0]
+    if re.search(r'[+＋]\s*○', text):
+        parts = [p.strip() for p in re.split(r'[+＋]', text) if p.strip() and not p.strip().startswith('○')]
+        text = '+'.join(parts) if parts else '✕'
+    return text.strip()
 
 
 def _has(v) -> bool:
@@ -59,13 +63,13 @@ def _has(v) -> bool:
     v = v.strip()
     if v.startswith("○"):
         return False
-    if v in ("✕", "-", "", "无"):
+    if v in ("✕", "×", "X", "-", "—", "", "无", "无配置", "不支持"):
         return False
     return True
 
 
 def _plain(v) -> bool:
-    return isinstance(v, str) and v.strip() in ("✕", "-", "", "无")
+    return isinstance(v, str) and v.strip() in ("✕", "×", "X", "-", "—", "", "无", "无配置", "不支持")
 
 
 # ---------- 各 value_type 比较器：返回 (verdict, self_short, comp_short) ----------
@@ -152,7 +156,7 @@ def _rank_of(v, order):
 def cmp_tire(sv, cv, **kw):
     def parse(v):
         s = _strip_dot(v)
-        m = re.search(r"R(\d+)", s)
+        m = re.search(r"R\s*(\d+)", s, re.I)
         r = int(m.group(1)) if m else 0
         mat = 1 if "铝" in s else (0 if "钢" in s else -1)
         return (r, mat) if r else None
@@ -168,13 +172,24 @@ def cmp_tire(sv, cv, **kw):
     return cmp_bool(sv, cv)
 
 
+def mirror_features(v) -> set[str]:
+    if not _has(v):
+        return set()
+    s = _strip_dot(str(v))
+    if "三项全" in s:
+        return {"电调", "折叠", "加热"}
+    feats = set()
+    if "电调" in s or "电动调节" in s:
+        feats.add("电调")
+    if "折叠" in s:
+        feats.add("折叠")
+    if "加热" in s:
+        feats.add("加热")
+    return feats
+
+
 def cmp_mirror(sv, cv, **kw):
-    def feats(v):
-        s = _strip_dot(v)
-        if "三项全" in s:
-            return {"电调", "折叠", "加热"}
-        return {f for f in ("电调", "折叠", "加热") if f in s}
-    sf, cf = feats(sv), feats(cv)
+    sf, cf = mirror_features(sv), mirror_features(cv)
     ss = "电调折叠加热" if sf == {"电调", "折叠", "加热"} else "+".join(
         f for f in ("电调", "折叠", "加热") if f in sf) or "✕"
     cs = "同" if cf == sf else "+".join(f for f in ("电调", "折叠", "加热") if f in cf) or "✕"
@@ -470,7 +485,11 @@ def diff(self_ladder, comp_ladder, pairs, rules, valuation=None):
             elif vt == "cluster":
                 v, ss, cs = cmp_cluster(sv, cv)
             elif vt == "seat_memory":
-                def count(value): return 0 if not _has(value) else 2 if '前排' in str(value) or '主副' in str(value) else 1
+                def count(value):
+                    if not _has(value):
+                        return 0
+                    text = str(value)
+                    return 2 if ('前排' in text or '主副' in text or ('主' in text and '副' in text)) else 1
                 s_count, c_count = count(sv), count(cv)
                 v = MORE if s_count > c_count else LESS if s_count < c_count else SAME
                 ss, cs = _strip_dot(str(sv)), _strip_dot(str(cv))
@@ -543,7 +562,7 @@ _RANKS = {
     17: ["卤素", "氙气", "LED", "LCD"],          # 灯光（LED<LCD 按 pjy 规则 LCD 更高？保守同档处理）
     30: ["HUD", "AR-HUD", "P-HUD"],
     39: ["单色", "多色"],
-    26: ["手动", "电调", "电动"],
+    26: ["手动", "电"],
     35: ["手调", "电调"],
 }
 

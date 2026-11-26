@@ -1,6 +1,6 @@
 [project]
 name = "carkit"
-version = "0.3.7"
+version = "0.3.8"
 description = "车型配置对比工具：5C 抓取 + 41项赋值对比，Windows EXE 和 macOS DMG GUI 应用"
 requires-python = ">=3.10"
 dependencies = [
@@ -25,8 +25,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["cli", "app"]
-packages = ["engine", "api"]
+packages = ["engine", "api", "ui"]
 include-package-data = true
 
 [tool.setuptools.package-data]
 engine = ["rules/*", "*.js"]
+ui = ["*", "*/*", "*/*/*"]

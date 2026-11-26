@@ -47,8 +47,9 @@
       });
       let lastEmitted;
       const screenDraft = ref(null);
+      const countDraft = ref(null);
       const send = v => {lastEmitted=v;emit('change', v);};
-      watch(()=>props.value,v=>{if(v!==lastEmitted)screenDraft.value=null;});
+      watch(()=>props.value,v=>{if(v!==lastEmitted){screenDraft.value=null;countDraft.value=null;}});
       const options = computed(() => [...new Set([value.value, ...(props.sub ? ['✕','●','[待定]'] : props.choices || [])])]);
       function label(v) {
         if(props.no===32 && v==='✕') return '未注明（按基础接口数）';
@@ -56,8 +57,16 @@
         return v === '✕' ? '无' : v === '●' ? '有' : v;
       }
       const choose = e => e.target.value === '__custom__' ? custom.value = true : send(e.target.value);
-      const count = computed(() => (value.value.match(/\d+(?:\.\d+)?/) || [''])[0]);
-      const simpleCount = computed(()=>/^[●]?\s*\d+(?:\.\d+)?\s*(?:km|扬声器|喇叭|个)?$/i.test(value.value));
+      const count = computed(() => countDraft.value !== null ? countDraft.value : (value.value.match(/\d+(?:\.\d+)?/) || [''])[0]);
+      const simpleCount = computed(()=>countDraft.value !== null || /^[●]?\s*\d+(?:\.\d+)?\s*(?:km|扬声器|喇叭|个)?$/i.test(value.value));
+      function countInput(v) {
+        countDraft.value = v;
+        if (v !== '') send(v + (props.no === 1 ? 'km' : '扬声器'));
+      }
+      function countCommit(v) {
+        countDraft.value = null;
+        if (v === '') send('[待定]');
+      }
       const screen = computed(() => {
         if(screenDraft.value) return screenDraft.value;
         const suffix=(value.value.match(/[（(]○[^()（）]*[)）]/g)||[]).join('');
@@ -89,9 +98,22 @@
         }
       },{immediate:true});
       const seats = computed(()=>seatDetail.value.seats);
-      function seatChange(i, key, v) {
+      function seatChange(i, key, v, event) {
         if(!seatDetail.value.editable) return;
-        const parts = seats.value.map(s => ({...s})); parts[i][key] = v;
+        if(key === 'count') {
+          if(v !== '' && v !== null && v !== undefined) {
+            const n = Number(v);
+            if(!Number.isInteger(n) || n < 2 || n > 30) {
+              if(event?.target) {
+                event.target.setCustomValidity('座椅调节方向应为 2 至 30 的整数，或留空表示未注明');
+                event.target.reportValidity();
+              }
+              return;
+            }
+          }
+          event?.target?.setCustomValidity?.('');
+        }
+        const parts = seats.value.map(s => ({...s})); parts[i][key] = v === '' ? null : v;
         send((seatDetail.value.prefix || '') + parts.filter(s=>s.count || s.mode).map(s => s.name + (s.count ? s.count + '向' : '') + (s.mode || '')).join('+') + (seatDetail.value.suffix || ''));
       }
       const mirrorText = computed(()=>value.value.replace(/电动调节/g,'电调').replace(/电动折叠/g,'折叠'));
@@ -118,20 +140,20 @@
         const selected = supportSeats.value.filter((seat,i)=>i===index ? state==='●' : seat.present);
         send(selected.length===2 ? '前排'+supportFeature.value : selected.length ? selected[0].name+supportFeature.value : '✕');
       }
-      return {value, custom, options, label, choose, send, count, simpleCount, screen, screenChange, seats, seatDetail, seatChange, mirrorText, simpleMirror, mirrorChange, supportFeature, supportSeats, supportChange, absent};
+      return {value, custom, options, label, choose, send, count, simpleCount, countInput, countCommit, screen, screenChange, seats, seatDetail, seatChange, mirrorText, simpleMirror, mirrorChange, supportFeature, supportSeats, supportChange, absent};
     },
     template: `
       <div class="ce-cell" :class="{'ce-seat-support':[46,47].includes(no)}">
         <select v-if="sub" :value="value" class="ce-binary" :aria-label="sub" @change="send($event.target.value)"><option v-for="v in options" :key="v" :value="v">{{label(v)}}</option></select>
         <template v-else-if="no===35">
           <div class="ce-seat-adjust">
-            <label v-for="(seat,i) in seats" :key="seat.name">{{seat.name}}<select :aria-label="seat.name+'调节方式'" :value="seat.mode || ''" :disabled="!seatDetail.editable" @change="seatChange(i,'mode',$event.target.value)"><option value="" disabled>待核</option><option>手调</option><option>电调</option></select><input type="number" min="2" max="30" step="1" placeholder="未注明" :aria-label="seat.name+'调节方向'" :value="seat.count" :disabled="!seatDetail.editable" @change="seatChange(i,'count',$event.target.value)">向</label>
+            <label v-for="(seat,i) in seats" :key="seat.name">{{seat.name}}<select :aria-label="seat.name+'调节方式'" :value="seat.mode || ''" :disabled="!seatDetail.editable" @change="seatChange(i,'mode',$event.target.value)"><option value="" disabled>待核</option><option>手调</option><option>电调</option></select><input type="number" min="2" max="30" step="1" placeholder="未注明" :aria-label="seat.name+'调节方向'" :value="seat.count" :disabled="!seatDetail.editable" @input="$event.target.setCustomValidity('')" @change="seatChange(i,'count',$event.target.value,$event)">向</label>
           </div>
           <small v-if="seatDetail.hint">{{seatDetail.hint}}</small>
           <details v-if="!seatDetail.editable" class="ce-seat-source"><summary>核对调节原文</summary><input type="text" aria-label="座椅调节原文" :value="value" @change="send($event.target.value.trim() || '✕')"></details>
         </template>
         <template v-else-if="[1,37].includes(no) && simpleCount">
-          <input type="number" min="0" step="1" :aria-label="no===1?'纯电续航':'扬声器数量'" :value="count" @input="send($event.target.value ? $event.target.value+(no===1?'km':'扬声器') : '[待定]')">
+          <input type="number" min="0" :step="no===1?'any':'1'" :aria-label="no===1?'纯电续航':'扬声器数量'" :value="count" @input="countInput($event.target.value)" @blur="countCommit($event.target.value)" @change="countCommit($event.target.value)">
           <span>{{no===1?'km':'个'}}</span>
         </template>
         <template v-else-if="[21,22,29].includes(no)">
@@ -162,6 +184,8 @@
       components: {ConfigCell:Cell},
       setup() {
         const revision = ref(0);
+        const dirtyCells = ref(new Set());
+        const dirtyKey = (no, i, sub = '') => `${no}:${i}:${sub}`;
         const cells = kind === 'snapshot' ? model.cells : model.items;
         const rows = computed(() => {
           revision.value;
@@ -197,12 +221,13 @@
             const original=[...target.values], edited=[...original]; edited[i]=value;
             target.values=cascade(original,edited);
           }
+          dirtyCells.value.add(dirtyKey(c.no, i, sub || ''));
           revision.value++; onChange();
         }
         function price(i,e) {
           const n=e.target.value===''?null:Number(e.target.value);
           if(n!==null&&(!Number.isFinite(n)||n<=0)) {e.target.setCustomValidity('指导价应为正数，单位万元');e.target.reportValidity();return;}
-          e.target.setCustomValidity('');model.trims[i].price_guide=n;revision.value++;onChange();
+          e.target.setCustomValidity('');model.trims[i].price_guide=n;dirtyCells.value.add(dirtyKey('price', i));revision.value++;onChange();
         }
         function rename(i,e) {
           const trim=model.trims[i], old=trim.name, name=e.target.value.trim();
@@ -232,7 +257,17 @@
         function options(i,value) {
           model.options ||= {};
           model.options[model.trims[i].name]=[...new Set(value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean))];
+          dirtyCells.value.add(dirtyKey('options', i));
           revision.value++;onChange();
+        }
+        function isDirty(row, i) {
+          revision.value;
+          if (row.subs) return row.subs.some(s => dirtyCells.value.has(dirtyKey(row.cell.no, i, s)));
+          return dirtyCells.value.has(dirtyKey(row.cell.no, i, row.sub || ''));
+        }
+        function isMetaDirty(kindKey, i) {
+          revision.value;
+          return dirtyCells.value.has(dirtyKey(kindKey, i));
         }
         function metadata(t,key,value) {t[key]=value;revision.value++;onChange();}
         function priceSource(t) {
@@ -241,19 +276,19 @@
           if(t.price_source==='TP价格') return `TP价格：${reference}，仅作参考；指导价请另填。`;
           return `原页价格：${reference}，口径未确定；请确认后填写指导价。`;
         }
-        return {rows,groups,trims:model.trims,kind,get,change,choices,parseSeatAdjust,price,review,rename,metadata,priceSource,optionText,options};
+        return {rows,groups,trims:model.trims,kind,get,change,choices,parseSeatAdjust,price,review,rename,metadata,priceSource,optionText,options,isDirty,isMetaDirty};
       },
       template: `<table class="grid ce-table"><thead><tr><th>#</th><th>配置项</th><th v-for="(t,i) in trims" :key="i">{{t.name}}</th><th v-if="review">依据</th></tr></thead><tbody>
         <tr v-if="review"><td class="no">—</td><td>版型名称</td><td v-for="(t,i) in trims" :key="i"><input type="text" aria-label="版型名称" :value="t.name" @change="rename(i,$event)"></td><td></td></tr>
-        <tr v-if="kind==='snapshot'"><td class="no">—</td><td>指导价（万元）</td><td v-for="(t,i) in trims" :key="i"><input type="number" min="0.01" step="0.01" aria-label="指导价（万元）" :value="t.price_guide" @change="price(i,$event)"><small v-if="review && t.price_source">{{priceSource(t)}}</small></td><td v-if="review"></td></tr>
+        <tr v-if="kind==='snapshot'"><td class="no">—</td><td>指导价（万元）</td><td v-for="(t,i) in trims" :key="i" :class="{'ce-dirty':isMetaDirty('price',i)}"><input type="number" min="0.01" step="0.01" aria-label="指导价（万元）" :value="t.price_guide" @change="price(i,$event)"><small v-if="review && t.price_source">{{priceSource(t)}}</small></td><td v-if="review"></td></tr>
         <template v-if="review"><tr v-for="field in [{key:'range',name:'续航备注'}]" :key="field.key"><td class="no">—</td><td>{{field.name}}</td><td v-for="(t,i) in trims" :key="i"><input type="text" :aria-label="field.name" :value="t[field.key] || ''" @change="metadata(t,field.key,$event.target.value)"></td><td></td></tr></template>
         <template v-for="group in groups" :key="group.name">
-        <tr class="ce-group-row"><th :colspan="trims.length+2+(review?1:0)"><span class="ce-group-title">{{group.name}}</span></th></tr>
-        <tr v-for="row in group.rows" :key="row.key"><td class="no">{{row.serial}}</td><td>{{row.name}}</td><td v-for="(t,i) in trims" :key="i">
+        <tr class="ce-group-row"><th :colspan="trims.length+2+(review?1:0)"><span class="ce-group-title">{{group.name}}<span class="ce-group-count">{{group.rows.length}} 项</span></span></th></tr>
+        <tr v-for="row in group.rows" :key="row.key"><td class="no">{{row.serial}}</td><td>{{row.name}}</td><td v-for="(t,i) in trims" :key="i" :class="{'ce-dirty':isDirty(row,i)}">
           <div v-if="row.subs" class="ce-seat-functions" :class="{'ce-rear-functions':row.rear}"><label v-for="sub in row.subs" :key="sub">{{row.rear ? sub.slice(2) : sub.slice(0,2)}}<config-cell :no="row.cell.no" :sub="sub" :value="get(row.cell,i,sub)" @change="change(row.cell,i,sub,$event)"/></label></div>
           <config-cell v-else :no="row.cell.no" :sub="row.sub" :kind="kind" :choices="choices(row.cell.no,kind)" :parse-seat-adjust="parseSeatAdjust" :value="get(row.cell,i,row.sub)" @change="change(row.cell,i,row.sub,$event)"/>
         </td><td v-if="review"><input type="text" aria-label="配置依据" :value="row.cell.basis || ''" @change="metadata(row.cell,'basis',$event.target.value)"></td></tr></template>
-        <tr v-if="kind==='snapshot'"><td class="no">—</td><td>选装配置<small>每行一项，仅本版型展示，不参与赋值</small></td><td v-for="(t,i) in trims" :key="i"><textarea :aria-label="t.name+'选装配置'" :value="optionText(i)" @change="options(i,$event.target.value)"></textarea></td><td v-if="review"></td></tr></tbody></table>`
+        <tr v-if="kind==='snapshot'"><td class="no">—</td><td>选装配置<small>每行一项，仅本版型展示，不参与赋值</small></td><td v-for="(t,i) in trims" :key="i" :class="{'ce-dirty':isMetaDirty('options',i)}"><textarea :aria-label="t.name+'选装配置'" :value="optionText(i)" @change="options(i,$event.target.value)"></textarea></td><td v-if="review"></td></tr></tbody></table>`
     });
     root.classList.add('vue-config-editor');
     app.mount(root); mounted.set(root,app);
@@ -262,6 +297,12 @@
     mounted.get(root)?.unmount(); mounted.delete(root);
     root.classList.remove('vue-config-editor');
   }
-  function validate(root) {return [...root.querySelectorAll('input')].every(input=>input.reportValidity());}
+  function validate(root) {
+    if (typeof document !== 'undefined' && document.activeElement && root?.contains?.(document.activeElement)
+        && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    return [...root.querySelectorAll('input')].every(input=>input.reportValidity());
+  }
   window.ConfigEditor = {mount,unmount,validate,isMounted:root=>mounted.has(root),groupRows};
 })();

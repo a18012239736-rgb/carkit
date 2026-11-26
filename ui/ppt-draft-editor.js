@@ -13,7 +13,12 @@
         const changed = () => {onChange?.();onInvalidate?.();};
         const rename = (i,e) => {
           const next=e.target.value.trim(), col=columns.value[i], old=col.name;
-          if(!next)return;
+          if(!next){
+            col.name='';
+            if(old)columns.value.forEach(c=>{if(c.base===old)c.base=null;});
+            changed();
+            return;
+          }
           if(columns.value.some((c,j)=>j!==i && c.name===next)){e.target.value=old;return;}
           col.name=next;
           columns.value.forEach(c=>{if(c.base===old)c.base=next;});

@@ -18,12 +18,17 @@ FRONT_TRUNK_VOLUME_ROWS = ('前备箱容积(L)', '前备厢容积(L)', '前备�
 # ---------- 基础工具 ----------
 
 def _cell(raw: RawTable, row_names, i: int) -> Cell | None:
-    """取第 i 个版型在候选行名下第一个存在行的 cell"""
+    """取第 i 个版型在候选行名下第一个非空 cell；全空时回退首个存在行"""
+    fallback = None
     for name in row_names:
         r = raw.row(name)
         if r is not None and i < len(r.cells):
-            return r.cells[i]
-    return None
+            c = r.cells[i]
+            if not (c.absent and not c.subs):
+                return c
+            if fallback is None:
+                fallback = c
+    return fallback
 
 
 def _has_row(raw: RawTable, row_names) -> bool:
@@ -51,7 +56,7 @@ def _bool_val(c: Cell | None) -> str:
 
 
 def _num(text: str):
-    m = re.search(r"[\d.]+", text or "")
+    m = re.search(r"\d+(?:\.\d+)?", text or "")
     return float(m.group(0)) if m else None
 
 
@@ -103,8 +108,9 @@ def n_high_voltage(raw, i, cfg):
     if c is None:
         return ABSENT
     t = _txt(c)
-    if not _optional(c) and re.fullmatch(r"\d+(?:\.\d+)?", t):
-        return f"●{t}V"
+    m = re.fullmatch(r"(\d+(?:\.\d+)?)\s*[Vv]?", t)
+    if not _optional(c) and m:
+        return f"●{m.group(1)}V" if float(m.group(1)) > 0 else ABSENT
     if _solid(c):
         return "●800V" if "800" in t else f"●{t or '高压平台'}"
     return ABSENT
@@ -112,13 +118,16 @@ def n_high_voltage(raw, i, cfg):
 
 def n_tire(raw, i, cfg):
     tc = _cell(raw, ["前轮胎规格"], i)
-    t = _txt(tc)
-    m = re.search(r"R(\d+)", t)
+    t_parts = _standard_parts(tc)
+    if not t_parts:
+        return _pending_value(tc) or _bool_val(tc)
+    t = " ".join(t_parts)
+    m = re.search(r"R\s*(\d+)", t, re.I)
     if not m and not _solid(tc):
         return ABSENT
     r = m.group(1) if m else "?"
     mc = _cell(raw, ["轮圈材质"], i)
-    mt = _txt(mc)
+    mt = " ".join(_standard_parts(mc))
     if "钢" in mt:
         mat = "钢轮毂"
     elif "铝" in mt:
@@ -212,12 +221,12 @@ def n_suspend(raw, i, cfg):
 
 def n_camera540(raw, i, cfg):
     c540 = _cell(raw, ["透明底盘/540度影像"], i)
-    if _solid(c540):
+    if _standard_parts(c540):
         return "540影像"
     c = _cell(raw, ["驾驶辅助影像"], i)
     standard = _standard_parts(c)
     if not standard:
-        return _pending_value(c) or ABSENT
+        return _pending_value(c540, c) or ABSENT
     # Each subitem has its own standard/optional marker.
     all_t = " ".join(standard)
     if "540" in all_t:
@@ -372,10 +381,10 @@ def n_sunroof(raw, i, cfg, *, include_terms=True):
 
 def n_mirror(raw, i, cfg):
     c = _cell(raw, ["外后视镜功能"], i)
-    if not _solid(c):
-        return _bool_val(c)
-    parts = [c.text] + [s.text for s in (c.subs or [])]
-    joined = " ".join(p for p in parts if p)
+    parts = _standard_parts(c)
+    if not parts:
+        return _pending_value(c) or _bool_val(c)
+    joined = " ".join(parts)
     feats = []
     if "电动调节" in joined:
         feats.append("电调")
@@ -387,8 +396,8 @@ def n_mirror(raw, i, cfg):
 
 
 def _screen_core(t: str) -> str:
-    m = re.search(r"([\d.]+)", t or "")
-    return f"{m.group(1)}寸" if m else (t or "")
+    m = re.search(r"\d+(?:\.\d+)?", t or "")
+    return f"{m.group(0)}寸" if m else (t or "")
 
 
 def _optional_screen(c, name):
@@ -400,9 +409,7 @@ def _optional_screen(c, name):
 
 
 def n_screen_center(raw, i, cfg):
-    c = _cell(raw, ["中控屏幕尺寸"], i)
-    if c is None:
-        c = _cell(raw, ["中控彩色屏幕"], i)
+    c = _cell(raw, cfg.get("source_rows") or ["中控屏幕尺寸", "中控彩色屏幕", "中控屏幕"], i)
     if _optional(c):
         return _optional_screen(c, '中控')
     if not _solid(c):
@@ -410,7 +417,7 @@ def n_screen_center(raw, i, cfg):
     base = f"{_screen_core(_txt(c))}中控"
     for s in (c.subs or []):
         if s.dot == "○":
-            n = re.search(r"[\d.]+", s.text or "")
+            n = re.search(r"\d+(?:\.\d+)?", s.text or "")
             base += f"(○{n.group(0) if n else s.text}选装)"
     return base
 
@@ -456,8 +463,9 @@ def n_cluster(raw, i, cfg):
     full = _cell(raw, ["全液晶仪表盘"], i)
     size_c = _cell(raw, ["液晶仪表尺寸", "行车电脑显示屏幕"], i)
     size_values = _standard_parts(size_c)
-    size = _screen_core(size_values[0] if size_values else '').replace("寸", "")
-    size_s = f"{size}寸" if size else ""
+    raw_size = size_values[0] if size_values else ''
+    size_num = _num(raw_size)
+    size_s = f"{_screen_core(raw_size).replace('寸', '')}寸" if size_num is not None else ""
     full_values = _standard_parts(full)
     pending = ('' if size_values else _pending_value(size_c)) or ('' if full_values else _pending_value(full))
     if pending:
@@ -468,6 +476,8 @@ def n_cluster(raw, i, cfg):
         return f"{size_s}仪表(○全液晶选装)" if size_s else "○全液晶(选装)"
     if size_s:
         return f"{size_s}仪表"
+    if size_values:
+        return f"{raw_size}仪表" if raw_size != '有' else "●"
     return _bool_val(size_c)
 
 
@@ -517,9 +527,13 @@ def n_rearview(raw, i, cfg):
 def n_usb(raw, i, cfg):
     from .usb import usb_label
     c = _cell(raw, ["USB/Type-C接口数量"], i)
-    if not _solid(c):
+    parts = _standard_parts(c)
+    if not parts:
+        pending = _pending_value(c)
+        if pending:
+            return pending
         return usb_label('', preserve_default=True) if not c or not c.dot else _bool_val(c)
-    return usb_label(_txt(c), preserve_default=True)
+    return usb_label('/'.join(parts), preserve_default=True)
 
 
 def n_wireless_charge(raw, i, cfg):
@@ -589,15 +603,22 @@ def n_ambient(raw, i, cfg):
     c = _cell(raw, ["车内环境氛围灯"], i)
     parts = _standard_parts(c)
     if not parts:
-        return _bool_val(c)
+        return _pending_value(c) or _bool_val(c)
     t = ' '.join(parts)
-    n = _num(t)
-    if n and (n > 1 or re.search(r'(?:万|亿)\s*色', t)):
-        return "多色"
-    if "单色" in t or n == 1:
+    color_m = re.search(r'(\d+(?:\.\d+)?)\s*(?:万|亿)?\s*色', t)
+    if color_m:
+        if float(color_m.group(1)) > 1 or re.search(r'(?:万|亿)\s*色', t):
+            return "多色"
+        return "单色"
+    if "单色" in t:
         return "单色"
     if "多色" in t or re.search(r'[双两二三四五六七八九十百千]色', t):
         return "多色"
+    n = _num(t)
+    if n and n > 1:
+        return "多色"
+    if n == 1:
+        return "单色"
     return "●"
 
 

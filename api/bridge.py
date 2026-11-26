@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine.rules import Rules, display_order_key
 from engine import rawschema, ladder as ladder_mod, differ, render_backup, valuer
-from engine.models import Snapshot, Ladder, ValuationTable, ValuationItem
+from engine.models import Snapshot, Ladder, RawTable, ValuationTable, ValuationItem
 from engine.snapshot import resolve
 from engine import acquire, stage_one, __version__
 from engine.autohome_categories import clean_group, display_groups
@@ -33,7 +33,7 @@ def _today():
 
 class Bridge:
     def __init__(self, workdir: str):
-        self.workdir = workdir          # 使用者数据目录（快照/阶梯/赋值表/结果）
+        self.workdir = os.path.abspath(workdir)          # 使用者数据目录（快照/阶梯/赋值表/结果）
         self.rules = Rules()
         self.acquirer = acquire.Acquirer()
         # Playwright's sync API is thread-affine. pywebview may invoke JS API
@@ -61,20 +61,26 @@ class Bridge:
         self._install_started = False
         self._feedback_issue_url = ''
         self._feedback_folder = ''
-        os.makedirs(workdir, exist_ok=True)
+        os.makedirs(self.workdir, exist_ok=True)
         for sub in ("raw", "阶梯", "快照", "赋值", "结果", "方案"):
-            os.makedirs(os.path.join(workdir, sub), exist_ok=True)
+            os.makedirs(os.path.join(self.workdir, sub), exist_ok=True)
 
     def shutdown(self):
         """Close the Playwright owner thread when the native window exits."""
         if self._closed:
             return
         self._closed = True
+        def _close_browsers():
+            from engine import scrape
+            try:
+                self.acquirer.close()
+            finally:
+                scrape.close_browser()
         try:
-            self._acquire_executor.submit(self.acquirer.close).result(timeout=10)
+            self._acquire_executor.submit(_close_browsers).result(timeout=10)
         except Exception:
             pass
-        self._acquire_executor.shutdown(wait=True, cancel_futures=True)
+        self._acquire_executor.shutdown(wait=True, cancel_futures=False)
 
     # ---------- 通用 ----------
 
@@ -145,10 +151,11 @@ class Bridge:
             if not release or not release['available']:
                 return {'ok': False, 'error': '请先检查可用更新。'}
             if release['can_download']:
+                import shutil
                 folder = Path(tempfile.mkdtemp(prefix='carkit-setup-'))
                 downloaded = self._updater.download_to(folder / release['asset_name'])
                 if not downloaded['ok']:
-                    folder.rmdir()
+                    shutil.rmtree(folder, ignore_errors=True)
                     return downloaded
             installer = self._updater.verified_installer()
             # The onefile bootloader keeps carkit.exe open until the Python process exits.
@@ -234,7 +241,7 @@ class Bridge:
         try:
             import webview
             w = webview.windows[0]
-            ft = tuple(file_types) if file_types else None
+            ft = tuple(file_types) if file_types else ()
             dialog = getattr(webview, 'FileDialog', None)
             res = w.create_file_dialog(dialog.OPEN if dialog else webview.OPEN_DIALOG, allow_multiple=False,
                                        file_types=ft)
@@ -246,7 +253,7 @@ class Bridge:
         try:
             import webview
             w = webview.windows[0]
-            ft = tuple(file_types) if file_types else None
+            ft = tuple(file_types) if file_types else ()
             dialog = getattr(webview, 'FileDialog', None)
             res = w.create_file_dialog(dialog.SAVE if dialog else webview.SAVE_DIALOG, save_filename=default_name,
                                        file_types=ft)
@@ -263,17 +270,28 @@ class Bridge:
     def checklist(self):
         return self.rules.checklist
 
+    def _safe_workspace_file(self, subdir: str, filename: str, *, suffixes=('.json',), label='文件') -> Path:
+        workspace = Path(self.workdir).resolve()
+        root = (workspace / subdir).resolve()
+        if not root.is_relative_to(workspace):
+            raise ValueError(f'{subdir}目录路径无效')
+        if not filename or Path(filename).name != filename or Path(filename).suffix.lower() not in suffixes:
+            raise ValueError(f'无效{label}')
+        candidate = root / filename
+        if candidate.is_symlink():
+            raise ValueError(f'{label}路径无效')
+        source = candidate.resolve()
+        if source.parent != root or not source.is_file():
+            raise ValueError(f'{label}不存在或路径无效')
+        return source
+
     def remove_imported_snapshot(self, filename):
         """Move an imported snapshot to a recoverable local recycle folder."""
         try:
-            root = (Path(self.workdir) / '快照').resolve()
-            if not filename or Path(filename).name != filename or not filename.endswith('.json'):
-                raise ValueError('请选择有效的本品配置文件')
-            source = (root / filename).resolve()
-            if source.parent != root or not source.is_file():
-                raise ValueError('本品配置文件不存在或路径无效')
-            recycle = (Path(self.workdir) / '回收站' / '本品配置').resolve()
-            if not recycle.is_relative_to(Path(self.workdir).resolve()):
+            source = self._safe_workspace_file('快照', filename, suffixes=('.json',), label='本品配置文件')
+            workspace = Path(self.workdir).resolve()
+            recycle = (workspace / '回收站' / '本品配置').resolve()
+            if not recycle.is_relative_to(workspace):
                 raise ValueError('回收站路径无效')
             recycle.mkdir(parents=True, exist_ok=True)
             target = recycle / (source.stem + '-' + uuid.uuid4().hex[:8] + '.json')
@@ -283,22 +301,21 @@ class Bridge:
             return {'ok': False, 'error': str(exc)}
 
     def list_files(self, sub: str):
-        d = os.path.join(self.workdir, sub)
-        if not os.path.isdir(d):
+        try:
+            if not sub or os.path.isabs(sub):
+                return []
+            workspace = Path(self.workdir).resolve()
+            d = (workspace / sub).resolve()
+            if not d.is_relative_to(workspace) or d == workspace or not d.is_dir():
+                return []
+            return sorted(os.listdir(d))
+        except OSError:
             return []
-        return sorted(os.listdir(d))
 
     def remove_vehicle_history(self, filename):
         try:
+            source = self._safe_workspace_file('raw', filename, suffixes=('.json',), label='历史文件')
             workspace = Path(self.workdir).resolve()
-            root = (workspace / 'raw').resolve()
-            if not root.is_relative_to(workspace):
-                raise ValueError('历史目录路径无效')
-            if not filename or Path(filename).name != filename or not filename.lower().endswith('.json'):
-                raise ValueError('无效历史文件')
-            source = (root / filename).resolve()
-            if source.parent != root or not source.is_file():
-                raise ValueError('历史文件不存在或路径无效')
             recycle = (workspace / '回收站' / '车型历史').resolve()
             if not recycle.is_relative_to(workspace):
                 raise ValueError('回收站路径无效')
@@ -327,9 +344,8 @@ class Bridge:
 
     def open_history(self, filename):
         try:
-            if filename != os.path.basename(filename):
-                raise ValueError('无效历史记录')
-            raw = rawschema.detect_and_load(os.path.join(self.workdir, 'raw', filename))
+            raw_path = self._safe_workspace_file('raw', filename, suffixes=('.json',), label='历史记录')
+            raw = rawschema.detect_and_load(str(raw_path))
             stage_one.validate_raw(raw)
             self.stage_raw = raw
             return {'ok': True, 'model': raw.model, 'series_id': raw.series_id,
@@ -340,9 +356,7 @@ class Bridge:
 
     def prepare_competitor(self, filename):
         try:
-            if filename != os.path.basename(filename):
-                raise ValueError('无效历史记录')
-            raw_path = os.path.join(self.workdir, 'raw', filename)
+            raw_path = str(self._safe_workspace_file('raw', filename, suffixes=('.json',), label='历史记录'))
             raw = rawschema.detect_and_load(raw_path)
             stage_one.validate_raw(raw)
             # Cache separately per capture; keep user corrections on revisits.
@@ -467,7 +481,7 @@ class Bridge:
         """第1步：打开配置页（真实浏览器），等使用者勾年款+隐藏相同参数"""
         try:
             from engine import scrape
-            return scrape.scrape_open(series_id, channel)
+            return self._acquire_executor.submit(scrape.scrape_open, series_id, channel).result()
         except Exception as e:
             return {"ok": False, "error": str(e), "trace": traceback.format_exc(limit=3)}
 
@@ -633,6 +647,8 @@ class Bridge:
             data = self.stage_preview(payload) if kind == 'ladder' else payload
             if kind not in ('ladder', 'diff'):
                 raise ValueError('不支持的导出类型')
+            if not isinstance(data, dict):
+                raise ValueError('请先运行对比' if kind == 'diff' else '导出数据无效')
             if data.get('ok') is False:
                 return data
             if kind == 'diff' and not data.get('groups'):
@@ -681,7 +697,7 @@ class Bridge:
         """第2步：确认抓取 → canonical RawTable 落盘"""
         try:
             from engine import scrape
-            raw = scrape.scrape_capture(model)
+            raw = self._acquire_executor.submit(scrape.scrape_capture, model).result()
             sid = raw.series_id or "import"
             out = self._new_output_path('raw', f'raw-{sid}', '.json')
             raw.save(out)
@@ -712,7 +728,7 @@ class Bridge:
             if not any(os.path.abspath(path) in (s['paths']['left'], s['paths']['right'])
                        for s in self._plan_sessions.values()):
                 ladder_mod.upgrade_ladder(lad, self.rules)
-            return {"ok": True, "ladder": lad.to_dict()}
+            return {"ok": True, "path": path, "ladder": lad.to_dict()}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -842,12 +858,15 @@ class Bridge:
             return {"ok": False, "error": str(e)}
 
     def make_valuation_template(self):
-        out = os.path.join(self.workdir, "赋值", f"赋值表模板-{_today()}.xlsx")
-        path = self._current_valuation_path()
-        saved = json.loads(Path(path).read_text(encoding="utf-8")) if os.path.exists(path) else {}
-        current = valuer.normalize_valuation(saved, self.rules)
-        valuer.make_template_xlsx(out, self.rules, {it["no"]: it for it in current["items"]})
-        return {"ok": True, "path": out}
+        try:
+            out = self._new_output_path('赋值', '赋值表模板', '.xlsx')
+            path = self._current_valuation_path()
+            saved = json.loads(Path(path).read_text(encoding="utf-8")) if os.path.exists(path) else {}
+            current = valuer.normalize_valuation(saved, self.rules)
+            valuer.make_template_xlsx(out, self.rules, {it["no"]: it for it in current["items"]})
+            return {"ok": True, "path": out}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def load_valuation(self, path: str):
         try:
@@ -898,6 +917,9 @@ class Bridge:
                 self_lad = Ladder.load(snapshot_path)
                 if not plan_session:
                     ladder_mod.upgrade_ladder(self_lad, rules)
+                missing_left = {it['no'] for it in rules.items} - {it.no for it in self_lad.items}
+                if missing_left:
+                    raise ValueError('左侧竞品阶梯缺少新配置项，请重新抓取或从历史车型重新生成后再对比。')
                 snap = SimpleNamespace(model=self_lad.model, pending=[])
                 left_input = self_lad.to_dict()
             else:
@@ -1008,9 +1030,9 @@ class Bridge:
             inputs = plan['inputs']
             rules = Rules.from_snapshot(inputs['rules'])
             token = uuid.uuid4().hex
-            directory = os.path.join(self.workdir, '方案', '工作副本', token)
+            directory = os.path.abspath(os.path.join(self.workdir, '方案', '工作副本', token))
             os.makedirs(directory)
-            paths = {key: os.path.join(directory, key+'.json') for key in ('left', 'right', 'valuation')}
+            paths = {key: os.path.abspath(os.path.join(directory, key+'.json')) for key in ('left', 'right', 'valuation')}
             for key, path in paths.items():
                 atomic_write_text(path, json.dumps(inputs[key], ensure_ascii=False, indent=2)+'\n')
             self._plan_sessions[token] = {'paths': paths, 'rules': rules.to_snapshot(),
@@ -1049,7 +1071,11 @@ class Bridge:
         try:
             from engine import render_5c
             lad = Ladder.load(ladder_path)
-            md = render_5c.render_md(lad)
+            raw_dict = lad.evidence.get("raw") if isinstance(lad.evidence, dict) else None
+            if not isinstance(raw_dict, dict):
+                raise ValueError("该阶梯文件缺少原始抓取配置，无法导出 5C 文档")
+            raw = RawTable.from_dict(raw_dict)
+            md = render_5c.render_md(raw, model=lad.model, series_id=lad.series_id)
             out = self._new_output_path('结果', f'5C-看竞争-{lad.model}', '.md')
             atomic_write_text(out, md)
             return {"ok": True, "path": out}

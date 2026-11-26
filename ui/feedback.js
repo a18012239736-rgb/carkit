@@ -92,7 +92,7 @@
     dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
     submit.addEventListener('click', async () => {
       if (submit.disabled) return;
-      busy = true; sync(); renderImages(); message('正在本地准备反馈…');
+      busy = true; prepared = null; sync(); renderImages(); message('正在本地准备反馈…');
       try {
         prepared = await call('prepare_feedback', {title:title.value.trim(), description:description.value.trim(), images:images.map(({name, data_url}) => ({name, data_url}))});
         await call('open_feedback_issue');

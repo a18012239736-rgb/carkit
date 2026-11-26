@@ -45,7 +45,10 @@ def main():
             if target.startswith('windows-') and source.read(2) != b'MZ':
                 parser.error(f'Not a Windows executable: {name}')
             source.seek(0)
-            digest = hashlib.file_digest(source, 'sha256').hexdigest()
+            h = hashlib.sha256()
+            for chunk in iter(lambda: source.read(1 << 20), b''):
+                h.update(chunk)
+            digest = h.hexdigest()
         packages[target] = {'name': name, 'size': size, 'sha256': digest}
     raw = json.dumps({'version': version, 'notes': args.notes.read_text(encoding='utf-8'),
                       'packages': packages}, ensure_ascii=False, indent=2).encode('utf-8')

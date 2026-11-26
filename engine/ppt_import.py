@@ -104,8 +104,11 @@ def _root(z, name):
 def _slides(z):
     rels = {n.attrib['Id']: n.attrib['Target'] for n in _root(z, 'ppt/_rels/presentation.xml.rels')
             if n.attrib.get('TargetMode') != 'External'}
-    return [posixpath.normpath('ppt/'+rels[n.attrib['{'+NS['r']+'}id']])
-            for n in _root(z, 'ppt/presentation.xml').findall('p:sldIdLst/p:sldId', NS)]
+    out = []
+    for n in _root(z, 'ppt/presentation.xml').findall('p:sldIdLst/p:sldId', NS):
+        target = rels[n.attrib['{' + NS['r'] + '}id']].replace('\\', '/')
+        out.append(posixpath.normpath(target.lstrip('/')) if target.startswith('/') else posixpath.normpath('ppt/' + target))
+    return out
 
 def _paragraphs(node):
     result = []
@@ -184,22 +187,23 @@ def parse_page(path,page):
     if not bodies:
         return _parse_table_page(path, page, blocks)
     bodies.sort(key=lambda b:b['x'])
-    columns=[]; used=set(); price_kinds=set()
-    # Names are collected before bases are resolved, so names like Pro/Max are valid.
-    possible_names=[b['lines'][0].strip() for b in blocks if len(b['lines'])==1 and _is_trim_name(b['lines'][0])]
+    columns=[]; used=set(); price_kinds=set(); entries=[]
     for body in bodies:
         center=body['x']+body['w']/2
         candidates=[b for b in blocks if b['y']<body['y'] and len(b['lines'])==1
                     and _is_trim_name(b['lines'][0])
                     and abs(b['x']+b['w']/2-center)<max(body['w']*.65,300000)]
         if len(candidates)!=1:raise ValueError('版型列头无法唯一对应，请使用每列上方一个版型名称的配置阶梯页')
-        header=candidates[0]; name=header['lines'][0]
+        header=candidates[0]; name=header['lines'][0].strip()
         if name in used:raise ValueError('版型名称重复，请先在PPT中区分')
         used.add(name)
+        entries.append((body, header, name))
+    col_names = [name for _, _, name in entries]
+    for body, header, name in entries:
         price, kind = _column_price(blocks, header, body)
         if kind: price_kinds.add(kind)
         marker=body['lines'][0]
-        base=_base_from_marker(marker, possible_names, name)
+        base=_base_from_marker(marker, col_names, name)
         columns.append({'name':name,'base':base,'price':price,'text':'\n'.join(body['lines'][1:])})
     texts='\n'.join('\n'.join(b['lines']) for b in blocks)
     model_candidates=[b['lines'][0] for b in blocks if len(b['lines'])==1 and re.fullmatch(r'[A-Za-z]+[\w -]*\d[\w -]*',b['lines'][0])]
@@ -217,8 +221,13 @@ def _parse_native_table(table):
     for row in table.findall('a:tr', NS):
         cells = []
         for index, cell in enumerate(row.findall('a:tc', NS)):
+            vm = cell.get('vMerge')
+            if vm is None:
+                tc_vm = cell.find('a:tcPr/a:vMerge', NS)
+                vm = 'restart' if (tc_vm is not None and tc_vm.get('val') == 'restart') else ('1' if tc_vm is not None else None)
             cells.append({'index': index, 'span': int(cell.get('gridSpan', '1')),
                           'merged': cell.get('hMerge') == '1',
+                          'v_merged': vm == '1',
                           'lines': _paragraphs(cell)})
         rows.append(cells)
     header_index = next((i for i, row in enumerate(rows)
@@ -236,14 +245,26 @@ def _parse_native_table(table):
     warnings = ['已按表格合并单元格识别，请核对版型、价格及继承关系。']
     price_kind = '未确定'
     previous_label = ''
+    previous_was_price = False
+    has_guide_price = False
     for row in rows[header_index + 1:]:
-        label = ''.join(row[0]['lines']).strip() or previous_label
+        raw_label = ''.join(row[0]['lines']).strip()
+        label = raw_label or (previous_label if row[0]['v_merged'] and not previous_was_price else '')
         previous_label = label
         if re.search(r'成本|边际|贡献率|售价差|比例|占比', label):
+            previous_was_price = False
             continue
         price_row = bool(re.search(r'MSRP|指导价|TP\s*价格|售价|价格', label, re.I))
+        previous_was_price = price_row
         if price_row:
-            price_kind = '指导价' if re.search(r'MSRP|指导价', label, re.I) else ('TP价格' if 'TP' in label.upper() else '未确定')
+            row_kind = '指导价' if re.search(r'MSRP|指导价', label, re.I) else ('TP价格' if 'TP' in label.upper() else '未确定')
+            if has_guide_price and row_kind != '指导价':
+                continue
+            if row_kind == '指导价':
+                has_guide_price = True
+                price_kind = '指导价'
+            elif not has_guide_price:
+                price_kind = row_kind
         for header, column in zip(headers, columns):
             cells = [c for c in row if header['index'] <= c['index'] < header['index'] + header['span'] and not c['merged']]
             lines = [line for c in cells for line in c['lines']]
@@ -284,11 +305,11 @@ def _parse_table_page(path, page, blocks):
         for i,h in enumerate(trim_headers):
             center=h['x']+h['w']/2
             below=[b for b in blocks if b['y']>h['y'] and abs(b['x']+b['w']/2-center)<max(h['w'],600000)]
-            prices=[b for b in below if len(b['lines'])==1 and re.fullmatch(r'\d+(?:\.\d+)?(?:万元|万)?',b['lines'][0])]
+            prices=[b for b in below if len(b['lines'])==1 and re.fullmatch(r'[\d,]+(?:\.\d+)?(?:万元|万|元)?',b['lines'][0].strip())]
             body=next((b for b in below if b not in prices and not _is_trim_name(b['lines'][0])),None)
             columns.append({'name':names[i],
                             'base':names[0] if i and re.search(r'基础|入门|标准',names[0]) else None,
-                            'price':float(re.sub(r'万元|万','',prices[0]['lines'][0])) if prices else None,
+                            'price':_price_value(prices[0]['lines'][0], '') if prices else None,
                             'text':'\n'.join(body['lines']) if body else ''})
         return {'model':Path(path).stem.split('产品')[0], 'page':page, 'source':Path(path).name,
                 'price_kind':'未确定', 'columns':columns,
@@ -298,17 +319,24 @@ def _parse_table_page(path, page, blocks):
     if len(names)<2:
         raise ValueError('表格中的版型数量不足，请至少保留两个版型列。')
     col_count=len(names); columns=[{'name':n,'base':None,'price':None,'text_lines':[]} for n in names]
-    texts=[]; price_kind='未确定'
+    texts=[]; price_kind='未确定'; has_guide_price=False
     for row in rows[header_idx+1:]:
         cells=[c['lines'] for c in row]
         if not cells: continue
         label=' '.join(cells[0]).strip()
         values=[(' '.join(x).strip() if x else '') for x in cells[1:1+col_count]]
-        if re.search(r'指导价|TP价格|价格',label):
-            price_kind='TP价格' if 'TP' in label.upper() else ('指导价' if '指导' in label else '未确定')
+        if re.search(r'指导价|MSRP|TP\s*价格|售价|价格',label,re.I):
+            row_kind='TP价格' if 'TP' in label.upper() else ('指导价' if re.search(r'指导|MSRP',label,re.I) else '未确定')
+            if has_guide_price and row_kind != '指导价':
+                continue
+            if row_kind == '指导价':
+                has_guide_price = True
+                price_kind = '指导价'
+            elif not has_guide_price:
+                price_kind = row_kind
             for i,v in enumerate(values):
-                m=re.search(r'(\d+(?:\.\d+)?)',v)
-                if m: columns[i]['price']=float(m.group(1))
+                price = _price_value(v, label)
+                if price is not None: columns[i]['price']=price
         elif label:
             for i,v in enumerate(values):
                 if v: columns[i]['text_lines'].append(f'{label}: {v}')
@@ -334,15 +362,17 @@ def _apply(text, values, evidence, leftovers):
         def setv(no,value):
             nonlocal matched
             matched=True;put(no,value,line)
-        if re.search(r'选装|待定|暂定|取消|删除|减配|不配|不含|不支持|^无',t):
+        negation = r'选装|待定|暂定|取消|删除|减配|不配|不含|不支持|^无(?!(?:线|钥匙|框|边框|级|感))'
+        if re.search(negation, t):
             # Never let a removal/uncertain upgrade silently retain its inherited value.
-            stripped=re.sub(r'选装|待定|暂定|取消|删除|减配|不配|不含|不支持|^无','',t)
+            stripped=re.sub(negation,'',t)
             trial=copy.deepcopy(values); touched={}; ignored=[]
             _apply(stripped,trial,touched,ignored)
             for no in touched:
                 put(no,'[待定]'+line+'（请确认状态）',line)
             leftovers.append(line+'（需人工确认配置状态）');continue
-        m=re.search(r'(\d+)\s*km',t,re.I)
+        range_text = re.sub(r'(?:最高车速|极速|加速|0\s*[-~～]\s*100\s*km\s*/\s*h|质保)[^+＋、,，；;]*', '', t, flags=re.I)
+        m = re.search(r'(?<!万)(?<!\d\.)(\d+)\s*km(?!\s*/\s*h)', range_text, re.I)
         if m:setv(1,m[1]+'km')
         m=re.search(r'(\d+)\s*V(?:架构|平台|高压)',t,re.I)
         if m:setv(3,m[1]+'V')
@@ -395,14 +425,17 @@ def _apply(text, values, evidence, leftovers):
         m=re.search(r'[45]G',t)
         if m:setv(23,m[0])
         if '皮质方向盘' in t:setv(25,'仿皮')
-        m=re.search(r'(仿皮|真皮|织物)方向盘',t)
+        m=re.search(r'(nappa\s*(?:真皮)?|翻毛皮|仿皮|真皮|织物|塑料)方向盘',t,re.I)
         if m:
-            setv(25,m[1])
-            if re.search(r'方向盘\s*[+＋、和及]\s*座椅',t):setv(34,m[1])
+            mat = 'NAPPA' if 'nappa' in m[1].lower() else m[1]
+            setv(25,mat)
+            if re.search(r'方向盘\s*[+＋、和及]\s*座椅',t):setv(34,'NAPPA真皮' if mat=='NAPPA' else mat)
         if '方向盘加热' in t:setv(27,'●')
         if 'HUD' in t.upper():setv(30,'P-HUD' if 'P-HUD' in t.upper() else 'AR-HUD' if 'AR-HUD' in t.upper() else 'HUD')
         if '无线充电' in t:setv(33,'●'+t)
-        if '仿皮座椅' in t:setv(34,'仿皮')
+        if 'nappa' in t.lower() and '座椅' in t:setv(34,'NAPPA真皮')
+        elif '翻毛皮座椅' in t:setv(34,'翻毛皮')
+        elif '仿皮座椅' in t:setv(34,'仿皮')
         elif '真皮座椅' in t:setv(34,'真皮')
         elif '织物座椅' in t:setv(34,'织物')
         adjustments=list(re.finditer(r'(主驾|副驾)(?:座椅)?\s*(?:(手动|电动|手调|电调)\s*(\d+)\s*向|(\d+)\s*向\s*(手动|电动|手调|电调))',t))
@@ -422,13 +455,28 @@ def _apply(text, values, evidence, leftovers):
                 support = update_support_text(values.get(no, '✕'), t, feature)
                 if support is not None:
                     setv(no, support)
-        if any(feature in t for feature in ('通风','加热','按摩','头枕音响')) and any(scope in t for scope in ('座椅','主驾','副驾','前排','二排','后排','头枕音响')):
+        if any(feature in t for feature in ('通风','加热','按摩','头枕音响','头枕扬声器','头枕喇叭')) and any(scope in t for scope in ('座椅','主驾','副驾','前排','二排','后排','头枕音响','头枕扬声器','头枕喇叭')):
             from .seat_functions import from_text
-            subs=copy.deepcopy(values.get(36,{}))
-            if not isinstance(subs,dict):subs={}
-            additions=from_text(t if '二排' not in t and '后排' not in t else '', t if '二排' in t or '后排' in t else '', t if '头枕音响' in t else '')
-            subs.update({key:value for key,value in additions.items() if value!='✕'})
-            setv(36,subs)
+            front_clauses, rear_clauses = [], []
+            current_row = 'rear' if ('二排' in t or '后排' in t) and not any(s in t for s in ('前排', '主驾', '副驾', '主副', '驾驶位')) else 'front'
+            for clause in re.split(r'[+＋；;、,，](?![^()]*\))', t):
+                clause = clause.strip()
+                if not clause:
+                    continue
+                if re.search(r'方向盘|后视镜|电池|玻璃|雨[刮刷]|喷水嘴', clause) and '座椅' not in clause:
+                    continue
+                if '二排' in clause or '后排' in clause:
+                    current_row = 'rear'
+                elif any(s in clause for s in ('前排', '主驾', '副驾', '主副', '驾驶位')):
+                    current_row = 'front'
+                if any(f in clause.replace('头枕加热', '') for f in ('通风', '加热', '按摩', '头枕音响', '头枕扬声器', '头枕喇叭')):
+                    (rear_clauses if current_row == 'rear' else front_clauses).append(clause)
+            if front_clauses or rear_clauses:
+                subs=copy.deepcopy(values.get(36,{}))
+                if not isinstance(subs,dict):subs={}
+                additions=from_text(front='；'.join(front_clauses), rear='；'.join(rear_clauses))
+                subs.update({key:value for key,value in additions.items() if value!='✕'})
+                setv(36,subs)
         m=re.search(r'(\d+)扬(?:声器|伯牙之音)',t)
         if m:setv(37,m[1]+'扬声器')
         if '车外扬声器' in t:setv(38,'[待定]有车外扬声器，数量未写')

@@ -4,7 +4,9 @@ import re
 
 def _standard(value):
     text = str(value or '').strip()
-    if text.startswith('○') or '[待' in text or '?' in text or '？' in text:
+    if (not text or text.startswith('○') or text in ('选装', '选配')
+            or re.search(r'[（(]\s*(?:选装|选配)\s*[)）]\s*$', text)
+            or '[待' in text or '?' in text or '？' in text):
         return ''
     text = re.sub(r'[（(][^()（）]*(?:○|选装|选配)[^()（）]*[)）]', '', text)
     return re.split(r'[,，+＋]\s*○', text, maxsplit=1)[0].strip()
@@ -20,7 +22,7 @@ def has_sensing(value):
 
 def components(value):
     text = _standard(value)
-    if (not text or re.fullmatch(r'(?:✕|×|—|-|无)(?:[（(].*[)）])?', text)
+    if (not text or re.fullmatch(r'(?:✕|×|X|—|-|无|无配置|不支持|不适用)(?:[（(].*[)）])?', text, re.I)
             or ('手动' in text and '电动' not in text)):
         return False, False
     return True, has_sensing(text)

@@ -138,17 +138,21 @@ class Acquirer:
     def fetch(self, sid, year=None):
         sid = series_id(sid)
         if not sid: raise ValueError('车系编号或汽车之家网址无效。')
-        if self.page is None: self.start()
+        if self.page is None or self.page.is_closed(): self.start()
         if year is not None:
             self.year = str(year or '').strip()
         self.selected_years = []
         self.discontinued_year = ''
-        self.sid, self.mode = sid, 'config'
+        self.sid, self.mode = sid, 'filters'
         self.page.goto(f'https://www.autohome.com.cn/config/series/{sid}.html', wait_until='domcontentloaded', timeout=45000)
         return self.filter_options()
 
     def filter_options(self):
-        self.page.locator('a[class*="style_col_spec_name"]').first.wait_for(timeout=20000)
+        self.mode = 'filters'
+        try:
+            self.page.locator('a[class*="style_col_spec_name"]').first.wait_for(timeout=20000)
+        except Exception:
+            return {'needs_browser': True, 'message': '未读到配置表筛选条件。若浏览器提示验证，请完成后点“验证后继续读取”。'}
         filters = self.page.evaluate("""() => [...document.querySelectorAll('div.tw-mb-3')].map(g => {
           const title=g.querySelector(':scope > span')?.textContent.trim();
           const values=[...g.querySelectorAll('input[type=checkbox]')].map(i=>({value:i.value,label:i.parentElement.parentElement.textContent.trim()}));
@@ -318,5 +322,9 @@ class Acquirer:
         return {'raw':raw.to_dict(),'years':years or data.get('years',[]),'complete':True}
 
     def resume(self):
-        if not self.page: raise ValueError('请先输入车型开始抓取。')
-        return self.search_results(year=self.year) if self.mode=='search' else self.capture(year=self.year)
+        if not self.page or self.page.is_closed(): raise ValueError('请先输入车型开始抓取。')
+        if self.mode == 'search':
+            return self.search_results(year=self.year)
+        if self.mode == 'filters':
+            return self.filter_options()
+        return self.capture(year=self.year)

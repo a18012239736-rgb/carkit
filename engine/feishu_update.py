@@ -133,34 +133,40 @@ class FeishuUpdater(updater.AppUpdater):
         available = latest > current
         supported = bool(self.executable and self.target)
         asset, digest, path = None, '', None
+        missing_platform = False
         if supported:
             kind = 'windows-installer' if self.installed else self.target[0]
             suffix = '-setup.exe' if self.installed else '.exe' if kind == 'windows-x64' else f'-{kind}.dmg'
             name = f'carkit-{version}{suffix}'
-            package = manifest['packages'].get(kind)
-            if (not isinstance(package, dict) or package.get('name') != name
-                    or type(package.get('size')) is not int or not 0 < package['size'] <= updater.MAX_DOWNLOAD
-                    or not isinstance(package.get('sha256'), str)
-                    or not re.fullmatch(r'[0-9a-fA-F]{64}', package['sha256'])):
-                raise IntegrityError('飞书安装包版本、大小或校验值无效')
-            file, url = _attachment(files, name)
-            if type(file.get('size')) is not int or file['size'] != package['size']:
-                raise IntegrityError('飞书附件大小与签名清单不一致')
-            asset = {'name': name, 'size': package['size'], 'browser_download_url': url}
-            digest = package['sha256'].lower()
-            if available:
-                path = InstallerUpdater._verified_path(self, {'asset': asset, 'digest': digest})
+            if kind not in manifest['packages']:
+                missing_platform = True
+            else:
+                package = manifest['packages'].get(kind)
+                if (not isinstance(package, dict) or package.get('name') != name
+                        or type(package.get('size')) is not int or not 0 < package['size'] <= updater.MAX_DOWNLOAD
+                        or not isinstance(package.get('sha256'), str)
+                        or not re.fullmatch(r'[0-9a-fA-F]{64}', package['sha256'])):
+                    raise IntegrityError('飞书安装包版本、大小或校验值无效')
+                file, url = _attachment(files, name)
+                if type(file.get('size')) is not int or file['size'] != package['size']:
+                    raise IntegrityError('飞书附件大小与签名清单不一致')
+                asset = {'name': name, 'size': package['size'], 'browser_download_url': url}
+                digest = package['sha256'].lower()
+                if available:
+                    path = InstallerUpdater._verified_path(self, {'asset': asset, 'digest': digest})
         reason = '发现新版，可从飞书下载更新' if available else '当前已是最新正式版本'
         if latest < current:
             reason = '当前程序版本高于飞书正式版本，不提供降级'
         if not supported:
             reason += '；当前为源码运行或暂不支持的设备，请打开飞书更新页查看'
+        elif missing_platform:
+            reason += f'；当前版本暂未提供 {self.target[2]} 飞书安装包'
         result = {'ok': True, 'source': 'feishu', 'current_version': self.current_version,
                   'latest_version': version, 'same_version': latest == current,
                   'available': available, 'supported': supported, 'installer_update': self.installed,
                   'platform': self.target[0] if self.target else '',
                   'platform_name': self.target[2] if self.target else '',
-                  'can_download': bool(available and supported and not path),
+                  'can_download': bool(available and supported and asset and not path),
                   'downloaded_path': str(path) if path else '', 'release_url': WIKI_URL,
                   'release_name': f'Carkit v{version}', 'release_notes': manifest.get('notes', ''),
                   'asset_name': asset['name'] if asset else '', 'asset_size': asset['size'] if asset else 0,

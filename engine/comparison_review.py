@@ -58,6 +58,9 @@ def _source(ladder, rules, trims):
 
 
 def _same_value(no, value, source_value):
+    if no == 36:
+        from .seat_functions import normalize
+        return normalize(value) == normalize(source_value)
     if no == 35:
         from .seat_adjust import label
         return label(value) == label(source_value)
@@ -143,7 +146,7 @@ def _side(ladder, trim, no, value, vitem, context):
                                               usb_base=(vitem.get('params') or {}).get('base_count', 3) if vitem else 3,
                                               self_items=context['source_items'], comp_items=context['source_items'])[0]
             result['source_value'] = source_value
-            if not _same_value(no, value, source_value):
+            if not _same_value(no, value, differ._standard_configuration(source_value)):
                 result['notes'].append('计算用配置与原文识别不同，可能有人工修正或识别版本差异。')
             if not result['rows']:
                 result['notes'].append('原始表没有对应配置行；沿用现有无行处理规则，不代表另行核实为无配置。')

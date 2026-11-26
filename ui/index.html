@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>carkit — 汽车产品分析工作台</title>
-<link rel="stylesheet" href="style.css?v=glass-base-20261109">
-<link rel="stylesheet" href="config-editor.css?v=topbar-20261105">
-<link rel="stylesheet" href="valuation-editor.css?v=groups-20261105">
-<link rel="stylesheet" href="ppt-draft-editor.css?v=glass-depth-20261109">
-<link rel="stylesheet" href="feedback.css?v=glass-depth-20261109">
-<link rel="stylesheet" href="workspace.css?v=glass-left-sidebar-20261109">
+<link rel="stylesheet" href="style.css?v=workbench-20261125">
+<link rel="stylesheet" href="config-editor.css?v=workbench-20261125">
+<link rel="stylesheet" href="valuation-editor.css?v=workbench-20261125">
+<link rel="stylesheet" href="ppt-draft-editor.css?v=workbench-20261125">
+<link rel="stylesheet" href="feedback.css?v=workbench-20261125">
+<link rel="stylesheet" href="workspace.css?v=workbench-20261125">
 <script src="vendor/vue/vue.global.prod.js"></script>
 <script src="stage-editor.js?v=workspace-20261021-final"></script>
 </head>
@@ -141,6 +141,7 @@
           <label><input id="comparison-review-info" type="checkbox">同时查看来源提示</label>
           <div id="comparison-review-list" class="table-wrap"></div>
         </details>
+        <div id="diff-kpi-strip" class="diff-kpi-strip" hidden></div>
         <h2>竞争力对比表</h2>
         <div class="table-wrap" id="backup-table"></div>
         <details id="comparison-detail-section"><summary>配置项判定明细</summary><div class="table-wrap" id="detail-table"></div></details>
@@ -274,11 +275,11 @@
   <div class="evidence-heading"><h2 id="comparison-evidence-title">原文与计算依据</h2><button id="comparison-evidence-close" aria-label="关闭原文与计算依据">关闭</button></div>
   <div id="comparison-evidence-content"></div>
 </dialog>
-<script src="config-editor.js?v=groups-20261105"></script>
-<script src="valuation-editor.js?v=groups-20261105"></script>
-<script src="ppt-draft-editor.js?v=product-options-20261015"></script>
-<script src="stage-display-settings.js?v=workspace-20261021-final"></script>
-<script src="app.js?v=left-text-default-20261109"></script>
+<script src="config-editor.js?v=workbench-20261125"></script>
+<script src="valuation-editor.js?v=workbench-20261125"></script>
+<script src="ppt-draft-editor.js?v=workbench-20261125"></script>
+<script src="stage-display-settings.js?v=workbench-20261125"></script>
+<script src="app.js?v=workbench-20261125"></script>
 <script src="comparison-tools.js?v=workspace-20261020"></script>
 <script src="diff-subtabs.js?v=liquid-pill"></script>
 <script src="app-updates.js?v=feishu-20261123"></script>

@@ -25,17 +25,75 @@ def _front_scopes(phrase, *, legacy=False, previous_mapping=False):
     return ('主驾', '副驾')
 
 
+_SCOPE_RE = r'主驾|副驾|驾驶位|前排|主副|二排|后排'
+
+
+def _split_phrases(text, *, normalize_parens=True):
+    text = str(text or '')
+    if normalize_parens:
+        text = text.replace('（', '(').replace('）', ')')
+    phrases = []
+    buf = []
+    depth = 0
+    for i, ch in enumerate(text):
+        if ch == '(':
+            depth += 1
+            buf.append(ch)
+        elif ch == ')':
+            depth = max(0, depth - 1)
+            buf.append(ch)
+            if depth == 0:
+                nxt = text[i + 1:i + 2]
+                if nxt and nxt not in '+＋；;、,，\n/':
+                    phrases.append(''.join(buf).strip())
+                    buf = []
+        elif depth == 0 and ch in '+＋；;、,，\n':
+            part = ''.join(buf).strip()
+            if part:
+                phrases.append(part)
+            buf = []
+        elif depth == 0 and ch == '/':
+            left = ''.join(buf)
+            right = text[i + 1:].lstrip()
+            if re.search(_SCOPE_RE + r'|\)', left) or re.match(r'(?:○|' + _SCOPE_RE + r')', right):
+                part = left.strip()
+                if part:
+                    phrases.append(part)
+                buf = []
+            else:
+                buf.append(ch)
+        else:
+            buf.append(ch)
+    tail = ''.join(buf).strip()
+    if tail:
+        phrases.append(tail)
+    return phrases
+
+
+def _standard_phrases(value, *, legacy=False, previous_mapping=False):
+    raw = str(value or '').strip()
+    if not raw:
+        return []
+    if legacy or previous_mapping:
+        return _split_phrases(raw, normalize_parens=not legacy)
+    if raw.startswith('○') and '●' not in raw:
+        return []
+    from .differ import _standard_configuration
+    out = []
+    for phrase in _split_phrases(raw, normalize_parens=True):
+        std = _standard_configuration(phrase)
+        if std and std != '✕':
+            out.append(std)
+    return out
+
+
 def from_text(front='', rear='', headrest='', *, legacy=False, front_scope_known=False, headrest_scope_known=False,
               previous_mapping=False):
-    if not legacy and not previous_mapping:
-        from .differ import _standard_configuration
-        front, rear, headrest = (_standard_configuration(value) for value in (front, rear, headrest))
     out = empty()
     for text, seats in ((front, ('主驾', '副驾')), (rear, ('二排',))):
-        text = str(text)
-        if not legacy:
-            text = text.replace('头枕扬声器', '头枕音响').replace('头枕喇叭', '头枕音响').replace('（', '(').replace('）', ')')
-        for phrase in re.split(r'[+＋；;、\n]|(?<=\))(?=[^\s])', text):
+        for phrase in _standard_phrases(text, legacy=legacy, previous_mapping=previous_mapping):
+            if not legacy:
+                phrase = phrase.replace('头枕扬声器', '头枕音响').replace('头枕喇叭', '头枕音响')
             scopes = _front_scopes(phrase, legacy=legacy, previous_mapping=previous_mapping) if seats[0] != '二排' else seats
             recognized = phrase if legacy or previous_mapping else phrase.replace('头枕加热', '')
             for feature in FEATURES:
@@ -45,17 +103,19 @@ def from_text(front='', rear='', headrest='', *, legacy=False, front_scope_known
                             and seat != '二排' and not front_scope_known
                             and not any(scope in phrase for scope in ('主驾','副驾','前排','主副','驾驶位')) else '●')
     if headrest and headrest not in ('✕', '×', '-', '无', '无配置'):
-        if not legacy and not previous_mapping:
-            headrest = str(headrest).replace('（', '(').replace('）', ')')
-        scopes = ('二排',) if '二排' in headrest or '后排' in headrest else _front_scopes(headrest, legacy=legacy, previous_mapping=previous_mapping)
         known_scopes = (*SEATS, '前排') if legacy else (*SEATS, '前排', '主副', '驾驶位', '后排')
-        if not headrest_scope_known and not any(scope in headrest for scope in known_scopes):
-            scopes = ('主驾', '副驾')
-            for seat in scopes:
-                out[seat + '头枕音响'] = '[待定]请确认头枕音响座位'
-        else:
-            for seat in scopes:
-                out[seat + '头枕音响'] = '●'
+        for phrase in _standard_phrases(headrest, legacy=legacy, previous_mapping=previous_mapping):
+            rear_hit = '二排' in phrase or '后排' in phrase
+            front_explicit = any(scope in phrase for scope in ('主驾', '副驾', '前排', '主副', '驾驶位'))
+            if rear_hit:
+                out['二排头枕音响'] = '●'
+            if front_explicit or not rear_hit:
+                if not headrest_scope_known and not any(scope in phrase for scope in known_scopes):
+                    for seat in ('主驾', '副驾'):
+                        out[seat + '头枕音响'] = '[待定]请确认头枕音响座位'
+                else:
+                    for seat in _front_scopes(phrase, legacy=legacy, previous_mapping=previous_mapping):
+                        out[seat + '头枕音响'] = '●'
     return out
 
 

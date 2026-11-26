@@ -1,31 +1,29 @@
-.vue-ppt-draft .ppt-draft-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:16px; }
+.vue-ppt-draft .ppt-draft-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:14px; }
 .vue-ppt-draft .ppt-column {
   display:flex;
   flex-direction:column;
   min-width:0;
-  gap:14px;
-  padding:18px;
-  border:1px solid var(--glass-edge,var(--line));
+  gap:12px;
+  padding:16px;
+  border:1px solid var(--line);
   border-radius:var(--radius-panel);
-  background:var(--glass-sheen) var(--glass-surface);
-  -webkit-backdrop-filter:var(--glass-filter);
-  backdrop-filter:var(--glass-filter);
-  box-shadow:var(--glass-shadow);
+  background:#fff;
+  box-shadow:var(--surface-card-shadow);
 }
 .vue-ppt-draft .ppt-column-head {
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:12px;
-  min-height:32px;
-  margin:-18px -18px 2px;
-  padding:10px 16px;
+  min-height:30px;
+  margin:-16px -16px 2px;
+  padding:9px 16px;
   border-bottom:1px solid var(--line);
   border-radius:calc(var(--radius-panel) - 1px) calc(var(--radius-panel) - 1px) 0 0;
-  background:rgb(240 244 242 / 88%);
+  background:#f8f9fb;
 }
-.vue-ppt-draft .ppt-column-index { color:var(--navy); font-size:12px; font-weight:600; letter-spacing:0; }
-.vue-ppt-draft .ppt-column label { display:flex; flex-direction:column; gap:7px; margin:0; color:#556574; font-size:12px; font-weight:500; line-height:1.6; }
+.vue-ppt-draft .ppt-column-index { color:var(--ink-strong); font-size:12px; font-weight:650; }
+.vue-ppt-draft .ppt-column label { display:flex; flex-direction:column; gap:6px; margin:0; color:#4b5563; font-size:12px; font-weight:550; line-height:1.5; }
 .vue-ppt-draft .ppt-column input,
 .vue-ppt-draft .ppt-column select,
 .vue-ppt-draft .ppt-column textarea {
@@ -33,33 +31,34 @@
   width:100%;
   min-width:0;
   margin:0;
-  padding:8px 10px;
+  padding:7px 10px;
   border:1px solid var(--line-strong);
-  border-radius:7px;
+  border-radius:var(--radius-control);
   background-color:#fff;
   color:var(--ink);
   font:inherit;
-  font-size:13px;
+  font-size:12.5px;
   font-weight:400;
 }
-.vue-ppt-draft .ppt-column select { padding-right:30px; }
-.vue-ppt-draft .ppt-column :is(input,select) { min-height:36px; }
-.vue-ppt-draft .ppt-column textarea { min-height:170px; resize:vertical; line-height:1.75; }
-.vue-ppt-draft .ppt-column .ppt-options { min-height:92px; }
+.vue-ppt-draft .ppt-column select { padding-right:28px; }
+.vue-ppt-draft .ppt-column :is(input,select) { min-height:34px; }
+.vue-ppt-draft .ppt-column textarea { min-height:164px; resize:vertical; line-height:1.7; }
+.vue-ppt-draft .ppt-column .ppt-options { min-height:88px; }
 .vue-ppt-draft .ppt-column :is(input,select,textarea):focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--focus-ring); }
-.vue-ppt-draft .ppt-column :is(input,select,textarea):disabled { border-color:#e0e6ea; background-color:#f1f4f6; color:#8b98a3; cursor:not-allowed; opacity:1; }
+.vue-ppt-draft .ppt-column :is(input,select,textarea):disabled { border-color:var(--line); background-color:var(--gray-bg); color:var(--faint); cursor:not-allowed; opacity:1; }
 .vue-ppt-draft .ppt-remove {
-  min-height:28px;
-  padding:4px 7px;
+  min-height:26px;
+  padding:3px 7px;
   border-color:transparent;
   border-radius:5px;
   background:transparent;
-  color:#8a6670;
+  box-shadow:none;
+  color:var(--dim);
   font-size:11px;
 }
-.vue-ppt-draft .ppt-remove:hover { border-color:transparent; background:#fcefee; color:#a83f38; }
+.vue-ppt-draft .ppt-remove:hover { border-color:transparent; background:var(--red-bg); color:var(--red); }
 .vue-ppt-draft .ppt-remove:focus-visible,
-.vue-ppt-draft .ppt-add-column:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
-.vue-ppt-draft .ppt-draft-toolbar { display:flex; margin-top:14px; }
-.vue-ppt-draft .ppt-add-column { min-height:36px; padding:7px 12px; border-color:#c9e2d8; color:var(--accent-strong); background:#fff; }
-.vue-ppt-draft .ppt-add-column:hover { border-color:#9cc9bd; background:#f4faf7; color:var(--accent-strong); }
+.vue-ppt-draft .ppt-add-column:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.vue-ppt-draft .ppt-draft-toolbar { display:flex; margin-top:12px; }
+.vue-ppt-draft .ppt-add-column { min-height:34px; padding:6px 12px; border-color:var(--accent-line); color:var(--accent-strong); background:#fff; }
+.vue-ppt-draft .ppt-add-column:hover { border-color:var(--accent); background:var(--accent-soft); color:var(--accent-strong); }
